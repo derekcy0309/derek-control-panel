@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f7f8fb;
+  color: #172033;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-base text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100;
+  }
+
+  .label {
+    @apply text-sm font-semibold text-slate-700;
+  }
+
+  .panel {
+    @apply rounded-xl border border-slate-200 bg-white shadow-soft;
+  }
+
+  .panel-soft {
+    @apply rounded-xl border border-slate-200 bg-white/85 shadow-soft;
+  }
+}
