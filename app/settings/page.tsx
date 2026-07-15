@@ -138,7 +138,8 @@ function exportTasks(tasks: import("@/lib/types").Task[]) {
       跟進日: formatDate(task.follow_up_date),
       狀態: taskStatusLabels[task.status],
       風險: riskLabels[task.risk],
-      下一步: task.next_action,
+      下一步: task.next_action || "",
+      完成日期及時間: task.completed_at,
       備註: task.notes
     }))
   );

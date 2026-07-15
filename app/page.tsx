@@ -199,7 +199,7 @@ function TaskMini({ task }: { task: import("@/lib/types").Task }) {
         <StatusBadge status={task.status} />
       </div>
       <p className="mt-2 font-semibold text-slate-900">{task.title}</p>
-      <p className="mt-1 text-sm text-slate-600">下一步：{task.next_action}</p>
+      <p className="mt-1 text-sm text-slate-600">下一步：{task.next_action || "未設定"}</p>
     </div>
   );
 }

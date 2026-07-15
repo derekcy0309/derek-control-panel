@@ -20,9 +20,11 @@ create table if not exists public.tasks (
   due_date date,
   follow_up_date date,
   status text not null default 'not_started' check (status in ('not_started', 'in_progress', 'waiting', 'done', 'blocked', 'cancelled')),
-  next_action text not null check (length(trim(next_action)) > 0),
+  next_action text,
   risk text not null default 'low' check (risk in ('low', 'medium', 'high')),
   notes text,
+  completed_at timestamptz,
+  deleted_at timestamptz,
   archived_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -106,6 +108,7 @@ create trigger set_user_settings_updated_at before update on public.user_setting
 
 create index if not exists tasks_user_scope_status_idx on public.tasks(user_id, scope, status);
 create index if not exists tasks_due_follow_idx on public.tasks(user_id, due_date, follow_up_date);
+create index if not exists tasks_deleted_at_idx on public.tasks(user_id, deleted_at);
 create index if not exists transactions_user_scope_type_idx on public.transactions(user_id, scope, type);
 create index if not exists transactions_expected_date_idx on public.transactions(user_id, expected_date);
 create index if not exists meetings_user_date_idx on public.meetings(user_id, meeting_date desc);

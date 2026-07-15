@@ -56,9 +56,9 @@ export function TaskForm({
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
           follow_up_date: initialTask.follow_up_date ?? "",
-          status: initialTask.status,
+          status: initialTask.status === "done" || initialTask.status === "cancelled" ? initialTask.status : "not_started",
           risk: initialTask.risk,
-          next_action: initialTask.next_action,
+          next_action: initialTask.next_action ?? "",
           notes: initialTask.notes ?? ""
         }
       : { ...defaultState, ...preset }
@@ -74,13 +74,11 @@ export function TaskForm({
     event.preventDefault();
     setError("");
 
-    if (!form.next_action.trim()) {
-      setError("請把任務拆到第一個 3 分鐘步驟。");
-      return;
-    }
-
     if (!supabase) return;
     setSaving(true);
+
+    const completedAt =
+      form.status === "done" ? initialTask?.completed_at ?? new Date().toISOString() : null;
 
     const payload = {
       user_id: userId,
@@ -91,9 +89,10 @@ export function TaskForm({
       due_date: form.due_date || null,
       follow_up_date: form.follow_up_date || null,
       status: form.status,
-      next_action: form.next_action.trim(),
+      next_action: form.next_action.trim() || null,
       risk: form.risk,
-      notes: form.notes.trim() || null
+      notes: form.notes.trim() || null,
+      completed_at: completedAt
     };
 
     const result = initialTask
@@ -144,8 +143,7 @@ export function TaskForm({
           className="field mt-2"
           value={form.next_action}
           onChange={(event) => update("next_action", event.target.value)}
-          placeholder="例如：打開文件，寫第一句摘要"
-          required
+          placeholder="可選填，例如：打開文件，寫第一句摘要"
         />
       </label>
       <div className="grid gap-4 sm:grid-cols-2">

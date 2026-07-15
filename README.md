@@ -11,6 +11,7 @@ hooks/                  資料讀取 hook
 lib/                    型別、中文標籤、計算邏輯、Supabase client
 supabase/schema.sql     Supabase 資料表、RLS、索引
 supabase/seed.sql       測試資料
+supabase/update-2026-07-15-task-changes.sql  任務更新升級 SQL
 ```
 
 ## 本機設定
@@ -46,6 +47,20 @@ npm run dev
 7. 用 App 的「密碼登入」登入一次，然後到 Authentication > Users 複製你的 user id。
 8. 在 `supabase/seed.sql` 把 `00000000-0000-0000-0000-000000000000` 換成你的 user id。
 9. 到 SQL Editor 執行 `supabase/seed.sql`。
+
+## 已有資料庫的升級步驟
+
+如果你已經在 Supabase 執行過舊版 `schema.sql`，請到 SQL Editor 再執行：
+
+```text
+supabase/update-2026-07-15-task-changes.sql
+```
+
+這個升級會：
+
+- 取消任務「下一步」必填
+- 加入完成日期及時間
+- 加入刪除日期，刪除任務會先保留 30 日
 
 ## Vercel 部署步驟
 

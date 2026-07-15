@@ -23,6 +23,15 @@ export const sourceTypeLabels: Record<SourceType, string> = {
 };
 
 export const taskStatusLabels: Record<TaskStatus, string> = {
+  not_started: "未完成",
+  in_progress: "未完成",
+  waiting: "未完成",
+  done: "已完成",
+  blocked: "未完成",
+  cancelled: "已取消"
+};
+
+export const taskStatusDetailLabels: Record<TaskStatus, string> = {
   not_started: "未開始",
   in_progress: "進行中",
   waiting: "等待中",
@@ -87,13 +96,18 @@ export const sourceTypeOptions = [
 ] as const;
 
 export const taskStatusOptions = [
-  { value: "not_started", label: "未開始" },
-  { value: "in_progress", label: "進行中" },
-  { value: "waiting", label: "等待中" },
+  { value: "not_started", label: "未完成" },
   { value: "done", label: "已完成" },
-  { value: "blocked", label: "有問題" },
   { value: "cancelled", label: "已取消" }
 ] as const;
+
+export const taskStatusFilterOptions = [
+  { value: "unfinished", label: "未完成" },
+  { value: "done", label: "已完成" },
+  { value: "cancelled", label: "已取消" }
+] as const;
+
+export const unfinishedTaskStatuses = ["not_started", "in_progress", "waiting", "blocked"] as const;
 
 export const riskOptions = [
   { value: "low", label: "低" },

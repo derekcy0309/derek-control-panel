@@ -31,8 +31,11 @@ export function useAppData() {
     }
 
     setUserId(userData.user.id);
+    const oldDeletedTaskDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    await supabase.from("tasks").delete().eq("user_id", userData.user.id).lt("deleted_at", oldDeletedTaskDate);
+
     const [tasks, transactions, meetings, balances, settings] = await Promise.all([
-      supabase.from("tasks").select("*").is("archived_at", null).order("due_date", { ascending: true, nullsFirst: false }),
+      supabase.from("tasks").select("*").is("deleted_at", null).is("archived_at", null).order("due_date", { ascending: true, nullsFirst: false }),
       supabase.from("transactions").select("*").is("archived_at", null).order("expected_date", { ascending: true, nullsFirst: false }),
       supabase.from("meetings").select("*").is("archived_at", null).order("meeting_date", { ascending: false }),
       supabase.from("balances").select("*").is("archived_at", null).order("month", { ascending: false }),
@@ -75,6 +78,10 @@ function formatSupabaseReadError(label: string, tableName: string, error: unknow
 
   if (code === "PGRST205" || message.includes("Could not find the table")) {
     return `Supabase 尚未建立「${label}」資料表。請到 Supabase SQL Editor 執行 supabase/schema.sql，然後重新整理頁面。`;
+  }
+
+  if (code === "42703" || message.includes("deleted_at") || message.includes("completed_at")) {
+    return "Supabase 任務資料表尚未套用最新升級。請到 Supabase SQL Editor 執行 supabase/update-2026-07-15-task-changes.sql，然後重新整理頁面。";
   }
 
   return `資料讀取失敗：「${label}」資料表無法讀取。請檢查 Supabase 權限或資料表 ${tableName}。`;

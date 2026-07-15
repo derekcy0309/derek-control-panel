@@ -8,7 +8,7 @@ import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { TaskCard } from "@/components/items/TaskCard";
 import { Button } from "@/components/ui/Button";
-import { riskOptions, scopeOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
+import { riskOptions, scopeOptions, sourceTypeOptions, taskStatusFilterOptions, unfinishedTaskStatuses } from "@/lib/labels";
 import type { Task } from "@/lib/types";
 import { useAppData } from "@/hooks/useAppData";
 
@@ -29,14 +29,18 @@ function TasksContent() {
     source_type: "",
     status: "",
     risk: "",
-    due_date: ""
+    due_date: "",
+    show_completed: false
   });
 
   const filteredTasks = useMemo(() => {
     return data.tasks.filter((task) => {
       if (filters.scope && task.scope !== filters.scope) return false;
       if (filters.source_type && task.source_type !== filters.source_type) return false;
-      if (filters.status && task.status !== filters.status) return false;
+      if (filters.status === "unfinished" && !unfinishedTaskStatuses.includes(task.status as (typeof unfinishedTaskStatuses)[number])) return false;
+      if (filters.status === "done" && task.status !== "done") return false;
+      if (filters.status === "cancelled" && task.status !== "cancelled") return false;
+      if (!filters.status && !filters.show_completed && task.status === "done") return false;
       if (filters.risk && task.risk !== filters.risk) return false;
       if (filters.due_date && task.due_date !== filters.due_date) return false;
       return true;
@@ -51,7 +55,7 @@ function TasksContent() {
         <div>
           <p className="text-sm font-semibold text-indigo-600">任務管理</p>
           <h2 className="mt-1 text-2xl font-bold text-ink">任務</h2>
-          <p className="mt-2 text-base text-slate-600">每個任務都要有下一步，避免大腦被模糊事項卡住。</p>
+          <p className="mt-2 text-base text-slate-600">預設只顯示未完成和已取消任務；需要時可自行顯示已完成。</p>
         </div>
         <Button onClick={() => setIsAdding(true)}>
           <Plus className="h-5 w-5" />
@@ -64,13 +68,22 @@ function TasksContent() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <FilterSelect label="家庭 / 公司" value={filters.scope} onChange={(value) => setFilters({ ...filters, scope: value })} options={scopeOptions} />
           <FilterSelect label="類型" value={filters.source_type} onChange={(value) => setFilters({ ...filters, source_type: value })} options={sourceTypeOptions} />
-          <FilterSelect label="狀態" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} options={taskStatusOptions} />
+          <FilterSelect label="狀態" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} options={taskStatusFilterOptions} />
           <FilterSelect label="風險" value={filters.risk} onChange={(value) => setFilters({ ...filters, risk: value })} options={riskOptions} />
           <label>
             <span className="label">到期日</span>
             <input className="field mt-2" type="date" value={filters.due_date} onChange={(event) => setFilters({ ...filters, due_date: event.target.value })} />
           </label>
         </div>
+        <label className="mt-4 flex items-center gap-3 text-base font-semibold text-slate-700">
+          <input
+            className="h-5 w-5 rounded border-slate-300 text-indigo-600"
+            type="checkbox"
+            checked={filters.show_completed}
+            onChange={(event) => setFilters({ ...filters, show_completed: event.target.checked })}
+          />
+          顯示已完成任務
+        </label>
       </section>
 
       <section className="grid gap-4">

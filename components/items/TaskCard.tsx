@@ -24,6 +24,10 @@ export function TaskCard({
     onChanged();
   }
 
+  async function completeTask() {
+    await updateTask({ status: "done", completed_at: new Date().toISOString() });
+  }
+
   async function delay(days?: number) {
     const nextDate = days ? addDaysIso(days) : window.prompt("請輸入延後日期，例如 2026-07-01");
     if (!nextDate) return;
@@ -55,13 +59,14 @@ export function TaskCard({
           到期：{formatDate(task.due_date)}
         </p>
         <p>跟進：{formatDate(task.follow_up_date)}</p>
+        {task.completed_at ? <p>完成日期及時間：{formatDateTime(task.completed_at)}</p> : null}
         <p className="sm:col-span-2">
           <span className="font-semibold">下一步：</span>
-          {task.next_action}
+          {task.next_action || "未設定"}
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button variant="success" onClick={() => updateTask({ status: "done" })}>
+        <Button variant="success" onClick={completeTask}>
           完成
         </Button>
         <Button variant="secondary" onClick={() => delay(1)}>
@@ -82,10 +87,20 @@ export function TaskCard({
         <Button variant="ghost" onClick={() => updateTask({ status: "cancelled" })}>
           取消
         </Button>
-        <Button variant="ghost" onClick={() => updateTask({ archived_at: new Date().toISOString() })}>
-          封存
+        <Button variant="danger" onClick={() => updateTask({ deleted_at: new Date().toISOString() })}>
+          刪除
         </Button>
       </div>
     </article>
   );
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("zh-HK", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
 }

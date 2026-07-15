@@ -25,9 +25,11 @@ export type Task = {
   due_date: string | null;
   follow_up_date: string | null;
   status: TaskStatus;
-  next_action: string;
+  next_action: string | null;
   risk: Risk;
   notes: string | null;
+  completed_at: string | null;
+  deleted_at: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
