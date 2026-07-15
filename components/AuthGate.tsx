@@ -13,6 +13,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [authMode, setAuthMode] = useState<"password" | "link">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(true);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -119,14 +120,24 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           {authMode === "password" ? (
             <label className="mt-4 block">
               <span className="label">密碼</span>
-              <input
-                className="field mt-2"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="你的 Supabase 使用者密碼"
-                required
-              />
+              <div className="mt-2 flex gap-2">
+                <input
+                  className="field"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="你的 Supabase 使用者密碼"
+                  autoComplete="current-password"
+                  required
+                />
+                <button
+                  className="shrink-0 rounded-lg bg-white px-3 py-2 text-base font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  type="button"
+                  onClick={() => setShowPassword((value) => !value)}
+                >
+                  {showPassword ? "隱藏" : "顯示"}
+                </button>
+              </div>
             </label>
           ) : null}
           <Button className="mt-5 w-full" type="submit">
