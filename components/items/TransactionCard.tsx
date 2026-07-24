@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatCurrency, formatDate, nextMonthDate } from "@/lib/date";
 import { frequencyLabels, transactionTypeLabels } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
+import { controlAction } from "@/lib/control-api";
 import type { Transaction } from "@/lib/types";
 
 export function TransactionCard({
@@ -20,7 +20,7 @@ export function TransactionCard({
   highlight?: boolean;
 }) {
   async function updateTransaction(values: Partial<Transaction>) {
-    await supabase?.from("transactions").update(values).eq("id", transaction.id);
+    await controlAction("save_transaction", { ...transaction, ...values, id: transaction.id });
     onChanged();
   }
 
@@ -41,7 +41,7 @@ export function TransactionCard({
       proof_url: transaction.proof_url,
       notes: transaction.notes
     };
-    await supabase?.from("transactions").insert(payload);
+    await controlAction("save_transaction", payload);
     onChanged();
   }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { expenseStatusOptions, frequencyOptions, incomeStatusOptions, scopeOptions, transactionTypeLabels } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
+import { controlAction } from "@/lib/control-api";
 import type { Transaction } from "@/lib/types";
 
 type TransactionFormState = {
@@ -39,7 +39,6 @@ const defaultState: TransactionFormState = {
 };
 
 export function TransactionForm({
-  userId,
   initialTransaction,
   forcedType,
   compact = false,
@@ -86,8 +85,6 @@ export function TransactionForm({
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!supabase) return;
-
     const amount = Number(form.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
       setError("金額必須大於 0。");
@@ -96,7 +93,7 @@ export function TransactionForm({
 
     setSaving(true);
     const payload = {
-      user_id: userId,
+      id: initialTransaction?.id,
       scope: form.scope,
       type: form.type,
       item: form.item.trim(),
@@ -112,16 +109,14 @@ export function TransactionForm({
       notes: form.notes.trim() || null
     };
 
-    const result = initialTransaction
-      ? await supabase.from("transactions").update(payload).eq("id", initialTransaction.id)
-      : await supabase.from("transactions").insert(payload);
-
-    setSaving(false);
-    if (result.error) {
-      setError("儲存收入支出失敗，請稍後再試。");
+    try {
+      await controlAction("save_transaction", payload);
+    } catch (caught) {
+      setSaving(false);
+      setError(caught instanceof Error ? caught.message : "儲存收入支出失敗，請稍後再試。");
       return;
     }
-
+    setSaving(false);
     if (!initialTransaction) setForm({ ...defaultState, type: forcedType ?? "expense", status: forcedType === "income" ? "expected" : "unpaid" });
     onSaved();
   }

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { ScopeBadge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/date";
 import { scopeLabels } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
+import { controlAction } from "@/lib/control-api";
 import type { Meeting } from "@/lib/types";
 import { useAppData } from "@/hooks/useAppData";
 
@@ -24,7 +24,7 @@ export default function MeetingsPage() {
 }
 
 function MeetingsContent() {
-  const { data, userId, loading, error, reload } = useAppData();
+  const { data, userId, participants, loading, error, reload } = useAppData();
   const [isAdding, setIsAdding] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
   const [taskSource, setTaskSource] = useState<Meeting | null>(null);
@@ -32,7 +32,7 @@ function MeetingsContent() {
   if (loading || error || !userId) return <LoadingState error={error} />;
 
   async function archiveMeeting(meeting: Meeting) {
-    await supabase?.from("meetings").update({ archived_at: new Date().toISOString() }).eq("id", meeting.id);
+    await controlAction("save_meeting", { ...meeting, id: meeting.id, archived_at: new Date().toISOString() });
     reload();
   }
 
@@ -111,6 +111,7 @@ function MeetingsContent() {
         <Modal title="由會議建立行動任務" onClose={() => setTaskSource(null)}>
           <TaskForm
             userId={userId}
+            participants={participants}
             preset={{
               scope: taskSource.scope,
               source_type: "meeting_action",

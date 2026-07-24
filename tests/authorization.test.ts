@@ -1,0 +1,27 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { allowedTaskUpdateFields, canDeleteResource, canReadResource, canReshareResource, canUpdateTaskFields, masksPrivateCount } from "../lib/authorization.ts";
+
+const base = { userId: "derek", ownerId: "suki", now: "2026-07-22T00:00:00Z" };
+test("Derek cannot read Suki private task", () => assert.equal(canReadResource(base), false));
+test("same household does not imply access", () => assert.equal(canReadResource({ ...base, householdId: "h" } as typeof base), false));
+test("active view share can read", () => assert.equal(canReadResource({ ...base, share: { sharedWithUserId: "derek", permission: "view" } }), true));
+test("revoked share immediately fails", () => assert.equal(canReadResource({ ...base, share: { sharedWithUserId: "derek", permission: "view", revokedAt: "2026-07-21" } }), false));
+test("expired share fails", () => assert.equal(canReadResource({ ...base, share: { sharedWithUserId: "derek", permission: "view", expiresAt: "2026-07-20" } }), false));
+test("pending assignment does not grant normal access", () => assert.equal(canReadResource({ ...base, assignment: { assignedToId: "derek", status: "pending_acceptance" } }), false));
+test("accepted assignment grants access", () => assert.equal(canReadResource({ ...base, assignment: { assignedToId: "derek", status: "accepted" } }), true));
+test("declined assignment does not grant access", () => assert.equal(canReadResource({ ...base, assignment: { assignedToId: "derek", status: "declined" } }), false));
+test("unaccepted joint membership fails", () => assert.equal(canReadResource({ ...base, joint: { userId: "derek" } }), false));
+test("accepted joint membership grants access", () => assert.equal(canReadResource({ ...base, joint: { userId: "derek", acceptedAt: "2026-07-22" } }), true));
+test("removed joint membership fails", () => assert.equal(canReadResource({ ...base, joint: { userId: "derek", acceptedAt: "2026-07-22", removedAt: "2026-07-23" } }), false));
+test("view-only cannot modify", () => assert.equal(canUpdateTaskFields({ ...base, share: { sharedWithUserId: "derek", permission: "view" } }, ["status"]), false));
+test("comment cannot modify main resource", () => assert.equal(canUpdateTaskFields({ ...base, share: { sharedWithUserId: "derek", permission: "comment" } }, ["title"]), false));
+test("update-status can complete", () => assert.equal(canUpdateTaskFields({ ...base, share: { sharedWithUserId: "derek", permission: "update_status" } }, ["status","completed_at"]), true));
+test("update-status cannot edit title", () => assert.equal(canUpdateTaskFields({ ...base, share: { sharedWithUserId: "derek", permission: "update_status" } }, ["title"]), false));
+test("editor cannot change owner", () => assert.equal(canUpdateTaskFields({ ...base, share: { sharedWithUserId: "derek", permission: "edit" } }, ["owner_id"]), false));
+test("co-owner cannot expand visibility", () => assert.equal(canUpdateTaskFields({ ...base, share: { sharedWithUserId: "derek", permission: "co_owner" }, joint: { userId: "derek", acceptedAt: "2026-07-22" } }, ["visibility"]), false));
+test("recipient cannot delete owner resource", () => assert.equal(canDeleteResource({ ...base, share: { sharedWithUserId: "derek", permission: "edit" } }), false));
+test("recipient cannot reshare", () => assert.equal(canReshareResource({ ...base, share: { sharedWithUserId: "derek", permission: "edit" } }), false));
+test("owner can delete and reshare", () => { assert.equal(canDeleteResource({ userId: "derek", ownerId: "derek" }), true); assert.equal(canReshareResource({ userId: "derek", ownerId: "derek" }), true); });
+test("private dashboard count only sees filtered rows", () => assert.equal(masksPrivateCount([1, 2]), 2));
+test("view permission exposes no update fields", () => assert.deepEqual(allowedTaskUpdateFields({ ...base, share: { sharedWithUserId: "derek", permission: "view" } }), []));

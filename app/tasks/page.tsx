@@ -10,7 +10,7 @@ import { TaskCard } from "@/components/items/TaskCard";
 import { Button } from "@/components/ui/Button";
 import { riskOptions, scopeOptions, sourceTypeOptions, taskStatusFilterOptions, unfinishedTaskStatuses } from "@/lib/labels";
 import type { Task } from "@/lib/types";
-import { useAppData } from "@/hooks/useAppData";
+import { useControlData } from "@/hooks/useControlData";
 
 export default function TasksPage() {
   return (
@@ -21,7 +21,7 @@ export default function TasksPage() {
 }
 
 function TasksContent() {
-  const { data, userId, loading, error, reload } = useAppData();
+  const { data, loading, error, reload } = useControlData();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [filters, setFilters] = useState({
@@ -34,6 +34,7 @@ function TasksContent() {
   });
 
   const filteredTasks = useMemo(() => {
+    if (!data) return [];
     return data.tasks.filter((task) => {
       if (filters.scope && task.scope !== filters.scope) return false;
       if (filters.source_type && task.source_type !== filters.source_type) return false;
@@ -45,9 +46,9 @@ function TasksContent() {
       if (filters.due_date && task.due_date !== filters.due_date) return false;
       return true;
     });
-  }, [data.tasks, filters]);
+  }, [data, filters]);
 
-  if (loading || error || !userId) return <LoadingState error={error} />;
+  if (loading || error || !data) return <LoadingState error={error} />;
 
   return (
     <div className="space-y-5">
@@ -88,7 +89,18 @@ function TasksContent() {
 
       <section className="grid gap-4">
         {filteredTasks.length ? (
-          filteredTasks.map((task) => <TaskCard key={task.id} task={task} onChanged={reload} onEdit={setEditingTask} />)
+          filteredTasks.map((task) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              currentUserId={data.currentUser.id}
+              participants={data.participants}
+              assignments={data.assignments}
+              handoffNotes={data.handoffNotes}
+              onChanged={reload}
+              onEdit={setEditingTask}
+            />
+          ))
         ) : (
           <div className="panel p-5 text-base text-slate-600">沒有符合條件的任務。</div>
         )}
@@ -96,13 +108,13 @@ function TasksContent() {
 
       {isAdding ? (
         <Modal title="新增任務" onClose={() => setIsAdding(false)}>
-          <TaskForm userId={userId} onSaved={() => finish(reload, () => setIsAdding(false))} onCancel={() => setIsAdding(false)} />
+          <TaskForm userId={data.currentUser.id} participants={data.participants} onSaved={() => finish(reload, () => setIsAdding(false))} onCancel={() => setIsAdding(false)} />
         </Modal>
       ) : null}
 
       {editingTask ? (
         <Modal title="修改任務" onClose={() => setEditingTask(null)}>
-          <TaskForm userId={userId} initialTask={editingTask} onSaved={() => finish(reload, () => setEditingTask(null))} onCancel={() => setEditingTask(null)} />
+          <TaskForm userId={data.currentUser.id} participants={data.participants} initialTask={editingTask} onSaved={() => finish(reload, () => setEditingTask(null))} onCancel={() => setEditingTask(null)} />
         </Modal>
       ) : null}
     </div>

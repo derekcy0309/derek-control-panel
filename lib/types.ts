@@ -33,6 +33,32 @@ export type Task = {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  owner_id?: string;
+  created_by_id?: string;
+  visibility?: Visibility;
+  area?: Area;
+  description?: string | null;
+  assignee_id?: string | null;
+  requested_priority?: number;
+  planned_date?: string | null;
+  estimated_minutes?: number | null;
+  actual_minutes?: number | null;
+  energy_level?: EnergyLevel | null;
+  context?: string | null;
+  definition_of_done?: string | null;
+  required_information?: string | null;
+  blocked_reason?: string | null;
+  critical_path?: boolean;
+  revenue_impact?: number | null;
+  safety_impact?: boolean;
+  child_impact?: boolean;
+  legal_impact?: boolean;
+  last_progress_at?: string | null;
+  snoozed_until?: string | null;
+  estimated_duration_days?: number | null;
+  buffer_days?: number;
+  latest_safe_start_date?: string | null;
+  progress?: number;
 };
 
 export type Transaction = {
@@ -88,6 +114,153 @@ export type UserSettings = {
   default_reminder_days: ReminderDays;
   created_at: string;
   updated_at: string;
+  theme?: "light" | "dark" | "system";
+  language?: string;
+  accent_colour?: string;
+  gentle_mode?: boolean;
+  low_capacity_mode?: boolean;
+  dashboard_density?: "calm" | "comfortable" | "compact";
+  wip_limit?: number;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  notification_mode?: string;
+  default_area?: Area;
+  focus_minutes?: number;
+  monthly_profit_target?: number;
+  pinned_pages?: string[];
+};
+
+export type Area = "work" | "family" | "personal";
+export type Visibility = "private" | "shared" | "assigned" | "joint";
+export type EnergyLevel = "low" | "medium" | "high";
+export type SharePermission = "view" | "comment" | "update_status" | "edit" | "co_owner";
+export type ShareType = "reference" | "assignment" | "joint";
+
+export type UserProfile = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  timezone: string;
+  active: boolean;
+  is_admin: boolean;
+  must_change_password: boolean;
+};
+
+export type CurrentUser = { id: string; email: string; displayName: string };
+
+export type OperatingItem = {
+  id: string;
+  item_type: string;
+  title: string;
+  description: string | null;
+  status: "inbox" | "active" | "waiting" | "blocked" | "review" | "completed" | "cancelled";
+  area: Area;
+  owner_id: string;
+  created_by_id: string;
+  assignee_id: string | null;
+  visibility: Visibility;
+  due_date: string | null;
+  next_action: string | null;
+  sensitive: boolean;
+  metadata: Record<string, unknown>;
+  last_progress_at: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ShareRecord = {
+  id: string;
+  resource_type: "task" | "operating_item";
+  resource_id: string;
+  owner_id: string;
+  shared_with_user_id: string;
+  permission: SharePermission;
+  share_type: ShareType;
+  include_attachments: boolean;
+  include_comments: boolean;
+  created_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+};
+
+export type AssignmentStatus =
+  | "pending_acceptance"
+  | "accepted"
+  | "declined"
+  | "clarification_requested"
+  | "alternative_date_proposed"
+  | "in_progress"
+  | "waiting"
+  | "blocked"
+  | "completed"
+  | "returned"
+  | "closed"
+  | "cancelled";
+export type Assignment = {
+  id: string;
+  resource_type: "task" | "operating_item";
+  resource_id: string;
+  assigned_by_id: string;
+  assigned_to_id: string;
+  status: AssignmentStatus;
+  due_date: string | null;
+  requested_priority: number;
+  definition_of_done: string | null;
+  instructions: string | null;
+  decline_reason: string | null;
+  proposed_date: string | null;
+  accepted_at: string | null;
+  completed_at?: string | null;
+  parent_assignment_id?: string | null;
+  handoff_sequence?: number;
+  progress?: number;
+  completed_steps?: number;
+  next_step?: string | null;
+  waiting_until?: string | null;
+  step_outcome?: "continue" | "returned" | "closed" | null;
+  returned_at?: string | null;
+  closed_at?: string | null;
+  last_note_at?: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type HandoffNote = {
+  id: string;
+  assignment_id: string;
+  task_id: string;
+  author_id: string;
+  event_type: "assigned" | "accepted" | "declined" | "clarification" | "progress" | "waiting" | "blocked" | "step_completed" | "returned" | "closed" | "comment";
+  body: string;
+  progress: number | null;
+  next_step: string | null;
+  waiting_until: string | null;
+  created_at: string;
+};
+
+export type CapacityCheckin = {
+  id: string;
+  user_id: string;
+  checkin_date: string;
+  energy_level: EnergyLevel;
+  available_minutes: number | null;
+  mode: "normal" | "gentle" | "minimum_step" | "shift";
+  essential_only: boolean;
+  notes: string | null;
+};
+
+export type ControlData = AppData & {
+  currentUser: CurrentUser;
+  profile: UserProfile;
+  settings: UserSettings;
+  operatingItems: OperatingItem[];
+  shares: ShareRecord[];
+  assignments: Assignment[];
+  handoffNotes: HandoffNote[];
+  planning: Array<{ user_id: string; resource_type: string; resource_id: string; personal_priority: number; planned_date: string | null; snoozed_until: string | null; pinned: boolean; hidden_from_today: boolean }>;
+  capacity: CapacityCheckin | null;
+  participants: Array<{ user_id: string; display_name: string }>;
 };
 
 export type AppData = {

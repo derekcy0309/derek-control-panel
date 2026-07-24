@@ -1,0 +1,10 @@
+drop index if exists public.activity_logs_actor_idx;
+drop index if exists public.assignments_assigner_idx;
+drop index if exists public.joint_memberships_user_idx;
+drop index if exists public.joint_memberships_inviter_idx;
+drop index if exists public.operating_items_assignee_idx;
+drop index if exists public.operating_items_creator_idx;
+drop index if exists public.share_audit_logs_actor_idx;
+drop index if exists public.share_audit_logs_target_idx;
+drop index if exists public.share_records_owner_idx;
+drop index if exists public.tasks_creator_idx;

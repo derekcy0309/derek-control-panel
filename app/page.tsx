@@ -1,224 +1,104 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, ReceiptText, WalletCards, CalendarPlus } from "lucide-react";
+import { AlertTriangle, ArrowRight, BatteryLow, CalendarClock, Check, Clock3, Plus, ShieldCheck, Sparkles, TimerReset, Zap } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { FocusMode } from "@/components/FocusMode";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
-import { TransactionForm } from "@/components/forms/TransactionForm";
-import { MeetingForm } from "@/components/forms/MeetingForm";
-import { TaskCard } from "@/components/items/TaskCard";
-import { TransactionCard } from "@/components/items/TransactionCard";
 import { Button } from "@/components/ui/Button";
-import { ScopeBadge, StatusBadge } from "@/components/ui/Badge";
-import { getCashflowSummary } from "@/lib/cashflow";
-import { currentMonth, formatCurrency, formatDate } from "@/lib/date";
-import { getFocusItems, getOverdueTasks, getProblemItems, getTodayFollowUps, getUpcomingTransactions } from "@/lib/dashboard";
-import { transactionTypeLabels } from "@/lib/labels";
-import type { FocusItem } from "@/lib/dashboard";
-import { useAppData } from "@/hooks/useAppData";
+import { controlAction } from "@/lib/control-api";
+import { formatDate } from "@/lib/date";
+import { activeWipCount, classifyDeadlineRisk, recommendTodayTasks } from "@/lib/planning";
+import type { Assignment, Task } from "@/lib/types";
+import { useControlData } from "@/hooks/useControlData";
 
-type QuickModal = "task" | "income" | "expense" | "meeting" | null;
+export default function HomePage() { return <AuthGate><TodayCommandCenter /></AuthGate>; }
 
-export default function HomePage() {
-  return (
-    <AuthGate>
-      <Dashboard />
-    </AuthGate>
-  );
-}
+function TodayCommandCenter() {
+  const { data, loading, error, reload } = useControlData();
+  const [adding, setAdding] = useState(false);
+  const [focusTask, setFocusTask] = useState<Task | null>(null);
+  const [capacityOpen, setCapacityOpen] = useState(false);
+  const [actionError, setActionError] = useState("");
 
-function Dashboard() {
-  const { data, userId, loading, error, reload } = useAppData();
-  const [todayMode, setTodayMode] = useState(true);
-  const [modal, setModal] = useState<QuickModal>(null);
+  const recommendation = useMemo(() => data ? recommendTodayTasks({ tasks: data.tasks, assignments: data.assignments, currentUserId: data.currentUser.id, settings: data.settings, capacity: data.capacity }) : null, [data]);
+  if (loading || error || !data || !recommendation) return <LoadingState error={error} />;
 
-  const focusItems = useMemo(() => getFocusItems(data.tasks, data.transactions), [data.tasks, data.transactions]);
-  const focusItem = focusItems[0];
-  const problems = useMemo(() => getProblemItems(data.tasks, data.transactions), [data.tasks, data.transactions]);
-  const overdue = useMemo(() => getOverdueTasks(data.tasks), [data.tasks]);
-  const followUps = useMemo(() => getTodayFollowUps(data.tasks), [data.tasks]);
-  const upcoming = useMemo(() => getUpcomingTransactions(data.transactions), [data.transactions]);
-  const highRisk = data.tasks.filter((task) => task.risk === "high" && task.status !== "done" && task.status !== "cancelled").slice(0, 3);
-  const homeSummary = getCashflowSummary(data.transactions, data.balances, "home", currentMonth());
-  const companySummary = getCashflowSummary(data.transactions, data.balances, "company", currentMonth());
+  const gentle = Boolean(data.settings.gentle_mode);
+  const acceptedAssignments = new Set(data.assignments.filter((item) => item.assigned_to_id === data.currentUser.id && ["accepted","in_progress","blocked"].includes(item.status)).map((item) => item.resource_id));
+  const quickWins = recommendation.all.filter((item) => (item.task.estimated_minutes ?? 999) <= 30).slice(0, 4);
+  const pending = data.assignments.filter((item) => item.assigned_to_id === data.currentUser.id && item.status === "pending_acceptance");
+  const wip = activeWipCount(data.tasks, data.assignments, data.currentUser.id);
+  const wipLimit = data.settings.wip_limit ?? 3;
 
-  if (loading || error || !userId) return <LoadingState error={error} />;
-
-  return (
-    <div className="space-y-5">
-      <section className="rounded-2xl border border-indigo-100 bg-white p-5 shadow-soft">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-indigo-600">今日外置執行功能</p>
-            <h2 className="mt-1 text-2xl font-bold text-ink sm:text-3xl">今日只做一件</h2>
-            <p className="mt-2 text-base text-slate-600">先處理最重要的一件，其餘只是背景噪音。</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant={todayMode ? "primary" : "secondary"} onClick={() => setTodayMode((value) => !value)}>
-              今日模式
-            </Button>
-            <QuickButton icon={<Plus className="h-5 w-5" />} label="新增任務" onClick={() => setModal("task")} />
-            <QuickButton icon={<WalletCards className="h-5 w-5" />} label="新增收入" onClick={() => setModal("income")} />
-            <QuickButton icon={<ReceiptText className="h-5 w-5" />} label="新增支出" onClick={() => setModal("expense")} />
-            <QuickButton icon={<CalendarPlus className="h-5 w-5" />} label="新增會議" onClick={() => setModal("meeting")} />
-          </div>
-        </div>
-        <div className="mt-5">
-          {focusItem ? (
-            <FocusCard item={focusItem} onChanged={reload} />
-          ) : (
-            <div className="rounded-xl bg-emerald-50 p-5 text-base font-semibold text-emerald-800">今日沒有燃眉之急，可以選一件低阻力任務開始。</div>
-          )}
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        <SummaryCard title="家庭區" tone="home" value={formatCurrency(homeSummary.projectedBalance)} caption="預計期末結餘" />
-        <SummaryCard title="公司區" tone="company" value={formatCurrency(companySummary.projectedBalance)} caption="預計期末結餘" />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <Panel title="最多 3 個高風險項目">
-          <div className="space-y-3">
-            {highRisk.length ? highRisk.map((task) => <TaskMini key={task.id} task={task} />) : <Empty text="暫時沒有高風險項目。" />}
-          </div>
-        </Panel>
-        <Panel title="今日要跟進">
-          <div className="space-y-3">
-            {followUps.length ? followUps.slice(0, 4).map((task) => <TaskMini key={task.id} task={task} />) : <Empty text="今日沒有指定跟進。" />}
-          </div>
-        </Panel>
-        <Panel title="未來 7 日收入 / 支出">
-          <div className="space-y-3">
-            {upcoming.length ? (
-              upcoming.slice(0, 5).map((item) => (
-                <div key={item.id} className="rounded-lg bg-slate-50 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-semibold text-slate-900">{item.item}</p>
-                    <p className="font-bold">{formatCurrency(Number(item.amount))}</p>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    {transactionTypeLabels[item.type]} · {formatDate(item.expected_date)}
-                  </p>
-                </div>
-              ))
-            ) : (
-              <Empty text="未來 7 日沒有待處理收入支出。" />
-            )}
-          </div>
-        </Panel>
-      </section>
-
-      {!todayMode ? (
-        <section className="grid gap-4 lg:grid-cols-2">
-          <Panel title="有問題項目">
-            <div className="space-y-3">
-              {problems.tasks.map((task) => <TaskMini key={task.id} task={task} />)}
-              {problems.transactions.map((item) => <TransactionMini key={item.id} item={item} />)}
-              {!problems.tasks.length && !problems.transactions.length ? <Empty text="暫時沒有有問題項目。" /> : null}
-            </div>
-          </Panel>
-          <Panel title="已逾期項目">
-            <div className="space-y-3">
-              {overdue.length ? overdue.map((task) => <TaskMini key={task.id} task={task} />) : <Empty text="暫時沒有逾期項目。" />}
-            </div>
-          </Panel>
-        </section>
-      ) : null}
-
-      {modal ? (
-        <Modal title={modalTitle[modal]} onClose={() => setModal(null)}>
-          {modal === "task" ? <TaskForm userId={userId} compact onSaved={() => finishQuickAdd(reload, setModal)} onCancel={() => setModal(null)} /> : null}
-          {modal === "income" ? (
-            <TransactionForm userId={userId} forcedType="income" compact onSaved={() => finishQuickAdd(reload, setModal)} onCancel={() => setModal(null)} />
-          ) : null}
-          {modal === "expense" ? (
-            <TransactionForm userId={userId} forcedType="expense" compact onSaved={() => finishQuickAdd(reload, setModal)} onCancel={() => setModal(null)} />
-          ) : null}
-          {modal === "meeting" ? <MeetingForm userId={userId} compact onSaved={() => finishQuickAdd(reload, setModal)} onCancel={() => setModal(null)} /> : null}
-        </Modal>
-      ) : null}
-    </div>
-  );
-}
-
-const modalTitle: Record<Exclude<QuickModal, null>, string> = {
-  task: "快速新增任務",
-  income: "快速新增收入",
-  expense: "快速新增支出",
-  meeting: "快速新增會議"
-};
-
-function finishQuickAdd(reload: () => void, setModal: (value: QuickModal) => void) {
-  reload();
-  setModal(null);
-}
-
-function QuickButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
-  return (
-    <Button variant="secondary" onClick={onClick}>
-      {icon}
-      {label}
-    </Button>
-  );
-}
-
-function FocusCard({ item, onChanged }: { item: FocusItem; onChanged: () => void }) {
-  if (item.kind === "task") {
-    return <TaskCard task={item.task} onChanged={onChanged} prominent />;
+  async function respond(assignment: Assignment, response: "accept" | "decline") {
+    setActionError("");
+    try { await controlAction("assignment_response", { id: assignment.id, response, reason: response === "decline" ? "日期或容量不合適" : undefined }); await reload(); }
+    catch (caught) { setActionError(caught instanceof Error ? caught.message : "未能處理指派。"); }
   }
-  return <TransactionCard transaction={item.transaction} onChanged={onChanged} highlight />;
-}
 
-function SummaryCard({ title, value, caption, tone }: { title: string; value: string; caption: string; tone: "home" | "company" }) {
   return (
-    <div className={tone === "home" ? "rounded-xl bg-home-50 p-5 shadow-soft" : "rounded-xl bg-work-50 p-5 shadow-soft"}>
-      <p className="text-base font-semibold text-slate-700">{title}</p>
-      <p className="mt-2 text-3xl font-bold text-ink">{value}</p>
-      <p className="mt-1 text-base text-slate-600">{caption}</p>
+    <div className="space-y-5 sm:space-y-6">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div><p className="eyebrow">Today Command Center</p><h1 className="page-title mt-1">{gentle ? "今日可以先處理這一步" : "今日行動中心"}</h1><p className="muted mt-2 max-w-2xl text-sm leading-6">{gentle ? "只顯示最重要和可開始的事項；需要時可以重新安排。" : "先完成唯一主要任務，再推進少量關鍵工作。"}</p></div>
+        <div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={() => setCapacityOpen(true)}><BatteryLow className="h-5 w-5" />今日容量</Button><Button onClick={() => setAdding(true)}><Plus className="h-5 w-5" />快速新增</Button></div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,.7fr)]">
+        <div className="relative overflow-hidden rounded-2xl border border-indigo-200 bg-white p-5 sm:p-7">
+          <div className="pointer-events-none absolute right-[-3rem] top-[-5rem] h-56 w-56 rounded-full bg-indigo-100/70 blur-2xl" />
+          <div className="relative">
+            <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-bold text-indigo-700"><Sparkles className="h-4 w-4" />今日唯一主要任務</div>{recommendation.primary ? <RiskPill risk={recommendation.primary.risk} gentle={gentle} /> : null}</div>
+            {recommendation.primary ? <PrimaryTask item={recommendation.primary} assigned={acceptedAssignments.has(recommendation.primary.task.id)} onFocus={() => setFocusTask(recommendation.primary!.task)} onChanged={reload} gentle={gentle} /> : <EmptyState title="目前沒有今日主要任務" text="你可以從現有任務選擇，或新增一個清晰的下一步。" onAdd={() => setAdding(true)} />}
+          </div>
+        </div>
+        <aside className="panel p-5">
+          <div className="flex items-center justify-between"><div><p className="eyebrow">工作容量</p><h2 className="section-title mt-1">進行中 {wip} / {wipLimit}</h2></div><div className={`grid h-11 w-11 place-items-center rounded-xl ${wip > wipLimit ? "bg-amber-100 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{wip > wipLimit ? <AlertTriangle className="h-5 w-5" /> : <ShieldCheck className="h-5 w-5" />}</div></div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${wip > wipLimit ? "bg-amber-500" : "bg-indigo-500"}`} style={{ width: `${Math.min(100, (wip / Math.max(1, wipLimit)) * 100)}%` }} /></div>
+          <p className="muted mt-3 text-sm leading-6">{wip > wipLimit ? "同時進行的工作較多。先完成、暫停或重新安排一項。" : gentle ? "今日容量可以隨時調低，不會視為失敗。" : "限制同時進行的工作，保留完成空間。"}</p>
+          {data.capacity ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><p className="font-semibold">今日能量：{energyLabel[data.capacity.energy_level]}</p><p className="muted mt-1">{data.capacity.available_minutes ? `可用 ${data.capacity.available_minutes} 分鐘` : "未設定可用時間"}</p></div> : null}
+        </aside>
+      </section>
+
+      {pending.length ? <section className="panel p-5"><div className="flex items-center justify-between gap-3"><div><p className="eyebrow">Pending Assignments</p><h2 className="section-title mt-1">等待你回應</h2></div><span className="rounded-full bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-700">{pending.length}</span></div><div className="mt-4 grid gap-3">{pending.map((assignment) => <PendingAssignment key={assignment.id} assignment={assignment} task={data.tasks.find((task) => task.id === assignment.resource_id)} actor={participantName(data, assignment.assigned_by_id)} onAccept={() => respond(assignment, "accept")} onDecline={() => respond(assignment, "decline")} />)}</div>{actionError ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{actionError}</p> : null}</section> : null}
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="panel p-5"><div className="flex items-center justify-between"><div><p className="eyebrow">Progress</p><h2 className="section-title mt-1">今日推進事項</h2></div><span className="text-sm font-semibold text-slate-500">最多 {gentle ? 2 : 3} 項</span></div><div className="mt-4 space-y-3">{recommendation.progress.length ? recommendation.progress.map((item) => <CompactTask key={item.task.id} task={item.task} reason={item.reasons[0]} onFocus={() => setFocusTask(item.task)} gentle={gentle} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">目前沒有其他需要推進的事項。</p>}</div></div>
+        <div className="panel p-5"><div className="flex items-center justify-between"><div><p className="eyebrow">Quick Wins</p><h2 className="section-title mt-1">低阻力小任務</h2></div><Zap className="h-5 w-5 text-amber-500" /></div><div className="mt-4 space-y-3">{quickWins.length ? quickWins.map((item) => <CompactTask key={item.task.id} task={item.task} reason={`${item.task.estimated_minutes ?? 15} 分鐘 · ${item.task.context || "任何地方"}`} onFocus={() => setFocusTask(item.task)} gentle={gentle} />) : <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-600">加入預計時間後，系統會在這裡顯示 Quick Wins。</p>}</div></div>
+      </section>
+
+      {adding ? <Modal title="快速新增任務" onClose={() => setAdding(false)}><TaskForm userId={data.currentUser.id} participants={data.participants} compact onSaved={() => { setAdding(false); void reload(); }} onCancel={() => setAdding(false)} /></Modal> : null}
+      {capacityOpen ? <CapacityModal current={data.capacity} onClose={() => setCapacityOpen(false)} onSaved={() => { setCapacityOpen(false); void reload(); }} /> : null}
+      {focusTask ? <FocusMode task={focusTask} defaultMinutes={data.settings.focus_minutes ?? 25} onClose={() => setFocusTask(null)} onChanged={reload} /> : null}
     </div>
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="panel p-4">
-      <h3 className="mb-4 text-xl font-bold text-ink">{title}</h3>
-      {children}
-    </section>
-  );
+function PrimaryTask({ item, assigned, onFocus, onChanged, gentle }: { item: ReturnType<typeof recommendTodayTasks>["primary"] extends infer T ? Exclude<T, null> : never; assigned: boolean; onFocus: () => void; onChanged: () => void; gentle: boolean }) {
+  const task = item.task;
+  async function complete() { await controlAction("update_task", { id: task.id, changes: { status: "done" } }); onChanged(); }
+  return <div className="mt-5"><div className="flex flex-wrap gap-2"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{areaLabel[task.area ?? (task.scope === "company" ? "work" : "family")]}</span>{assigned ? <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">已接受指派</span> : <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">私人</span>}</div><h2 className="mt-4 text-2xl font-bold leading-tight tracking-tight sm:text-4xl">{task.title}</h2><div className="mt-5 rounded-xl bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-[.12em] text-slate-500">下一步</p><p className="mt-2 text-base font-semibold leading-7 sm:text-lg">{task.next_action || "先加入一個清晰、可見的下一步"}</p></div><div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">{task.estimated_minutes ? <span className="flex items-center gap-1.5"><Clock3 className="h-4 w-4" />{task.estimated_minutes} 分鐘</span> : null}{task.due_date ? <span className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4" />截止 {formatDate(task.due_date)}</span> : null}<span>{gentle ? "建議：" : "排序原因："}{item.reasons.slice(0, 2).join("、")}</span></div><div className="mt-6 flex flex-wrap gap-3"><Button onClick={onFocus}><ArrowRight className="h-5 w-5" />開始這一步</Button><Button variant="success" onClick={complete}><Check className="h-5 w-5" />完成</Button><Button variant="secondary" onClick={() => controlAction("update_task", { id: task.id, changes: { snoozed_until: new Date(Date.now() + 86400000).toISOString() } }).then(onChanged)}><TimerReset className="h-5 w-5" />{gentle ? "明天再處理" : "延後一天"}</Button></div></div>;
 }
 
-function TaskMini({ task }: { task: import("@/lib/types").Task }) {
-  return (
-    <div className="rounded-lg bg-slate-50 p-3">
-      <div className="flex flex-wrap gap-2">
-        <ScopeBadge scope={task.scope} />
-        <StatusBadge status={task.status} />
-      </div>
-      <p className="mt-2 font-semibold text-slate-900">{task.title}</p>
-      <p className="mt-1 text-sm text-slate-600">下一步：{task.next_action || "未設定"}</p>
-    </div>
-  );
+function CompactTask({ task, reason, onFocus, gentle }: { task: Task; reason: string; onFocus: () => void; gentle: boolean }) {
+  return <button className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-indigo-200 hover:bg-indigo-50/40" onClick={onFocus}><div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-500"><ArrowRight className="h-4 w-4" /></div><div className="min-w-0 flex-1"><p className="truncate font-semibold text-slate-900">{task.title}</p><p className="mt-1 truncate text-xs text-slate-500">{gentle ? "可以先做：" : "推薦："}{task.next_action || reason}</p></div>{task.due_date ? <span className="shrink-0 text-xs font-semibold text-slate-500">{formatDate(task.due_date).slice(5)}</span> : null}</button>;
 }
 
-function TransactionMini({ item }: { item: import("@/lib/types").Transaction }) {
-  return (
-    <div className="rounded-lg bg-slate-50 p-3">
-      <div className="flex flex-wrap gap-2">
-        <ScopeBadge scope={item.scope} />
-        <StatusBadge status={item.status} />
-      </div>
-      <p className="mt-2 font-semibold text-slate-900">{item.item}</p>
-      <p className="mt-1 text-sm text-slate-600">
-        {transactionTypeLabels[item.type]} · {formatCurrency(Number(item.amount))}
-      </p>
-    </div>
-  );
+function PendingAssignment({ assignment, task, actor, onAccept, onDecline }: { assignment: Assignment; task?: Task; actor: string; onAccept: () => void; onDecline: () => void }) {
+  return <article className="flex flex-col gap-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="text-xs font-bold text-indigo-700">由 {actor} 指派 · 可更新狀態</p><h3 className="mt-1 font-bold">{task?.title || "一項已分享工作"}</h3><p className="muted mt-1 text-sm">{assignment.due_date ? `截止 ${formatDate(assignment.due_date)}` : "未設定截止日期"}</p></div><div className="flex gap-2"><Button onClick={onAccept}>接受</Button><Button variant="secondary" onClick={onDecline}>婉拒</Button></div></article>;
 }
 
-function Empty({ text }: { text: string }) {
-  return <p className="rounded-lg bg-slate-50 p-3 text-base text-slate-600">{text}</p>;
+function RiskPill({ risk, gentle }: { risk: ReturnType<typeof classifyDeadlineRisk>; gentle: boolean }) { const map = { normal: "正常", attention: "需要留意", high_risk: gentle ? "此項目需要留意" : "高風險", overdue: gentle ? "需要重新安排" : "已逾期", waiting_external: "等待外部回覆" }; const tone = risk === "overdue" || risk === "high_risk" ? "bg-red-50 text-red-700" : risk === "attention" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"; return <span className={`rounded-full px-3 py-1 text-xs font-bold ${tone}`}>{map[risk]}</span>; }
+function EmptyState({ title, text, onAdd }: { title: string; text: string; onAdd: () => void }) { return <div className="py-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><Sparkles className="h-5 w-5" /></div><h2 className="mt-4 text-xl font-bold">{title}</h2><p className="muted mx-auto mt-2 max-w-md text-sm leading-6">{text}</p><Button className="mt-5" onClick={onAdd}><Plus className="h-5 w-5" />新增任務</Button></div>; }
+
+function CapacityModal({ current, onClose, onSaved }: { current: import("@/lib/types").CapacityCheckin | null; onClose: () => void; onSaved: () => void }) {
+  const [energy, setEnergy] = useState(current?.energy_level ?? "medium"); const [minutes, setMinutes] = useState(String(current?.available_minutes ?? "")); const [mode, setMode] = useState(current?.mode ?? "normal"); const [essentialOnly, setEssentialOnly] = useState(current?.essential_only ?? false); const [saving, setSaving] = useState(false);
+  async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); await controlAction("capacity_checkin", { energyLevel: energy, availableMinutes: minutes ? Number(minutes) : null, mode, essentialOnly }); setSaving(false); onSaved(); }
+  return <Modal title="今日容量" onClose={onClose}><form className="grid gap-4" onSubmit={save}><fieldset><legend className="label">今日能量</legend><div className="mt-2 grid grid-cols-3 gap-2">{(["low","medium","high"] as const).map((value) => <button key={value} type="button" className={`min-h-11 rounded-xl border px-3 font-semibold ${energy === value ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200"}`} onClick={() => setEnergy(value)}>{energyLabel[value]}</button>)}</div></fieldset><label><span className="label">今日可用時間（分鐘）</span><input className="field mt-2" type="number" min="0" max="1440" value={minutes} onChange={(event) => setMinutes(event.target.value)} /></label><label><span className="label">今日模式</span><select className="field mt-2" value={mode} onChange={(event) => setMode(event.target.value as typeof mode)}><option value="normal">一般</option><option value="gentle">Gentle Mode</option><option value="minimum_step">只做最小下一步</option><option value="shift">更表模式</option></select></label><label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={essentialOnly} onChange={(event) => setEssentialOnly(event.target.checked)} /><span className="font-semibold">今日只顯示必要事項</span></label><div className="flex gap-2"><Button type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存今日容量"}</Button><Button type="button" variant="secondary" onClick={onClose}>取消</Button></div></form></Modal>;
 }
+
+const areaLabel = { work: "工作", family: "家庭", personal: "個人" } as const;
+const energyLabel = { low: "低", medium: "中", high: "高" } as const;
+function participantName(data: NonNullable<ReturnType<typeof useControlData>["data"]>, id: string) { return data.participants.find((item) => item.user_id === id)?.display_name || "對方"; }

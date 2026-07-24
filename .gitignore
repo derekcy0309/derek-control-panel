@@ -1,7 +1,20 @@
-node_modules
-.env.local
-.env.local
-.next
-.env.local
-.next
-node_modules
+# Dependencies
+/node_modules/
+
+# Next.js build output
+/.next/
+/out/
+
+# Local environment files
+.env*
+!.env.example
+
+# TypeScript and tooling
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

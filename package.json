@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/migration-contract.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.52.0",

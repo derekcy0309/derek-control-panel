@@ -2,25 +2,39 @@
 
 import { CalendarClock, FilePenLine } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
 import { RiskBadge, ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
-import type { Task } from "@/lib/types";
+import { controlAction } from "@/lib/control-api";
+import type { Assignment, HandoffNote, Task } from "@/lib/types";
 
 export function TaskCard({
   task,
   onChanged,
   onEdit,
+  currentUserId,
+  participants,
+  assignments,
+  handoffNotes,
   prominent = false
 }: {
   task: Task;
   onChanged: () => void;
   onEdit?: (task: Task) => void;
+  currentUserId: string;
+  participants: Array<{ user_id: string; display_name: string }>;
+  assignments: Assignment[];
+  handoffNotes: HandoffNote[];
   prominent?: boolean;
 }) {
+  const activeHandoff = assignments.some((item) =>
+    item.resource_type === "task"
+    && item.resource_id === task.id
+    && ["pending_acceptance","accepted","in_progress","waiting","blocked"].includes(item.status)
+  );
   async function updateTask(values: Partial<Task>) {
-    await supabase?.from("tasks").update(values).eq("id", task.id);
+    await controlAction("update_task", { id: task.id, changes: values });
     onChanged();
   }
 
@@ -53,6 +67,14 @@ export function TaskCard({
           </Button>
         ) : null}
       </div>
+      <TaskHandoffControls
+        task={task}
+        currentUserId={currentUserId}
+        participants={participants}
+        assignments={assignments}
+        notes={handoffNotes}
+        onChanged={onChanged}
+      />
       <div className="mt-4 grid gap-3 text-base text-slate-700 sm:grid-cols-2">
         <p className="flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-indigo-600" />
@@ -66,9 +88,7 @@ export function TaskCard({
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button variant="success" onClick={completeTask}>
-          完成
-        </Button>
+        {!activeHandoff ? <Button variant="success" onClick={completeTask}>完全完成任務</Button> : null}
         <Button variant="secondary" onClick={() => delay(1)}>
           延後 1 日
         </Button>
@@ -87,7 +107,7 @@ export function TaskCard({
         <Button variant="ghost" onClick={() => updateTask({ status: "cancelled" })}>
           取消
         </Button>
-        <Button variant="danger" onClick={() => updateTask({ deleted_at: new Date().toISOString() })}>
+        <Button variant="danger" onClick={() => window.confirm("任務會移到保留區，30 日後才永久刪除。確定？") && updateTask({ deleted_at: new Date().toISOString() })}>
           刪除
         </Button>
       </div>

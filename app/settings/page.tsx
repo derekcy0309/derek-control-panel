@@ -1,180 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download, Save } from "lucide-react";
+import { Download, Moon, Save, ShieldCheck, Smartphone, Sun } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/Button";
+import { controlAction } from "@/lib/control-api";
 import { downloadCsv } from "@/lib/csv";
-import { formatDate } from "@/lib/date";
-import {
-  expenseStatusLabels,
-  frequencyLabels,
-  incomeStatusLabels,
-  reminderDayLabels,
-  riskLabels,
-  scopeLabels,
-  sourceTypeLabels,
-  taskStatusLabels,
-  transactionTypeLabels
-} from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
-import type { ReminderDays } from "@/lib/types";
-import { useAppData } from "@/hooks/useAppData";
+import { useControlData } from "@/hooks/useControlData";
 
-export default function SettingsPage() {
-  return (
-    <AuthGate>
-      <SettingsContent />
-    </AuthGate>
-  );
-}
+export default function SettingsPage() { return <AuthGate><SettingsContent /></AuthGate>; }
 
 function SettingsContent() {
-  const { data, userId, loading, error, reload } = useAppData();
-  const [email, setEmail] = useState("");
-  const [dailyReminderTime, setDailyReminderTime] = useState("09:00");
-  const [defaultReminderDays, setDefaultReminderDays] = useState<ReminderDays>(3);
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    if (data.settings) {
-      setEmail(data.settings.email ?? "");
-      setDailyReminderTime(data.settings.daily_reminder_time ?? "09:00");
-      setDefaultReminderDays(data.settings.default_reminder_days ?? 3);
-    }
-  }, [data.settings]);
-
-  if (loading || error || !userId) return <LoadingState error={error} />;
-
-  async function saveSettings(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage("");
-    const payload = {
-      user_id: userId,
-      email: email.trim() || null,
-      daily_reminder_time: dailyReminderTime,
-      default_reminder_days: defaultReminderDays
-    };
-
-    const result = data.settings
-      ? await supabase?.from("user_settings").update(payload).eq("id", data.settings.id)
-      : await supabase?.from("user_settings").insert(payload);
-
-    if (result?.error) {
-      setMessage("儲存設定失敗，請稍後再試。");
-      return;
-    }
-
-    setMessage("設定已儲存。第一版不會發送電郵提醒，只會保留你的偏好。");
-    reload();
-  }
-
-  return (
-    <div className="space-y-5">
-      <section className="rounded-2xl bg-white p-5 shadow-soft">
-        <p className="text-sm font-semibold text-indigo-600">私人偏好</p>
-        <h2 className="mt-1 text-2xl font-bold text-ink">設定</h2>
-        <p className="mt-2 text-base text-slate-600">第一版不會發送電郵提醒，但會先保存提醒時間和預設日數。</p>
-      </section>
-
-      <form className="panel grid gap-4 p-5" onSubmit={saveSettings}>
-        <label>
-          <span className="label">使用者電郵</span>
-          <input className="field mt-2" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="你的電郵地址" />
-        </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="label">每日提醒時間</span>
-            <input className="field mt-2" type="time" value={dailyReminderTime} onChange={(event) => setDailyReminderTime(event.target.value)} />
-          </label>
-          <label>
-            <span className="label">預設提醒日數</span>
-            <select className="field mt-2" value={defaultReminderDays} onChange={(event) => setDefaultReminderDays(Number(event.target.value) as ReminderDays)}>
-              <option value={7}>{reminderDayLabels[7]}</option>
-              <option value={3}>{reminderDayLabels[3]}</option>
-              <option value={1}>{reminderDayLabels[1]}</option>
-            </select>
-          </label>
-        </div>
-        <Button type="submit">
-          <Save className="h-5 w-5" />
-          儲存設定
-        </Button>
-        {message ? <p className="rounded-lg bg-indigo-50 p-3 text-base font-semibold text-indigo-800">{message}</p> : null}
-      </form>
-
-      <section className="panel p-5">
-        <h3 className="text-xl font-bold text-ink">匯出 CSV</h3>
-        <p className="mt-2 text-base text-slate-600">匯出目前未封存的資料，方便備份或用試算表查看。</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => exportTasks(data.tasks)}>
-            <Download className="h-5 w-5" />
-            匯出任務
-          </Button>
-          <Button variant="secondary" onClick={() => exportTransactions(data.transactions)}>
-            <Download className="h-5 w-5" />
-            匯出收入支出
-          </Button>
-          <Button variant="secondary" onClick={() => exportMeetings(data.meetings)}>
-            <Download className="h-5 w-5" />
-            匯出會議
-          </Button>
-        </div>
-      </section>
-    </div>
-  );
+  const { data, loading, error, reload } = useControlData(); const [form, setForm] = useState({ displayName: "", theme: "system", accent_colour: "indigo", gentle_mode: false, low_capacity_mode: false, dashboard_density: "comfortable", wip_limit: 3, quiet_hours_start: "22:00", quiet_hours_end: "08:00", notification_mode: "daily_summary", default_area: "personal", focus_minutes: 25, monthly_profit_target: 50000 }); const [message, setMessage] = useState(""); const [saving, setSaving] = useState(false);
+  const [resetEmail, setResetEmail] = useState(""); const [resetting, setResetting] = useState(false); const [resetMessage, setResetMessage] = useState("");
+  useEffect(() => { if (!data) return; setForm({ displayName: data.currentUser.displayName, theme: data.settings.theme ?? "system", accent_colour: data.settings.accent_colour ?? "indigo", gentle_mode: data.settings.gentle_mode ?? false, low_capacity_mode: data.settings.low_capacity_mode ?? false, dashboard_density: data.settings.dashboard_density ?? "comfortable", wip_limit: data.settings.wip_limit ?? 3, quiet_hours_start: (data.settings.quiet_hours_start || "22:00").slice(0,5), quiet_hours_end: (data.settings.quiet_hours_end || "08:00").slice(0,5), notification_mode: data.settings.notification_mode ?? "daily_summary", default_area: data.settings.default_area ?? "personal", focus_minutes: data.settings.focus_minutes ?? 25, monthly_profit_target: Number(data.settings.monthly_profit_target ?? 50000) }); }, [data]);
+  if (loading || error || !data) return <LoadingState error={error} />;
+  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) { setForm((current) => ({ ...current, [key]: value })); }
+  async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); setMessage(""); try { const { displayName, ...settings } = form; await controlAction("save_settings", { displayName, settings }); document.documentElement.dataset.theme = form.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : form.theme; document.documentElement.dataset.accent = form.accent_colour; document.documentElement.dataset.density = form.dashboard_density; setMessage("你的個人設定已儲存，不會影響另一個帳戶。"); await reload(); } catch (caught) { setMessage(caught instanceof Error ? caught.message : "儲存失敗。"); } finally { setSaving(false); } }
+  function exportJson() { const current = data; if (!current || !window.confirm("完整 JSON 可能包含私人、健康、家庭及財務資料。只應儲存到安全位置。確定匯出？")) return; const payload = { exportedAt: new Date().toISOString(), timezone: current.profile.timezone, currentUser: { id: current.currentUser.id, displayName: current.currentUser.displayName }, tasks: current.tasks, transactions: current.transactions, meetings: current.meetings, balances: current.balances, operatingItems: current.operatingItems, shares: current.shares, assignments: current.assignments, settings: current.settings, capacity: current.capacity }; downloadBlob("derek-control-panel-backup.json", JSON.stringify(payload, null, 2), "application/json"); }
+  function exportAllCsv() { const current = data; if (!current) return; downloadCsv("control-panel-items.csv", [...current.tasks.map((item) => ({ 類型: "任務", 名稱: item.title, 範圍: item.area, 狀態: item.status, 到期日: item.due_date, 下一步: item.next_action })), ...current.operatingItems.map((item) => ({ 類型: item.item_type, 名稱: item.title, 範圍: item.area, 狀態: item.status, 到期日: item.due_date, 下一步: item.next_action }))]); }
+  async function sendPasswordReset() { setResetMessage(""); setResetting(true); try { await controlAction("admin_reset_password", { email: resetEmail }); setResetMessage("密碼重設郵件已發送；對方開啟後必須設定新密碼。"); setResetEmail(""); } catch (caught) { setResetMessage(caught instanceof Error ? caught.message : "未能發送重設郵件。"); } finally { setResetting(false); } }
+  return <form className="space-y-5" onSubmit={save}><section><p className="eyebrow">Personal Settings</p><h1 className="page-title mt-1">{data.currentUser.displayName} Panel 設定</h1><p className="muted mt-2 text-sm leading-6">外觀、容量、通知及排序全部按帳戶獨立保存。</p></section>
+    <section className="grid gap-5 lg:grid-cols-2"><div className="panel grid gap-4 p-5"><div><p className="eyebrow">Identity</p><h2 className="section-title mt-1">Panel 及外觀</h2></div><label><span className="label">顯示名稱</span><input className="field mt-2" value={form.displayName} onChange={(event) => set("displayName", event.target.value)} required /><span className="muted mt-1 block text-xs">登入後顯示「{form.displayName || "你的名稱"} Panel」</span></label><fieldset><legend className="label">主題</legend><div className="mt-2 grid grid-cols-3 gap-2"><ThemeButton icon={<Sun className="h-4 w-4" />} label="淺色" active={form.theme === "light"} onClick={() => set("theme", "light")} /><ThemeButton icon={<Moon className="h-4 w-4" />} label="深色" active={form.theme === "dark"} onClick={() => set("theme", "dark")} /><ThemeButton icon={<Smartphone className="h-4 w-4" />} label="跟系統" active={form.theme === "system"} onClick={() => set("theme", "system")} /></div></fieldset><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">重點顏色</span><select className="field mt-2" value={form.accent_colour} onChange={(event) => set("accent_colour", event.target.value)}><option value="indigo">靛藍</option><option value="blue">沉藍</option><option value="teal">青綠</option></select></label><label><span className="label">資訊密度</span><select className="field mt-2" value={form.dashboard_density} onChange={(event) => set("dashboard_density", event.target.value)}><option value="calm">低密度</option><option value="comfortable">舒適</option><option value="compact">緊湊</option></select></label></div></div>
+      <div className="panel grid gap-4 p-5"><div><p className="eyebrow">Capacity</p><h2 className="section-title mt-1">Gentle Mode 及工作量</h2></div><Toggle checked={form.gentle_mode} onChange={(value) => set("gentle_mode", value)} title="Gentle Mode" text="最多一項主要任務及兩項推進事項，使用中性文案並減少一般警示。" /><Toggle checked={form.low_capacity_mode} onChange={(value) => set("low_capacity_mode", value)} title="預設低容量" text="優先推薦 5–15 分鐘、有清晰下一步的工作。" /><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">進行中上限</span><input className="field mt-2" type="number" min="1" max="12" value={form.wip_limit} onChange={(event) => set("wip_limit", Number(event.target.value))} /></label><label><span className="label">Focus Timer</span><select className="field mt-2" value={form.focus_minutes} onChange={(event) => set("focus_minutes", Number(event.target.value))}><option value={15}>15 分鐘</option><option value={25}>25 分鐘</option><option value={45}>45 分鐘</option></select></label></div><label><span className="label">預設範圍</span><select className="field mt-2" value={form.default_area} onChange={(event) => set("default_area", event.target.value)}><option value="work">工作</option><option value="family">家庭</option><option value="personal">個人</option></select></label></div>
+      <div className="panel grid gap-4 p-5"><div><p className="eyebrow">Notifications</p><h2 className="section-title mt-1">克制通知</h2></div><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">靜音開始</span><input className="field mt-2" type="time" value={form.quiet_hours_start} onChange={(event) => set("quiet_hours_start", event.target.value)} /></label><label><span className="label">靜音結束</span><input className="field mt-2" type="time" value={form.quiet_hours_end} onChange={(event) => set("quiet_hours_end", event.target.value)} /></label></div><label><span className="label">通知模式</span><select className="field mt-2" value={form.notification_mode} onChange={(event) => set("notification_mode", event.target.value)}><option value="daily_summary">每日摘要</option><option value="important_only">只提醒重要事項</option><option value="all_allowed">所有已允許提醒</option><option value="off">關閉</option></select></label><div className="rounded-xl bg-slate-50 p-4"><p className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-emerald-600" />通知私隱預覽</p><p className="muted mt-2 text-sm">「你有一項家庭事項需要處理」</p><p className="muted mt-1 text-xs">不顯示診斷、金額、藥物、兒童紀錄或私人筆記。</p></div></div>
+      <div className="panel grid gap-4 p-5"><div><p className="eyebrow">Business</p><h2 className="section-title mt-1">公司目標</h2></div><label><span className="label">每月盈利目標（HKD）</span><input className="field mt-2" type="number" min="0" value={form.monthly_profit_target} onChange={(event) => set("monthly_profit_target", Number(event.target.value))} /></label><div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">客戶流程的加權收入及盈利差距會使用此帳戶自己的目標，不會影響另一帳戶。</div></div></section>
+    <section className="panel p-5"><p className="eyebrow">Backup</p><h2 className="section-title mt-1">匯出及備份</h2><p className="muted mt-2 text-sm leading-6">只匯出目前帳戶有權查看的資料。完整 JSON 會先再次確認敏感範圍。</p><div className="mt-4 flex flex-wrap gap-2"><Button type="button" variant="secondary" onClick={exportJson}><Download className="h-5 w-5" />完整 JSON 備份</Button><Button type="button" variant="secondary" onClick={exportAllCsv}><Download className="h-5 w-5" />基本 CSV</Button></div></section>
+    {data.profile.is_admin ? <section className="panel p-5"><p className="eyebrow">Administrator</p><h2 className="section-title mt-1">帳戶密碼重設</h2><p className="muted mt-2 text-sm leading-6">輸入完整帳戶電郵。系統只會發送安全重設郵件，不會顯示或保存對方的新密碼。</p><div className="mt-4 flex flex-col gap-2 sm:flex-row"><input className="field" type="email" value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="完整電郵地址" aria-label="需要重設密碼的帳戶電郵" /><Button type="button" variant="secondary" disabled={resetting || !resetEmail} onClick={sendPasswordReset}>{resetting ? "發送中…" : "發送重設郵件"}</Button></div>{resetMessage ? <p className="mt-3 text-sm font-semibold text-slate-600" role="status">{resetMessage}</p> : null}</section> : null}
+    <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center lg:bottom-4"><Button type="submit" disabled={saving}><Save className="h-5 w-5" />{saving ? "儲存中…" : "儲存個人設定"}</Button>{message ? <p className="text-sm font-semibold text-slate-600" role="status">{message}</p> : null}</div>
+  </form>;
 }
 
-function exportTasks(tasks: import("@/lib/types").Task[]) {
-  downloadCsv(
-    "任務.csv",
-    tasks.map((task) => ({
-      標題: task.title,
-      家庭公司: scopeLabels[task.scope],
-      類型: sourceTypeLabels[task.source_type],
-      負責人: task.owner,
-      到期日: formatDate(task.due_date),
-      跟進日: formatDate(task.follow_up_date),
-      狀態: taskStatusLabels[task.status],
-      風險: riskLabels[task.risk],
-      下一步: task.next_action || "",
-      完成日期及時間: task.completed_at,
-      備註: task.notes
-    }))
-  );
-}
-
-function exportTransactions(transactions: import("@/lib/types").Transaction[]) {
-  downloadCsv(
-    "收入支出.csv",
-    transactions.map((item) => ({
-      項目: item.item,
-      家庭公司: scopeLabels[item.scope],
-      類型: transactionTypeLabels[item.type],
-      分類: item.category,
-      金額: item.amount,
-      預計日期: formatDate(item.expected_date),
-      實際日期: formatDate(item.actual_date),
-      頻率: frequencyLabels[item.frequency],
-      狀態: item.type === "income" ? incomeStatusLabels[item.status as keyof typeof incomeStatusLabels] : expenseStatusLabels[item.status as keyof typeof expenseStatusLabels],
-      付款方式: item.payment_method,
-      負責人: item.owner,
-      證明連結: item.proof_url,
-      備註: item.notes
-    }))
-  );
-}
-
-function exportMeetings(meetings: import("@/lib/types").Meeting[]) {
-  downloadCsv(
-    "會議.csv",
-    meetings.map((meeting) => ({
-      會議名稱: meeting.meeting_name,
-      家庭公司: scopeLabels[meeting.scope],
-      會議日期: formatDate(meeting.meeting_date),
-      粗略會議內容: meeting.raw_notes,
-      手動摘要: meeting.summary
-    }))
-  );
-}
+function ThemeButton({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) { return <button type="button" className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-2 text-sm font-semibold ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200"}`} onClick={onClick}>{icon}{label}</button>; }
+function Toggle({ checked, onChange, title, text }: { checked: boolean; onChange: (value: boolean) => void; title: string; text: string }) { return <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4"><input className="mt-1 h-5 w-5" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><span className="block font-bold">{title}</span><span className="muted mt-1 block text-xs leading-5">{text}</span></span></label>; }
+function downloadBlob(filename: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); }

@@ -1,189 +1,130 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Session } from "@supabase/supabase-js";
-import { KeyRound } from "lucide-react";
+import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<"password" | "link">("password");
+  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
+    let active = true;
+    async function checkSession() {
+      try {
+        const linkSession = await supabase?.auth.getSession();
+        if (linkSession?.data.session) {
+          const adopted = await fetch("/api/auth", {
+            method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+            body: JSON.stringify({ action: "adopt", accessToken: linkSession.data.session.access_token, refreshToken: linkSession.data.session.refresh_token })
+          });
+          if (adopted.ok) await supabase?.auth.signOut({ scope: "local" });
+          if (window.location.hash || window.location.search.includes("code=")) window.history.replaceState({}, "", window.location.pathname);
+        }
+        const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
+        if (active) setAuthenticated(response.ok);
+      } finally {
+        if (active) setLoading(false);
+      }
     }
-
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
-
-    return () => data.subscription.unsubscribe();
+    void checkSession();
+    return () => { active = false; };
   }, []);
 
-  async function sendLoginLink(event: React.FormEvent<HTMLFormElement>) {
+  async function sendLoginCode(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     if (!supabase) return;
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin }
+    setSubmitting(true);
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin, shouldCreateUser: false } });
+    setSubmitting(false);
+    if (error) { setMessage(formatLoginError(error.message)); return; }
+    setOtpSent(true);
+    setMessage("登入電郵已發送。請輸入 6 位驗證碼；如電郵顯示安全登入連結，亦可直接按連結登入。");
+  }
+
+  async function verifyLoginCode(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    if (!supabase || !otpCode.trim()) return;
+    setSubmitting(true);
+    const verified = await supabase.auth.verifyOtp({ email, token: otpCode.trim(), type: "email" });
+    if (verified.error || !verified.data.session) {
+      setSubmitting(false);
+      setMessage("驗證碼不正確或已過期，請重新發送。");
+      return;
+    }
+    const adopted = await fetch("/api/auth", {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+      body: JSON.stringify({ action: "adopt", accessToken: verified.data.session.access_token, refreshToken: verified.data.session.refresh_token })
     });
-    setMessage(error ? formatLoginError(error.message) : "登入連結已發送，請到電郵信箱確認。");
+    await supabase.auth.signOut({ scope: "local" });
+    setSubmitting(false);
+    if (!adopted.ok) { setMessage("驗證成功，但未能建立安全登入 session。請再試一次。"); return; }
+    setAuthenticated(true);
   }
 
   async function signInWithPassword(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
-    if (!supabase) return;
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
+    setSubmitting(true);
+    const response = await fetch("/api/auth", {
+      method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+      body: JSON.stringify({ action: "password", email, password })
     });
-
-    setMessage(error ? formatPasswordLoginError(error.message) : "");
+    const result = await response.json().catch(() => ({})) as { error?: string };
+    setSubmitting(false);
+    if (!response.ok) { setMessage(result.error || "登入失敗，請再試一次。"); return; }
+    setPassword("");
+    setAuthenticated(true);
   }
 
   if (!hasSupabaseConfig) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-mist px-4">
-        <div className="panel max-w-lg p-6">
-          <h1 className="text-2xl font-bold">需要設定 Supabase</h1>
-          <p className="mt-3 text-base leading-7 text-slate-600">
-            請先在環境變數加入 Supabase 網址和公開金鑰，然後重新啟動本機預覽。
-          </p>
-          <div className="mt-4 rounded-lg bg-slate-50 p-4 text-base text-slate-700">
-            <p>NEXT_PUBLIC_SUPABASE_URL</p>
-            <p>NEXT_PUBLIC_SUPABASE_ANON_KEY</p>
-          </div>
+    return <CenteredPanel title="需要設定 Supabase">請先加入 Supabase 網址和公開金鑰，然後重新啟動預覽。</CenteredPanel>;
+  }
+  if (loading) return <div className="grid min-h-screen place-items-center bg-mist" role="status"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" /><span className="sr-only">正在檢查登入</span></div>;
+  if (authenticated) return <AppShell>{children}</AppShell>;
+
+  return (
+    <div className="relative grid min-h-screen place-items-center overflow-hidden bg-mist px-4 py-8">
+      <div className="pointer-events-none absolute left-1/2 top-[-12rem] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
+      <form className="panel relative w-full max-w-md p-6 sm:p-8" onSubmit={authMode === "password" ? signInWithPassword : otpSent ? verifyLoginCode : sendLoginCode}>
+        <div className="mb-6 flex items-center gap-3"><div className="brand-mark h-11 w-11"><KeyRound className="h-5 w-5" /></div><div><p className="eyebrow">Derek Control Panel</p><h1 className="text-2xl font-bold tracking-tight">登入你的 Panel</h1></div></div>
+        <p className="text-sm leading-6 text-slate-600">每個帳戶的 Dashboard、私人資料、排序及設定完全獨立。所有內容預設只限自己查看。</p>
+        <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+          <button className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${authMode === "password" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`} type="button" onClick={() => { setAuthMode("password"); setOtpSent(false); }}>密碼登入</button>
+          <button className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${authMode === "otp" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`} type="button" onClick={() => setAuthMode("otp")}>Email 登入</button>
         </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-lg font-semibold">載入中...</div>;
-  }
-
-  if (!session) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-mist px-4">
-        <form className="panel w-full max-w-md p-6" onSubmit={authMode === "password" ? signInWithPassword : sendLoginLink}>
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-            <KeyRound className="h-6 w-6" />
-          </div>
-          <h1 className="text-2xl font-bold">登入 Derek 控制面板</h1>
-          <p className="mt-2 text-base leading-7 text-slate-600">
-            建議用密碼登入；登入連結容易被 Supabase 發送頻率限制擋住。
-          </p>
-          <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
-            <button
-              className={`rounded-lg px-3 py-2 text-base font-semibold ${authMode === "password" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
-              type="button"
-              onClick={() => setAuthMode("password")}
-            >
-              密碼登入
-            </button>
-            <button
-              className={`rounded-lg px-3 py-2 text-base font-semibold ${authMode === "link" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
-              type="button"
-              onClick={() => setAuthMode("link")}
-            >
-              登入連結
-            </button>
-          </div>
-          <label className="mt-5 block">
-            <span className="label">電郵地址</span>
-            <input
-              className="field mt-2"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="你的電郵地址"
-              required
-            />
-          </label>
-          {authMode === "password" ? (
-            <label className="mt-4 block">
-              <span className="label">密碼</span>
-              <div className="mt-2 flex gap-2">
-                <input
-                  className="field"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder="你的 Supabase 使用者密碼"
-                  autoComplete="current-password"
-                  required
-                />
-                <button
-                  className="shrink-0 rounded-lg bg-white px-3 py-2 text-base font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
-                  type="button"
-                  onClick={() => setShowPassword((value) => !value)}
-                >
-                  {showPassword ? "隱藏" : "顯示"}
-                </button>
-              </div>
-            </label>
-          ) : null}
-          <Button className="mt-5 w-full" type="submit">
-            {authMode === "password" ? "登入" : "發送登入連結"}
-          </Button>
-          {message ? <p className="mt-4 rounded-lg bg-indigo-50 p-3 text-base text-indigo-800">{message}</p> : null}
-        </form>
-      </div>
-    );
-  }
-
-  return <AppShell>{children}</AppShell>;
+        <label className="mt-5 block"><span className="label">電郵地址</span><input className="field mt-2" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required /></label>
+        {authMode === "password" ? (
+          <label className="mt-4 block"><span className="label">密碼</span><div className="relative mt-2"><input className="field pr-12" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required /><button className="absolute inset-y-0 right-0 grid min-w-11 place-items-center text-slate-500" type="button" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? "隱藏密碼" : "顯示密碼"}>{showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div></label>
+        ) : otpSent ? <label className="mt-4 block"><span className="label">6 位驗證碼（如電郵提供）</span><input className="field mt-2" inputMode="numeric" autoComplete="one-time-code" value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label> : null}
+        <Button className="mt-5 w-full" type="submit" disabled={submitting}>{submitting ? "處理中…" : authMode === "password" ? "登入" : otpSent ? "驗證並登入" : "發送登入電郵"}</Button>
+        {authMode === "otp" && otpSent ? <button className="mt-3 min-h-11 w-full text-sm font-semibold text-indigo-700" type="button" onClick={() => { setOtpSent(false); setOtpCode(""); setMessage(""); }}>重新發送登入電郵</button> : null}
+        {message ? <p className="mt-4 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800" role="alert">{message}</p> : null}
+        <div className="mt-5 flex items-start gap-2 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>登入資料使用 HttpOnly cookie 保存；敏感 session 不會寫入 localStorage。</p></div>
+      </form>
+    </div>
+  );
 }
 
-function formatPasswordLoginError(message: string) {
-  if (message.includes("Invalid login credentials")) {
-    return "登入失敗：電郵或密碼不正確。請確認 Supabase Authentication > Users 裡已建立這個使用者，並已設定密碼。";
-  }
-
-  if (message.includes("Email not confirmed")) {
-    return "登入失敗：這個電郵尚未確認。請到 Supabase Authentication > Users 將使用者設為已確認，或先完成確認電郵。";
-  }
-
-  if (message.includes("Email logins are disabled") || message.includes("provider is disabled")) {
-    return "登入失敗：Supabase Email 登入尚未啟用。請到 Authentication > Providers 啟用 Email。";
-  }
-
-  return `登入失敗：${message}`;
+function CenteredPanel({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="grid min-h-screen place-items-center bg-mist px-4"><div className="panel max-w-lg p-6"><h1 className="text-2xl font-bold">{title}</h1><p className="mt-3 leading-7 text-slate-600">{children}</p></div></div>;
 }
 
 function formatLoginError(message: string) {
-  if (message.includes("signup") || message.includes("Signups not allowed")) {
-    return "登入連結發送失敗：Supabase 目前不允許新使用者註冊。請到 Authentication 設定允許新註冊，或先在 Users 手動新增這個電郵。";
-  }
-
-  if (message.includes("Email logins are disabled") || message.includes("provider is disabled")) {
-    return "登入連結發送失敗：Supabase Email 登入尚未啟用。請到 Authentication > Providers 啟用 Email。";
-  }
-
-  if (message.includes("rate limit") || message.includes("For security purposes")) {
-    return "登入連結發送失敗：發送太頻密，請稍等一會再試。";
-  }
-
-  if (message.includes("redirect") || message.includes("URL")) {
-    return "登入連結發送失敗：Supabase Redirect URL 未允許目前網址。請加入 http://127.0.0.1:3000 和 http://localhost:3000。";
-  }
-
-  return `登入連結發送失敗：${message}`;
+  if (message.includes("rate limit") || message.includes("For security purposes")) return "發送太頻密，請稍等一會再試。";
+  if (message.includes("disabled")) return "Supabase Email 登入尚未啟用。";
+  if (message.includes("redirect") || message.includes("URL")) return "目前網址尚未加入 Supabase Redirect URL。";
+  return "未能發送登入電郵，請稍後再試。";
 }

@@ -3,12 +3,11 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { scopeOptions } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
+import { controlAction } from "@/lib/control-api";
 import type { Meeting } from "@/lib/types";
 import { todayIso } from "@/lib/date";
 
 export function MeetingForm({
-  userId,
   initialMeeting,
   compact = false,
   onSaved,
@@ -37,10 +36,9 @@ export function MeetingForm({
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
-    if (!supabase) return;
     setSaving(true);
     const payload = {
-      user_id: userId,
+      id: initialMeeting?.id,
       scope: form.scope,
       meeting_name: form.meeting_name.trim(),
       meeting_date: form.meeting_date,
@@ -48,16 +46,14 @@ export function MeetingForm({
       summary: form.summary.trim() || null
     };
 
-    const result = initialMeeting
-      ? await supabase.from("meetings").update(payload).eq("id", initialMeeting.id)
-      : await supabase.from("meetings").insert(payload);
-
-    setSaving(false);
-    if (result.error) {
-      setError("儲存會議紀錄失敗，請稍後再試。");
+    try {
+      await controlAction("save_meeting", payload);
+    } catch (caught) {
+      setSaving(false);
+      setError(caught instanceof Error ? caught.message : "儲存會議紀錄失敗，請稍後再試。");
       return;
     }
-
+    setSaving(false);
     if (!initialMeeting) {
       setForm({ scope: "company", meeting_name: "", meeting_date: todayIso(), raw_notes: "", summary: "" });
     }

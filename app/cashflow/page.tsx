@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { getCashflowSummary } from "@/lib/cashflow";
 import { currentMonth, formatCurrency, isWithinDays } from "@/lib/date";
 import { scopeLabels, transactionTypeLabels } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
+import { controlAction } from "@/lib/control-api";
 import type { Scope, Transaction } from "@/lib/types";
 import { useAppData } from "@/hooks/useAppData";
 
@@ -134,13 +134,7 @@ function CashflowScope({
   }, [summary.openingBalance]);
 
   async function saveOpeningBalance() {
-    const existing = balances.find((item) => item.scope === scope && item.month === month);
-    const payload = { user_id: userId, scope, month, opening_balance: Number(openingBalance || 0) };
-    if (existing) {
-      await supabase?.from("balances").update(payload).eq("id", existing.id);
-    } else {
-      await supabase?.from("balances").insert(payload);
-    }
+    await controlAction("save_balance", { scope, month, opening_balance: Number(openingBalance || 0) });
     reload();
   }
 

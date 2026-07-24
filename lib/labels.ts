@@ -97,6 +97,9 @@ export const sourceTypeOptions = [
 
 export const taskStatusOptions = [
   { value: "not_started", label: "未完成" },
+  { value: "in_progress", label: "進行中" },
+  { value: "waiting", label: "等待中" },
+  { value: "blocked", label: "受阻" },
   { value: "done", label: "已完成" },
   { value: "cancelled", label: "已取消" }
 ] as const;

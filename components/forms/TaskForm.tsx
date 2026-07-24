@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { riskOptions, scopeOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
-import { supabase } from "@/lib/supabase";
+import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
+import { controlAction } from "@/lib/control-api";
 import type { Task } from "@/lib/types";
 
 type TaskFormState = {
   scope: string;
+  area: string;
   source_type: string;
   title: string;
   owner: string;
@@ -17,10 +19,20 @@ type TaskFormState = {
   risk: string;
   next_action: string;
   notes: string;
+  estimated_minutes: string;
+  energy_level: string;
+  context: string;
+  definition_of_done: string;
+  estimated_duration_days: string;
+  buffer_days: string;
+  critical_path: boolean;
+  handoff_to_user_id: string;
+  handoff_note: string;
 };
 
 const defaultState: TaskFormState = {
   scope: "home",
+  area: "personal",
   source_type: "follow_up",
   title: "",
   owner: "",
@@ -29,13 +41,23 @@ const defaultState: TaskFormState = {
   status: "not_started",
   risk: "low",
   next_action: "",
-  notes: ""
+  notes: "",
+  estimated_minutes: "",
+  energy_level: "medium",
+  context: "computer",
+  definition_of_done: "",
+  estimated_duration_days: "",
+  buffer_days: "0",
+  critical_path: false,
+  handoff_to_user_id: "",
+  handoff_note: ""
 };
 
 export function TaskForm({
   userId,
   initialTask,
   preset,
+  participants = [],
   compact = false,
   onSaved,
   onCancel
@@ -43,6 +65,7 @@ export function TaskForm({
   userId: string;
   initialTask?: Task | null;
   preset?: Partial<TaskFormState>;
+  participants?: Array<{ user_id: string; display_name: string }>;
   compact?: boolean;
   onSaved: () => void;
   onCancel?: () => void;
@@ -51,6 +74,7 @@ export function TaskForm({
     initialTask
       ? {
           scope: initialTask.scope,
+          area: initialTask.area ?? (initialTask.scope === "company" ? "work" : "family"),
           source_type: initialTask.source_type,
           title: initialTask.title,
           owner: initialTask.owner ?? "",
@@ -59,52 +83,80 @@ export function TaskForm({
           status: initialTask.status === "done" || initialTask.status === "cancelled" ? initialTask.status : "not_started",
           risk: initialTask.risk,
           next_action: initialTask.next_action ?? "",
-          notes: initialTask.notes ?? ""
+          notes: initialTask.notes ?? "",
+          estimated_minutes: String(initialTask.estimated_minutes ?? ""),
+          energy_level: initialTask.energy_level ?? "medium",
+          context: initialTask.context ?? "computer",
+          definition_of_done: initialTask.definition_of_done ?? "",
+          estimated_duration_days: String(initialTask.estimated_duration_days ?? ""),
+          buffer_days: String(initialTask.buffer_days ?? 0),
+          critical_path: initialTask.critical_path ?? false,
+          handoff_to_user_id: "",
+          handoff_note: ""
         }
-      : { ...defaultState, ...preset }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
 
-  function update(name: keyof TaskFormState, value: string) {
+  function update(name: keyof TaskFormState, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
   }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    if (!initialTask && form.handoff_to_user_id && !form.handoff_note.trim()) {
+      setError("請填交接 notes，讓對方知道第一步要做甚麼。");
+      return;
+    }
 
-    if (!supabase) return;
     setSaving(true);
 
     const completedAt =
       form.status === "done" ? initialTask?.completed_at ?? new Date().toISOString() : null;
 
     const payload = {
-      user_id: userId,
-      scope: form.scope,
-      source_type: form.source_type,
+      area: form.area,
+      sourceType: form.source_type,
       title: form.title.trim(),
-      owner: form.owner.trim() || null,
-      due_date: form.due_date || null,
-      follow_up_date: form.follow_up_date || null,
+      dueDate: form.due_date || null,
+      followUpDate: form.follow_up_date || null,
       status: form.status,
-      next_action: form.next_action.trim() || null,
+      nextAction: form.next_action.trim() || null,
       risk: form.risk,
       notes: form.notes.trim() || null,
-      completed_at: completedAt
+      owner: form.owner.trim() || null,
+      completedAt,
+      estimatedMinutes: form.estimated_minutes ? Number(form.estimated_minutes) : null,
+      energyLevel: form.energy_level,
+      context: form.context,
+      definitionOfDone: form.definition_of_done.trim() || null,
+      estimatedDurationDays: form.estimated_duration_days ? Number(form.estimated_duration_days) : null,
+      bufferDays: Number(form.buffer_days || 0),
+      criticalPath: form.critical_path,
+      handoffToUserId: form.handoff_to_user_id || null,
+      handoffNote: form.handoff_note.trim() || null
     };
-
-    const result = initialTask
-      ? await supabase.from("tasks").update(payload).eq("id", initialTask.id)
-      : await supabase.from("tasks").insert(payload);
-
-    setSaving(false);
-    if (result.error) {
-      setError("儲存任務失敗，請稍後再試。");
+    try {
+      if (initialTask) {
+        await controlAction("update_task", { id: initialTask.id, changes: {
+          title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
+          risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
+          estimated_minutes: payload.estimatedMinutes, energy_level: payload.energyLevel, context: payload.context,
+          definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
+          buffer_days: payload.bufferDays, critical_path: payload.criticalPath
+        } });
+      } else {
+        await controlAction("create_task", payload);
+      }
+    } catch (caught) {
+      setSaving(false);
+      setError(caught instanceof Error ? caught.message : "儲存任務失敗，請稍後再試。");
       return;
     }
-
+    setSaving(false);
     if (!initialTask) setForm(defaultState);
     onSaved();
   }
@@ -113,13 +165,9 @@ export function TaskForm({
     <form className="grid gap-4" onSubmit={save}>
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
-          <span className="label">家庭 / 公司</span>
-          <select className="field mt-2" value={form.scope} onChange={(event) => update("scope", event.target.value)}>
-            {scopeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+          <span className="label">範圍</span>
+          <select className="field mt-2" value={form.area} onChange={(event) => update("area", event.target.value)}>
+            <option value="work">工作</option><option value="family">家庭</option><option value="personal">個人</option>
           </select>
         </label>
         <label>
@@ -146,6 +194,85 @@ export function TaskForm({
           placeholder="可選填，例如：打開文件，寫第一句摘要"
         />
       </label>
+      {!initialTask ? (
+        <fieldset className="rounded-2xl border-2 border-indigo-300 bg-indigo-50/70 p-4 shadow-sm">
+          <legend className="px-2 text-sm font-extrabold uppercase tracking-wide text-indigo-700">
+            必須選擇
+          </legend>
+          <div className="flex items-start gap-3">
+            <span className="rounded-xl bg-indigo-600 p-2 text-white" aria-hidden="true">
+              <ArrowRightLeft className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-extrabold text-slate-900">建立後由誰跟進？</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">新增前直接揀「我」或「Suki」，之後仍可在任務卡隨時轉交。</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
+                  !form.handoff_to_user_id ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"
+                }`}>
+                  <input
+                    className="mt-1 h-5 w-5 accent-indigo-600"
+                    type="radio"
+                    name="new-task-handler"
+                    value=""
+                    checked={!form.handoff_to_user_id}
+                    onChange={() => update("handoff_to_user_id", "")}
+                  />
+                  <span>
+                    <span className="block font-extrabold text-slate-900">由我跟進</span>
+                    <span className="mt-1 block text-sm text-slate-600">任務留給目前登入的我。</span>
+                  </span>
+                </label>
+                {otherParticipants.map((participant) => (
+                  <label
+                    key={participant.user_id}
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
+                      form.handoff_to_user_id === participant.user_id
+                        ? "border-indigo-600 ring-2 ring-indigo-100"
+                        : "border-slate-200"
+                    }`}
+                  >
+                    <input
+                      className="mt-1 h-5 w-5 accent-indigo-600"
+                      type="radio"
+                      name="new-task-handler"
+                      value={participant.user_id}
+                      checked={form.handoff_to_user_id === participant.user_id}
+                      onChange={() => update("handoff_to_user_id", participant.user_id)}
+                    />
+                    <span>
+                      <span className="block font-extrabold text-slate-900">由 {participant.display_name} 跟進</span>
+                      <span className="mt-1 block text-sm text-slate-600">建立後立即交給對方接手。</span>
+                    </span>
+                  </label>
+                ))}
+                {!otherParticipants.length ? (
+                  <div className="rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 sm:col-span-2">
+                    <p className="font-bold text-amber-900">Suki 選項暫時未能載入</p>
+                    <p className="mt-1 text-sm leading-6 text-amber-800">可先重新整理頁面；系統不會再把這個問題靜默隱藏。</p>
+                  </div>
+                ) : null}
+              </div>
+              {form.handoff_to_user_id ? (
+                <label className="mt-4 block">
+                  <span className="label">交接 notes</span>
+                  <textarea
+                    className="field mt-2 min-h-24 bg-white"
+                    value={form.handoff_note}
+                    onChange={(event) => update("handoff_note", event.target.value)}
+                    placeholder="例如：請先致電確認，再在 notes 更新結果。"
+                    maxLength={500}
+                    required
+                  />
+                  <span className="mt-1 block text-xs leading-5 text-slate-600">
+                    建立任務後會立即送俾對方接受；雙方都會永久看到這段 notes。
+                  </span>
+                </label>
+              ) : null}
+            </div>
+          </div>
+        </fieldset>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">到期日</span>
@@ -160,6 +287,11 @@ export function TaskForm({
             onChange={(event) => update("follow_up_date", event.target.value)}
           />
         </label>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
+        <label><span className="label">能量</span><select className="field mt-2" value={form.energy_level} onChange={(event) => update("energy_level", event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
+        <label><span className="label">情境</span><select className="field mt-2" value={form.context} onChange={(event) => update("context", event.target.value)}><option value="mobile">手機</option><option value="computer">電腦</option><option value="home">家中</option><option value="office">辦公室</option><option value="phone">電話</option><option value="night_shift">夜更可做</option></select></label>
       </div>
       {!compact ? (
         <>
@@ -192,6 +324,25 @@ export function TaskForm({
           <label>
             <span className="label">備註</span>
             <textarea className="field mt-2 min-h-28" value={form.notes} onChange={(event) => update("notes", event.target.value)} />
+          </label>
+          <label><span className="label">完成定義</span><input className="field mt-2" value={form.definition_of_done} onChange={(event) => update("definition_of_done", event.target.value)} placeholder="怎樣才算真正完成？" /></label>
+          <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">預計工期（日）</span><input className="field mt-2" type="number" min="0" value={form.estimated_duration_days} onChange={(event) => update("estimated_duration_days", event.target.value)} /></label><label><span className="label">緩衝（日）</span><input className="field mt-2" type="number" min="0" value={form.buffer_days} onChange={(event) => update("buffer_days", event.target.value)} /></label></div>
+          <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-4 ${form.critical_path ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+            <input
+              className="mt-1 h-5 w-5 shrink-0 accent-amber-600"
+              type="checkbox"
+              checked={form.critical_path}
+              onChange={(event) => update("critical_path", event.target.checked)}
+            />
+            <span>
+              <span className="block font-bold text-slate-900">這項任務會卡住後續工作</span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">
+                即「關鍵路徑」：只有遲咗會令整個項目或死線一齊延遲先剔。系統會把它排得更優先；一般任務不用剔。
+              </span>
+              <span className="mt-1 block text-sm font-semibold text-amber-800">
+                例：必須先簽好合約，其他人先可以正式開工。
+              </span>
+            </span>
           </label>
         </>
       ) : null}
