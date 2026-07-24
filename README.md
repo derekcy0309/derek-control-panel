@@ -8,6 +8,7 @@
 - Suki Minimum Viable Day：一項核心最低任務、最多兩項簡單選項、無罪疚休息、拆細、交接及指定日再處理
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
+- 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -44,6 +45,7 @@ supabase/migrations/20260724120731_restart_checkpoints.sql
 supabase/migrations/20260724121803_checkpoint_resource_privacy.sql
 supabase/migrations/20260724150744_inbox_processing_mode.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.sql
+supabase/migrations/20260724162344_notification_system.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -56,6 +58,7 @@ supabase/migrations/20260724120731_restart_checkpoints.rollback.sql
 supabase/migrations/20260724121803_checkpoint_resource_privacy.rollback.sql
 supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql
+supabase/migrations/20260724162344_notification_system.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -75,8 +78,12 @@ npm run build
 
 Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 public Supabase environment variables。部署網址必須加入 Supabase Auth URL Configuration。Service worker 不 cache API、Dashboard、任務或其他私人頁面資料。Settings 的 About 區會顯示 app version、build time、Git commit SHA 及 environment，正式部署必須對應一個已推送 commit。
 
+通知另需設定 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT` 和 `CRON_SECRET`。前者可公開，後三者只可放在 Vercel server environment；同一個 `CRON_SECRET` 的雜湊保存在 `private.notification_dispatch_config`，原值保存在 Supabase Vault。正式 Vercel route 就緒後，才可設定 Supabase Cron 每五分鐘以帶有 Bearer secret 的 HTTP request 呼叫 `/api/cron/notifications`；job 可安全重覆執行，發送工作以 dedupe key 及 claim lock 防止重複。
+
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
 
 Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback 說明見 [`docs/inbox-processing.md`](docs/inbox-processing.md)。
 
 Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 rollback 說明見 [`docs/today-auto-plan.md`](docs/today-auto-plan.md)。
+
+通知的授權、私隱 payload、RLS、server dispatch、排程啟用及 rollback 說明見 [`docs/notifications.md`](docs/notifications.md)。

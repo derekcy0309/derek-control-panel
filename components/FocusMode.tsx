@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, CirclePause, Clock3, FilePenLine, Play, X } from "lucide-react";
 import { RestartCheckpointPanel } from "@/components/RestartCheckpointPanel";
 import { Button } from "@/components/ui/Button";
@@ -36,6 +36,7 @@ export function FocusMode({
   const [editorOpen, setEditorOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [busy, setBusy] = useState(false);
+  const notificationIdRef = useRef<string | null>(null);
   const checkpoint = useTaskCheckpoint(task.id);
   const { flushDraft, saveState } = checkpoint;
 
@@ -50,6 +51,9 @@ export function FocusMode({
     setRunning(false);
     setEditorOpen(true);
     setMessage("這一節已完成。記下目前位置，讓下次可以直接接續。");
+    void completeFocusReminder();
+    // The transition only happens once when the timer reaches zero.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasStarted, secondsLeft]);
 
   useEffect(() => {
@@ -97,6 +101,7 @@ export function FocusMode({
       setRunning(true);
       setEditorOpen(false);
       setExitRequested(false);
+      await scheduleFocusReminder();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : "未能開始專注時段。");
     } finally {
@@ -106,6 +111,7 @@ export function FocusMode({
 
   function pause() {
     setRunning(false);
+    void cancelFocusReminder();
     setExitRequested(false);
     setEditorOpen(true);
     setMessage("已暫停。草稿會自動保存，你可以先記下目前位置。");
@@ -117,6 +123,7 @@ export function FocusMode({
       return;
     }
     setRunning(false);
+    void cancelFocusReminder();
     setExitRequested(true);
     setEditorOpen(true);
     setMessage("離開前留下 checkpoint，避免下次重新搜尋工作位置。");
@@ -139,6 +146,7 @@ export function FocusMode({
 
   async function complete() {
     setRunning(false);
+    await cancelFocusReminder();
     setBusy(true);
     const saved = await checkpoint.saveCheckpoint({
       completedSummary: checkpoint.form.completedSummary || "已完成目前專注步驟",
@@ -168,6 +176,7 @@ export function FocusMode({
 
   async function block() {
     setRunning(false);
+    await cancelFocusReminder();
     setBusy(true);
     const saved = await checkpoint.saveCheckpoint({
       currentPosition: checkpoint.form.currentPosition || "工作已暫停，等待處理阻塞",
@@ -199,6 +208,50 @@ export function FocusMode({
 
   function authorName(authorId: string) {
     return participants.find((participant) => participant.user_id === authorId)?.display_name ?? "任務參與者";
+  }
+
+  async function scheduleFocusReminder() {
+    await cancelFocusReminder();
+    const sessionKey = crypto.randomUUID();
+    const deliverAt = new Date(Date.now() + Math.max(1, secondsLeft) * 1000).toISOString();
+    try {
+      const result = await controlAction<{ deliveryId: string | null }>("schedule_focus_notification", {
+        taskId: task.id,
+        sessionKey,
+        deliverAt
+      });
+      notificationIdRef.current = result.deliveryId;
+    } catch {
+      notificationIdRef.current = null;
+      setMessage("專注時段已開始；伺服器提醒暫時未能安排，畫面計時仍會正常運作。");
+    }
+  }
+
+  async function cancelFocusReminder() {
+    const deliveryId = notificationIdRef.current;
+    notificationIdRef.current = null;
+    if (!deliveryId) return;
+    await controlAction("cancel_focus_notification", { deliveryId }).catch(() => undefined);
+  }
+
+  async function completeFocusReminder() {
+    const deliveryId = notificationIdRef.current;
+    notificationIdRef.current = null;
+    if (!deliveryId) return;
+    try {
+      const result = await controlAction<{ changed: boolean }>("complete_local_notification", { deliveryId });
+      if (!result.changed || !("Notification" in window) || Notification.permission !== "granted" || !("serviceWorker" in navigator)) return;
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification("專注時段完成", {
+        body: "時間到了，記下 checkpoint 方便下次接續",
+        icon: "/icon",
+        badge: "/icon",
+        tag: `dcp-${deliveryId}`,
+        data: { path: "/", deliveryId }
+      });
+    } catch {
+      // Server-side dispatch remains the fallback if the local completion cannot be recorded.
+    }
   }
 
   return (

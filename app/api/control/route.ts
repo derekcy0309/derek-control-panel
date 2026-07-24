@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants] =
+  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, notificationPreferences, notificationDeliveries, pushSubscriptions] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -33,10 +33,21 @@ export async function GET(request: NextRequest) {
       client.from("task_handoff_notes").select("*").order("created_at", { ascending: false }),
       client.from("user_planning_metadata").select("*").eq("user_id", user.id),
       client.from("daily_capacity_checkins").select("*").eq("user_id", user.id).eq("checkin_date", today).maybeSingle(),
-      client.rpc("participant_profiles")
+      client.rpc("participant_profiles"),
+      client.from("notification_preferences").select("*").eq("user_id", user.id).maybeSingle(),
+      client.from("notification_deliveries")
+        .select("id,kind,deliver_at,status,generic_title,generic_body,target_path,sent_at,opened_at,failed_at,last_error_code,created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      client.from("push_subscriptions")
+        .select("id")
+        .eq("user_id", user.id)
+        .is("revoked_at", null)
+        .limit(20)
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants]
+  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, notificationPreferences, notificationDeliveries, pushSubscriptions]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -71,7 +82,10 @@ export async function GET(request: NextRequest) {
     handoffNotes: handoffNotes.data ?? [],
     planning: planning.data ?? [],
     capacity: capacity.data ?? null,
-    participants: participants.data ?? []
+    participants: participants.data ?? [],
+    notificationPreferences: notificationPreferences.data ?? null,
+    notificationDeliveries: notificationDeliveries.data ?? [],
+    activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0
   }, { headers: privateHeaders() });
 }
 
@@ -224,6 +238,14 @@ export async function POST(request: NextRequest) {
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
     case "process_inbox_item": return processInboxItem(context, body);
     case "undo_inbox_processing": return undoInboxProcessing(context, body);
+    case "save_notification_preferences": return saveNotificationPreferences(context, body);
+    case "save_push_subscription": return savePushSubscription(context, body);
+    case "remove_push_subscription": return removePushSubscription(context, body);
+    case "schedule_focus_notification": return scheduleFocusNotification(context, body);
+    case "cancel_focus_notification": return cancelFocusNotification(context, body);
+    case "complete_local_notification": return completeLocalNotification(context, body);
+    case "notification_opened": return markNotificationOpened(context, body);
+    case "test_notification": return enqueueTestNotification(context);
     default: return jsonError("不支援的操作。", 400);
   }
 }
@@ -838,6 +860,124 @@ async function saveSettings({ client, user }: RequestContext, body: Record<strin
   return Response.json({ settings: result.data }, { headers: privateHeaders() });
 }
 
+async function saveNotificationPreferences(
+  { client, user }: RequestContext,
+  body: Record<string, unknown>
+) {
+  const source = objectValue(body.preferences);
+  const timezone = stringValue(source.timezone).trim() || "Asia/Hong_Kong";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+  } catch {
+    return jsonError("通知時區不正確。", 422);
+  }
+  const timeFields = ["quietHoursStart", "quietHoursEnd", "todayReminderTime", "shutdownReminderTime"] as const;
+  for (const field of timeFields) {
+    if (!timeValue(source[field])) return jsonError("通知時間格式不正確。", 422);
+  }
+  const deadlineLeadMinutes = integerValue(source.deadlineLeadMinutes, 0, 10080);
+  if (deadlineLeadMinutes === null) return jsonError("限期提前時間不正確。", 422);
+
+  const payload = {
+    user_id: user.id,
+    browser_enabled: Boolean(source.browserEnabled),
+    today_first_enabled: Boolean(source.todayFirstEnabled),
+    deadline_enabled: Boolean(source.deadlineEnabled),
+    waiting_enabled: Boolean(source.waitingEnabled),
+    handover_enabled: Boolean(source.handoverEnabled),
+    focus_enabled: Boolean(source.focusEnabled),
+    shutdown_enabled: Boolean(source.shutdownEnabled),
+    quiet_hours_enabled: Boolean(source.quietHoursEnabled),
+    quiet_hours_start: timeValue(source.quietHoursStart),
+    quiet_hours_end: timeValue(source.quietHoursEnd),
+    night_shift_mode: Boolean(source.nightShiftMode),
+    timezone,
+    today_reminder_time: timeValue(source.todayReminderTime),
+    shutdown_reminder_time: timeValue(source.shutdownReminderTime),
+    deadline_lead_minutes: deadlineLeadMinutes,
+    private_on_lock_screen: true,
+    updated_at: new Date().toISOString()
+  };
+  const result = await client.from("notification_preferences")
+    .upsert(payload, { onConflict: "user_id" })
+    .select("*")
+    .single();
+  if (result.error) return databaseError(result.error);
+  return Response.json({ preferences: result.data }, { headers: privateHeaders() });
+}
+
+async function savePushSubscription({ client }: RequestContext, body: Record<string, unknown>) {
+  const subscription = objectValue(body.subscription);
+  const keys = objectValue(subscription.keys);
+  const endpoint = stringValue(subscription.endpoint).trim();
+  const p256dh = stringValue(keys.p256dh).trim();
+  const authKey = stringValue(keys.auth).trim();
+  if (!isHttpsUrl(endpoint, 4000) || p256dh.length < 40 || p256dh.length > 500 || authKey.length < 10 || authKey.length > 500) {
+    return jsonError("瀏覽器通知訂閱格式不正確。", 422);
+  }
+  const result = await client.rpc("save_push_subscription", {
+    p_endpoint: endpoint,
+    p_p256dh: p256dh,
+    p_auth_key: authKey,
+    p_user_agent: stringValue(body.userAgent).slice(0, 500) || null
+  });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ subscriptionId: result.data }, { headers: privateHeaders() });
+}
+
+async function removePushSubscription({ client }: RequestContext, body: Record<string, unknown>) {
+  const endpoint = stringValue(body.endpoint).trim();
+  if (!isHttpsUrl(endpoint, 4000)) return jsonError("瀏覽器通知訂閱格式不正確。", 422);
+  const result = await client.rpc("remove_push_subscription", { p_endpoint: endpoint });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ removed: Boolean(result.data) }, { headers: privateHeaders() });
+}
+
+async function scheduleFocusNotification({ client }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  const sessionKey = uuidValue(body.sessionKey);
+  const deliverAt = timestampValue(body.deliverAt);
+  if (!taskId || !sessionKey || !deliverAt) return jsonError("Focus 提醒資料不正確。", 422);
+  const result = await client.rpc("schedule_focus_notification", {
+    p_task_id: taskId,
+    p_deliver_at: deliverAt,
+    p_session_key: sessionKey
+  });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ deliveryId: result.data ?? null }, { headers: privateHeaders() });
+}
+
+async function notificationDeliveryAction(
+  { client }: RequestContext,
+  body: Record<string, unknown>,
+  rpc: "cancel_focus_notification" | "complete_local_notification" | "mark_notification_opened"
+) {
+  const deliveryId = uuidValue(body.deliveryId);
+  if (!deliveryId) return jsonError("通知識別碼不正確。", 422);
+  const result = await client.rpc(rpc, { p_delivery_id: deliveryId });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ changed: Boolean(result.data) }, { headers: privateHeaders() });
+}
+
+function cancelFocusNotification(context: RequestContext, body: Record<string, unknown>) {
+  return notificationDeliveryAction(context, body, "cancel_focus_notification");
+}
+
+function completeLocalNotification(context: RequestContext, body: Record<string, unknown>) {
+  return notificationDeliveryAction(context, body, "complete_local_notification");
+}
+
+function markNotificationOpened(context: RequestContext, body: Record<string, unknown>) {
+  return notificationDeliveryAction(context, body, "mark_notification_opened");
+}
+
+async function enqueueTestNotification({ client }: RequestContext) {
+  const result = await client.rpc("enqueue_test_notification");
+  if (result.error) return databaseError(result.error);
+  if (!result.data) return jsonError("請先啟用瀏覽器通知。", 409);
+  return Response.json({ deliveryId: result.data }, { headers: privateHeaders() });
+}
+
 async function saveCapacity({ client, user }: RequestContext, body: Record<string, unknown>) {
   const energyLevel = enumValue(body.energyLevel, ["low","medium","high"], null);
   if (!energyLevel) return jsonError("請選擇今日能量。", 400);
@@ -1045,6 +1185,7 @@ function stringValue(value: unknown) { return typeof value === "string" ? value 
 function nullableText(value: unknown) { const text = stringValue(value).trim(); return text ? text.slice(0, 10000) : null; }
 function requiredText(value: unknown, message: string) { const text = stringValue(value).trim(); return text ? text.slice(0, 500) : jsonError(message, 422); }
 function dateValue(value: unknown) { const text = stringValue(value); return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null; }
+function timeValue(value: unknown) { const text = stringValue(value); return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : null; }
 function timestampValue(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; const date = new Date(text); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
 function integerValue(value: unknown, min: number, max: number) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : null; }
 function uuidValue(value: unknown) { const text = stringValue(value); return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : null; }
@@ -1052,6 +1193,7 @@ function objectValue(value: unknown): Record<string, unknown> { return value && 
 function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: T[number] | null): T[number] | null { const text = stringValue(value); return allowed.includes(text) ? text as T[number] : fallback; }
 function pick(source: Record<string, unknown>, keys: readonly string[]) { return Object.fromEntries(Object.entries(source).filter(([key]) => keys.includes(key))); }
 function safeUrl(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; try { const url = new URL(text); return url.protocol === "https:" ? text.slice(0, 2000) : null; } catch { return null; } }
+function isHttpsUrl(value: string, maxLength: number) { if (!value || value.length > maxLength) return false; try { return new URL(value).protocol === "https:"; } catch { return false; } }
 function checkpointText(value: unknown, maxLength: number, label: string) {
   const text = stringValue(value).trim();
   if (text.length > maxLength) return jsonError(`${label}太長，請縮短後再儲存。`, 422);

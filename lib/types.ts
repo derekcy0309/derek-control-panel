@@ -331,6 +331,56 @@ export type TaskCheckpointBundle = {
   history: TaskCheckpoint[];
 };
 
+export type NotificationPreferences = {
+  user_id: string;
+  browser_enabled: boolean;
+  today_first_enabled: boolean;
+  deadline_enabled: boolean;
+  waiting_enabled: boolean;
+  handover_enabled: boolean;
+  focus_enabled: boolean;
+  shutdown_enabled: boolean;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string;
+  quiet_hours_end: string;
+  night_shift_mode: boolean;
+  timezone: string;
+  today_reminder_time: string;
+  shutdown_reminder_time: string;
+  deadline_lead_minutes: number;
+  private_on_lock_screen: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationKind =
+  | "today_first"
+  | "deadline"
+  | "waiting_followup"
+  | "handover_received"
+  | "handover_accepted"
+  | "handover_information"
+  | "handover_returned"
+  | "handover_completed"
+  | "focus_complete"
+  | "daily_shutdown"
+  | "test";
+
+export type NotificationDelivery = {
+  id: string;
+  kind: NotificationKind;
+  deliver_at: string;
+  status: "scheduled" | "processing" | "retry" | "sent" | "opened" | "failed" | "cancelled";
+  generic_title: string;
+  generic_body: string;
+  target_path: string;
+  sent_at: string | null;
+  opened_at: string | null;
+  failed_at: string | null;
+  last_error_code: string | null;
+  created_at: string;
+};
+
 export type ControlData = AppData & {
   currentUser: CurrentUser;
   profile: UserProfile;
@@ -342,6 +392,9 @@ export type ControlData = AppData & {
   planning: PlanningMetadata[];
   capacity: CapacityCheckin | null;
   participants: Array<{ user_id: string; display_name: string }>;
+  notificationPreferences: NotificationPreferences | null;
+  notificationDeliveries: NotificationDelivery[];
+  activePushSubscriptionCount: number;
 };
 
 export type TodayData = {

@@ -20,7 +20,12 @@ const inboxMigration = readFileSync(resolve(here, "../supabase/migrations/202607
 const inboxRollback = readFileSync(resolve(here, "../supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql"), "utf8").toLowerCase();
 const todayPlanMigration = readFileSync(resolve(here, "../supabase/migrations/20260724154148_today_auto_plan_mvd.sql"), "utf8").toLowerCase();
 const todayPlanRollback = readFileSync(resolve(here, "../supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql"), "utf8").toLowerCase();
+const notificationMigration = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.sql"), "utf8").toLowerCase();
+const notificationRollback = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
+const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
+const notificationSettings = readFileSync(resolve(here, "../components/NotificationSettings.tsx"), "utf8").toLowerCase();
+const serviceWorker = readFileSync(resolve(here, "../public/sw.js"), "utf8").toLowerCase();
 const todayPage = readFileSync(resolve(here, "../app/page.tsx"), "utf8").toLowerCase();
 const taskForm = readFileSync(resolve(here, "../components/forms/TaskForm.tsx"), "utf8").toLowerCase();
 const handoffControls = readFileSync(resolve(here, "../components/items/TaskHandoffControls.tsx"), "utf8").toLowerCase();
@@ -314,4 +319,59 @@ test("Today Auto-Plan rollback preserves all core work data", () => {
   assert.match(todayPlanRollback, /drop\s+table\s+if\s+exists\s+public\.today_plan_acceptances/);
   assert.match(todayPlanRollback, /drop\s+column\s+if\s+exists\s+rest_day/);
   assert.doesNotMatch(todayPlanRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|assignments|user_planning_metadata|daily_capacity_checkins)/);
+});
+
+test("notification account data is RLS protected and delivery history is frontend immutable", () => {
+  for (const table of ["notification_preferences", "push_subscriptions", "notification_deliveries", "notification_attempts"]) {
+    assert.match(notificationMigration, new RegExp(`alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`));
+  }
+  assert.match(notificationMigration, /notification_deliveries_select_own/);
+  assert.match(notificationMigration, /grant\s+select\s+on\s+public\.notification_deliveries\s+to\s+authenticated/);
+  assert.doesNotMatch(notificationMigration, /grant\s+(?:insert|update|delete)[^;]*notification_deliveries/);
+  assert.match(notificationMigration, /revoke\s+insert,\s*update,\s*delete\s+on\s+public\.push_subscriptions\s+from\s+authenticated/);
+});
+
+test("notification payloads are generic, quiet-hour aware and idempotent", () => {
+  assert.match(notificationMigration, /unique\s*\(user_id,\s*dedupe_key\)/);
+  assert.match(notificationMigration, /on\s+conflict\s+\(user_id,\s*dedupe_key\)\s+do\s+nothing/);
+  assert.match(notificationMigration, /notification_after_quiet_hours/);
+  assert.match(notificationMigration, /if\s+local_time\s*>=\s*preference\.quiet_hours_start/);
+  assert.match(notificationMigration, /一項工作限期接近/);
+  assert.doesNotMatch(notificationMigration, /task\.title|task\.notes|health|child.*generic_body/);
+});
+
+test("push endpoint registration and dispatch are authenticated through narrow RPCs", () => {
+  assert.match(notificationMigration, /function\s+public\.save_push_subscription/);
+  assert.match(notificationMigration, /actor\s+uuid\s*:=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(notificationMigration, /on\s+conflict\s+\(endpoint\)\s+do\s+update/);
+  assert.match(notificationMigration, /notification_dispatch_authorized/);
+  assert.match(notificationMigration, /extensions\.digest\(coalesce\(p_secret/);
+  assert.match(notificationMigration, /grant\s+execute\s+on\s+function[^;]*public\.claim_due_notifications[^;]*to\s+anon/);
+  assert.doesNotMatch(notificationMigration, /grant\s+execute\s+on\s+function[^;]*public\.claim_due_notifications[^;]*to\s+authenticated/);
+});
+
+test("server dispatch verifies the bearer secret and never logs private payloads", () => {
+  assert.match(notificationRoute, /timingsafeequal/);
+  assert.match(notificationRoute, /authorization/);
+  assert.match(notificationRoute, /bearer\s*\$\{secret\}/);
+  assert.match(notificationRoute, /claim_due_notifications/);
+  assert.match(notificationRoute, /complete_notification_attempt/);
+  assert.doesNotMatch(notificationRoute, /console\.(?:log|error)|row\.endpoint\)/);
+});
+
+test("browser notification permission is explicit and service worker records opens", () => {
+  assert.match(notificationSettings, /notification\.requestpermission\(\)/);
+  assert.match(notificationSettings, /pushmanager\.subscribe/);
+  assert.match(notificationSettings, /允許並啟用通知/);
+  assert.match(notificationSettings, /night-shift/);
+  assert.match(serviceWorker, /addEventListener\("push"/i);
+  assert.match(serviceWorker, /addEventListener\("notificationclick"/i);
+  assert.match(serviceWorker, /action:\s*"notification_opened"/);
+});
+
+test("notification rollback removes only notification objects and preserves core data", () => {
+  for (const table of ["notification_attempts", "notification_deliveries", "push_subscriptions", "notification_preferences"]) {
+    assert.match(notificationRollback, new RegExp(`drop\\s+table\\s+if\\s+exists\\s+public\\.${table}`));
+  }
+  assert.doesNotMatch(notificationRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|assignments|user_planning_metadata|daily_capacity_checkins)/);
 });
