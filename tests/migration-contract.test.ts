@@ -43,6 +43,8 @@ const mobileCaptureMigration = readFileSync(resolve(here, "../supabase/migration
 const mobileCaptureRollback = readFileSync(resolve(here, "../supabase/migrations/20260725210000_mobile_quick_capture.rollback.sql"), "utf8").toLowerCase();
 const timeEstimationMigration = readFileSync(resolve(here, "../supabase/migrations/20260725220000_time_estimation_learning.sql"), "utf8").toLowerCase();
 const timeEstimationRollback = readFileSync(resolve(here, "../supabase/migrations/20260725220000_time_estimation_learning.rollback.sql"), "utf8").toLowerCase();
+const focusSessionMigration = readFileSync(resolve(here, "../supabase/migrations/20260725230000_focus_session_history.sql"), "utf8").toLowerCase();
+const focusSessionRollback = readFileSync(resolve(here, "../supabase/migrations/20260725230000_focus_session_history.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const quickCaptureRoute = readFileSync(resolve(here, "../app/api/quick-capture/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
@@ -59,6 +61,7 @@ const quickCapturePage = readFileSync(resolve(here, "../app/capture/page.tsx"), 
 const captureFiles = readFileSync(resolve(here, "../components/inbox/CaptureFiles.tsx"), "utf8").toLowerCase();
 const manifest = readFileSync(resolve(here, "../app/manifest.ts"), "utf8").toLowerCase();
 const timeEstimateHint = readFileSync(resolve(here, "../components/TimeEstimateHint.tsx"), "utf8").toLowerCase();
+const focusSessionHistory = readFileSync(resolve(here, "../components/FocusSessionHistory.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -631,4 +634,40 @@ test("Time suggestions require sufficient personal history and never overwrite t
   assert.match(focusMode, /actual_minutes:\s*elapsedminutes\(\)/);
   assert.match(timeEstimationRollback, /time_estimation_learning_rollback_requires_explicit_data_handling/);
   assert.doesNotMatch(timeEstimationRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
+});
+
+test("Focus Session History is durable, owner-private and cannot become a cross-account comparison", () => {
+  assert.match(focusSessionMigration, /create\s+table\s+if\s+not\s+exists\s+public\.focus_sessions/);
+  assert.match(focusSessionMigration, /unique\s*\(user_id,\s*client_session_id\)/);
+  assert.match(focusSessionMigration, /alter\s+table\s+public\.focus_sessions\s+enable\s+row\s+level\s+security/);
+  assert.match(focusSessionMigration, /using\s*\(user_id\s*=\s*\(select\s+auth\.uid\(\)\)\)/);
+  assert.match(focusSessionMigration, /revoke\s+all\s+on\s+public\.focus_sessions\s+from\s+public,\s*anon,\s*authenticated/);
+  assert.match(focusSessionMigration, /grant\s+select\s+on\s+public\.focus_sessions\s+to\s+authenticated/);
+  assert.doesNotMatch(focusSessionMigration, /grant\s+[^;]*(?:insert|update|delete)[^;]*focus_sessions/);
+  assert.match(focusSessionMigration, /status\s+in\s+\('running',\s*'paused',\s*'completed',\s*'partial',\s*'interrupted'\)/);
+  assert.match(focusSessionMigration, /checkpoint_id\s+uuid\s+references\s+public\.task_checkpoints/);
+  assert.match(focusSessionMigration, /not a performance comparison/);
+  assert.doesNotMatch(focusSessionMigration, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|body_double_sessions)/);
+});
+
+test("Focus Session RPCs are authenticated, idempotent, checkpoint-aware and wired into Focus Mode", () => {
+  for (const functionName of ["start_focus_session", "pause_focus_session", "resume_focus_session", "finish_focus_session"]) {
+    assert.match(focusSessionMigration, new RegExp(`function\\s+public\\.${functionName}`));
+  }
+  assert.match(focusSessionMigration, /security\s+definer/);
+  assert.match(focusSessionMigration, /private\.current_user_can_checkpoint\(p_task_id\)/);
+  assert.match(focusSessionMigration, /where\s+user_id\s*=\s*actor\s+and\s+client_session_id\s*=\s*p_client_session_id/);
+  assert.match(focusSessionMigration, /where\s+id\s*=\s*p_checkpoint_id\s+and\s+task_id\s*=\s*session\.task_id\s+and\s+author_id\s*=\s*actor\s+and\s+state\s*=\s*'saved'/);
+  assert.match(focusSessionMigration, /revoke\s+all\s+on\s+function\s+public\.finish_focus_session[\s\S]*?from\s+public,\s*anon/);
+  for (const action of ["start_focus_session", "pause_focus_session", "resume_focus_session", "finish_focus_session"]) {
+    assert.match(controlRoute, new RegExp(`case "${action}"`));
+    assert.match(focusMode, new RegExp(`"${action}"`));
+  }
+  assert.match(controlRoute, /view\s*===\s*"focus_sessions"/);
+  assert.match(focusMode, /finishfocushistory\("completed",\s*saved\.id\)/);
+  assert.match(focusMode, /finishfocushistory\("interrupted",\s*saved\.id,\s*blockedreason\)/);
+  assert.match(focusSessionHistory, /不會成為.*產量比較/);
+  assert.match(focusSessionHistory, /已連結 checkpoint/);
+  assert.match(focusSessionRollback, /focus_session_history_rollback_requires_explicit_data_handling/);
+  assert.doesNotMatch(focusSessionRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|body_double_sessions)/);
 });

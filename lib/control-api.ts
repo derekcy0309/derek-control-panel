@@ -3,6 +3,7 @@
 import type {
   BodyDoubleData,
   ControlData,
+  FocusSession,
   InboxCaptureFile,
   InboxProcessingBundle,
   InboxProcessingEvent,
@@ -51,6 +52,10 @@ export async function loadTimeEstimateSuggestion(input: {
     estimatedMinutes: String(input.estimatedMinutes)
   });
   return controlRequest<{ suggestion: TimeEstimateSuggestion | null }>(`/api/control?${params.toString()}`, { method: "GET" });
+}
+
+export async function loadFocusSessions(taskId: string): Promise<{ sessions: FocusSession[] }> {
+  return controlRequest<{ sessions: FocusSession[] }>(`/api/control?view=focus_sessions&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
 }
 
 export async function loadInboxCaptureFiles(inboxItemId: string): Promise<{ files: InboxCaptureFile[] }> {

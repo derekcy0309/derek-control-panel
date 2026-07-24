@@ -145,6 +145,25 @@ export type TimeEstimateSuggestion = {
   basis: string;
 };
 
+export type FocusSession = {
+  id: string;
+  task_id: string;
+  user_id: string;
+  client_session_id: string;
+  planned_minutes: number;
+  status: "running" | "paused" | "completed" | "partial" | "interrupted";
+  started_at: string;
+  ended_at: string | null;
+  paused_at: string | null;
+  paused_seconds: number;
+  actual_minutes: number | null;
+  interruption_count: number;
+  checkpoint_id: string | null;
+  block_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type UserProfile = {
   user_id: string;
   display_name: string;

@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   if (view === "task_resources") return taskResources(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
   if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
+  if (view === "focus_sessions") return focusSessions(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
@@ -610,6 +611,10 @@ export async function POST(request: NextRequest) {
     case "schedule_focus_notification": return scheduleFocusNotification(context, body);
     case "cancel_focus_notification": return cancelFocusNotification(context, body);
     case "complete_local_notification": return completeLocalNotification(context, body);
+    case "start_focus_session": return startFocusSession(context, body);
+    case "pause_focus_session": return pauseFocusSession(context, body);
+    case "resume_focus_session": return resumeFocusSession(context, body);
+    case "finish_focus_session": return finishFocusSession(context, body);
     case "notification_opened": return markNotificationOpened(context, body);
     case "test_notification": return enqueueTestNotification(context);
     case "save_weekly_review": return saveWeeklyReview(context, body);
@@ -1818,6 +1823,76 @@ async function timeEstimateSuggestion({ client }: RequestContext, params: URLSea
   return Response.json({ suggestion }, { headers: privateHeaders() });
 }
 
+async function focusSessions({ client }: RequestContext, requestedTaskId: string) {
+  const taskId = uuidValue(requestedTaskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const result = await client.from("focus_sessions")
+    .select("id,task_id,user_id,client_session_id,planned_minutes,status,started_at,ended_at,paused_at,paused_seconds,actual_minutes,interruption_count,checkpoint_id,block_reason,created_at,updated_at")
+    .eq("task_id", taskId)
+    .order("started_at", { ascending: false })
+    .limit(20);
+  if (result.error) return databaseError(result.error);
+  return Response.json({ sessions: result.data ?? [] }, { headers: privateHeaders() });
+}
+
+async function startFocusSession({ client }: RequestContext, body: Record<string, unknown>) {
+  const clientSessionId = uuidValue(body.clientSessionId);
+  const taskId = uuidValue(body.taskId);
+  const plannedMinutes = integerValue(body.plannedMinutes, 15, 45);
+  if (!clientSessionId || !taskId || !plannedMinutes || ![15, 25, 45].includes(plannedMinutes)) {
+    return jsonError("專注時段資料不正確。", 400);
+  }
+  const result = await client.rpc("start_focus_session", {
+    p_client_session_id: clientSessionId,
+    p_task_id: taskId,
+    p_planned_minutes: plannedMinutes
+  });
+  if (result.error) return databaseError(result.error);
+  const session = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!session) return jsonError("未能開始專注時段記錄。", 500);
+  return Response.json({ session }, { status: 201, headers: privateHeaders() });
+}
+
+async function pauseFocusSession({ client }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  if (!sessionId) return jsonError("專注時段識別碼不正確。", 400);
+  const result = await client.rpc("pause_focus_session", { p_session_id: sessionId });
+  if (result.error) return databaseError(result.error);
+  const session = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!session) return jsonError("未能暫停專注時段記錄。", 500);
+  return Response.json({ session }, { headers: privateHeaders() });
+}
+
+async function resumeFocusSession({ client }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  if (!sessionId) return jsonError("專注時段識別碼不正確。", 400);
+  const result = await client.rpc("resume_focus_session", { p_session_id: sessionId });
+  if (result.error) return databaseError(result.error);
+  const session = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!session) return jsonError("未能繼續專注時段記錄。", 500);
+  return Response.json({ session }, { headers: privateHeaders() });
+}
+
+async function finishFocusSession({ client }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  const status = enumValue(body.status, ["completed", "partial", "interrupted"] as const, null);
+  const checkpointId = body.checkpointId ? uuidValue(body.checkpointId) : null;
+  const blockReason = resourceText(body.blockReason, 2000);
+  if (!sessionId || !status || (body.checkpointId && !checkpointId)) {
+    return jsonError("專注時段完成資料不正確。", 400);
+  }
+  const result = await client.rpc("finish_focus_session", {
+    p_session_id: sessionId,
+    p_status: status,
+    p_checkpoint_id: checkpointId,
+    p_block_reason: blockReason
+  });
+  if (result.error) return databaseError(result.error);
+  const session = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!session) return jsonError("未能完成專注時段記錄。", 500);
+  return Response.json({ session }, { headers: privateHeaders() });
+}
+
 async function inboxCaptureFiles({ client }: RequestContext, requestedInboxItemId: string) {
   const inboxItemId = uuidValue(requestedInboxItemId);
   if (!inboxItemId) return jsonError("收集箱識別碼不正確。", 400);
@@ -2119,6 +2194,9 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("TASK_RESOURCE_LINK_INVALID")) return jsonError("這個系統內項目不存在、類型不正確，或你沒有權限連結它。", 422);
   if (error.message?.includes("TASK_RESOURCE_IDENTITY_IMMUTABLE")) return jsonError("資源所屬任務及建立者不可直接修改；請移除後重新加入。", 409);
   if (error.message?.includes("TIME_ESTIMATE_INPUT_INVALID")) return jsonError("估時建議的任務資料不正確。", 422);
+  if (error.message?.includes("FOCUS_SESSION_FORBIDDEN")) return jsonError("你沒有權限為這項任務記錄專注時段。", 403);
+  if (error.message?.includes("FOCUS_SESSION_CHECKPOINT_INVALID")) return jsonError("這筆 checkpoint 不屬於這個任務或尚未安全儲存。", 422);
+  if (error.message?.includes("FOCUS_SESSION_INPUT_INVALID")) return jsonError("專注時段資料不正確。", 422);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

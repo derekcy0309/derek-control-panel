@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, CirclePause, Clock3, FilePenLine, Play, X } from "lucide-react";
 import { RestartCheckpointPanel } from "@/components/RestartCheckpointPanel";
+import { FocusSessionHistory } from "@/components/FocusSessionHistory";
 import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { Button } from "@/components/ui/Button";
 import { hasCheckpointContent } from "@/lib/checkpoints";
@@ -37,7 +38,10 @@ export function FocusMode({
   const [editorOpen, setEditorOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const notificationIdRef = useRef<string | null>(null);
+  const focusSessionIdRef = useRef<string | null>(null);
+  const focusClientSessionIdRef = useRef<string | null>(null);
   const checkpoint = useTaskCheckpoint(task.id);
   const { flushDraft, saveState } = checkpoint;
 
@@ -50,6 +54,7 @@ export function FocusMode({
   useEffect(() => {
     if (secondsLeft > 0 || !hasStarted) return;
     setRunning(false);
+    void pauseFocusHistory();
     setEditorOpen(true);
     setMessage("這一節已完成。記下目前位置，讓下次可以直接接續。");
     void completeFocusReminder();
@@ -97,12 +102,14 @@ export function FocusMode({
       const changes: Record<string, unknown> = { status: "in_progress", last_progress_at: new Date().toISOString() };
       if (!task.next_action?.trim()) changes.next_action = nextStep;
       await controlAction("update_task", { id: task.id, changes });
+      const historyIssue = await startOrResumeFocusHistory();
       setActiveStep(nextStep);
       setHasStarted(true);
       setRunning(true);
       setEditorOpen(false);
       setExitRequested(false);
       await scheduleFocusReminder();
+      if (historyIssue) setMessage(historyIssue);
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : "未能開始專注時段。");
     } finally {
@@ -122,9 +129,13 @@ export function FocusMode({
     setEditorOpen(true);
     setBusy(true);
     try {
-      await controlAction("update_task", { id: task.id, changes: { actual_minutes: elapsedMinutes() } });
+      const [taskResult, historyResult] = await Promise.allSettled([
+        controlAction("update_task", { id: task.id, changes: { actual_minutes: elapsedMinutes() } }),
+        pauseFocusHistory()
+      ]);
+      if (taskResult.status === "rejected") throw taskResult.reason;
       onChanged();
-      setMessage("已暫停並記錄這段實際時間。草稿會自動保存，你可以先記下目前位置。");
+      setMessage(historyResult.status === "rejected" ? "已暫停並記錄任務時間；專注歷史暫時未能更新。" : "已暫停並記錄這段實際時間。草稿會自動保存，你可以先記下目前位置。");
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : "已暫停，但未能記錄這段實際時間。可在任務表單補回。");
     } finally {
@@ -138,6 +149,7 @@ export function FocusMode({
       return;
     }
     setRunning(false);
+    void pauseFocusHistory();
     void cancelFocusReminder();
     setExitRequested(true);
     setEditorOpen(true);
@@ -156,7 +168,11 @@ export function FocusMode({
     setMessage("Checkpoint 已安全儲存。");
     setEditorOpen(false);
     setExitRequested(false);
-    if (shouldClose) onClose();
+    if (shouldClose) {
+      const historyIssue = await finishFocusHistory("partial", saved.id);
+      if (historyIssue) setMessage(historyIssue);
+      onClose();
+    }
   }
 
   async function complete() {
@@ -181,6 +197,8 @@ export function FocusMode({
           actual_minutes: elapsedMinutes()
         }
       });
+      const historyIssue = await finishFocusHistory("completed", saved.id);
+      if (historyIssue) setMessage(historyIssue);
       onChanged();
       onClose();
     } catch (caught) {
@@ -206,6 +224,8 @@ export function FocusMode({
     }
     try {
       await controlAction("update_task", { id: task.id, changes: { status: "blocked", blocked_reason: blockedReason } });
+      const historyIssue = await finishFocusHistory("interrupted", saved.id, blockedReason);
+      if (historyIssue) setMessage(historyIssue);
       onChanged();
       onClose();
     } catch (caught) {
@@ -223,6 +243,50 @@ export function FocusMode({
 
   function authorName(authorId: string) {
     return participants.find((participant) => participant.user_id === authorId)?.display_name ?? "任務參與者";
+  }
+
+  async function startOrResumeFocusHistory() {
+    try {
+      if (focusSessionIdRef.current) {
+        const resumed = await controlAction<{ session: { id: string; status: string } }>("resume_focus_session", { sessionId: focusSessionIdRef.current });
+        if (resumed.session.status === "running") {
+          setHistoryVersion((value) => value + 1);
+          return "";
+        }
+        focusSessionIdRef.current = null;
+        focusClientSessionIdRef.current = null;
+      }
+      focusClientSessionIdRef.current ??= crypto.randomUUID();
+      const started = await controlAction<{ session: { id: string } }>("start_focus_session", {
+        clientSessionId: focusClientSessionIdRef.current,
+        taskId: task.id,
+        plannedMinutes: duration
+      });
+      focusSessionIdRef.current = started.session.id;
+      setHistoryVersion((value) => value + 1);
+      return "";
+    } catch {
+      return "專注已開始；歷史記錄暫時未能開始，計時與任務不受影響。";
+    }
+  }
+
+  async function pauseFocusHistory() {
+    if (!focusSessionIdRef.current) return;
+    const result = await controlAction("pause_focus_session", { sessionId: focusSessionIdRef.current });
+    if (result) setHistoryVersion((value) => value + 1);
+  }
+
+  async function finishFocusHistory(status: "completed" | "partial" | "interrupted", checkpointId: string, blockReason?: string) {
+    if (!focusSessionIdRef.current) return "";
+    try {
+      await controlAction("finish_focus_session", { sessionId: focusSessionIdRef.current, status, checkpointId, blockReason });
+      focusSessionIdRef.current = null;
+      focusClientSessionIdRef.current = null;
+      setHistoryVersion((value) => value + 1);
+      return "";
+    } catch {
+      return "Checkpoint 與任務已儲存；專注歷史暫時未能完成記錄。";
+    }
   }
 
   async function scheduleFocusReminder() {
@@ -360,6 +424,7 @@ export function FocusMode({
             <Button variant="secondary" onClick={() => void block()} disabled={busy}><Clock3 className="h-5 w-5" />記錄並標記受阻</Button>
           </div>
         </details>
+        <FocusSessionHistory taskId={task.id} refreshKey={historyVersion} />
       </main>
     </div>
   );

@@ -54,21 +54,21 @@ export function useTaskCheckpoint(taskId: string) {
     snapshot: CheckpointForm,
     state: "draft" | "saved",
     revision: number
-  ): Promise<boolean> => {
+  ): Promise<TaskCheckpoint | null> => {
     const { parsed, payload } = checkpointPayload(snapshot);
     if (parsed.error) {
       setSaveError(parsed.error);
       setSaveState("error");
-      return Promise.resolve(false);
+      return Promise.resolve(null);
     }
     if (state === "saved" && !hasCheckpointContent(snapshot)) {
       setSaveError("請至少填寫目前進度或下一個最小步驟。");
       setSaveState("error");
-      return Promise.resolve(false);
+      return Promise.resolve(null);
     }
 
-    let resolveResult: (saved: boolean) => void = () => undefined;
-    const result = new Promise<boolean>((resolve) => { resolveResult = resolve; });
+    let resolveResult: (saved: TaskCheckpoint | null) => void = () => undefined;
+    const result = new Promise<TaskCheckpoint | null>((resolve) => { resolveResult = resolve; });
     saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
       if (revision === saveRevisionRef.current) {
         setSaveState("saving");
@@ -94,13 +94,13 @@ export function useTaskCheckpoint(taskId: string) {
           }));
         }
         if (revision === saveRevisionRef.current) setSaveState("saved");
-        resolveResult(true);
+        resolveResult(response.checkpoint);
       } catch (caught) {
         if (revision === saveRevisionRef.current) {
           setSaveError(caught instanceof Error ? caught.message : "未能儲存工作記錄。");
           setSaveState("error");
         }
-        resolveResult(false);
+        resolveResult(null);
       }
     });
     return result;
@@ -134,7 +134,7 @@ export function useTaskCheckpoint(taskId: string) {
     const snapshot = formRef.current;
     if (checkpointFormKey(snapshot) === lastSavedKeyRef.current) return Promise.resolve(true);
     const revision = ++saveRevisionRef.current;
-    return persist(snapshot, "draft", revision);
+    return persist(snapshot, "draft", revision).then(Boolean);
   }, [persist]);
 
   const saveCheckpoint = useCallback((overrides: Partial<CheckpointForm> = {}) => {
