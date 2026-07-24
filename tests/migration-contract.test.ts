@@ -22,6 +22,8 @@ const todayPlanMigration = readFileSync(resolve(here, "../supabase/migrations/20
 const todayPlanRollback = readFileSync(resolve(here, "../supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql"), "utf8").toLowerCase();
 const notificationMigration = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.sql"), "utf8").toLowerCase();
 const notificationRollback = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.rollback.sql"), "utf8").toLowerCase();
+const notificationClaimFixMigration = readFileSync(resolve(here, "../supabase/migrations/20260724181119_fix_notification_claim_conflict.sql"), "utf8").toLowerCase();
+const notificationClaimFixRollback = readFileSync(resolve(here, "../supabase/migrations/20260724181119_fix_notification_claim_conflict.rollback.sql"), "utf8").toLowerCase();
 const dependencyMigration = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.sql"), "utf8").toLowerCase();
 const dependencyRollback = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql"), "utf8").toLowerCase();
 const recurrenceMigration = readFileSync(resolve(here, "../supabase/migrations/20260724173935_recurring_task_routines.sql"), "utf8").toLowerCase();
@@ -363,6 +365,13 @@ test("server dispatch verifies the bearer secret and never logs private payloads
   assert.match(notificationRoute, /claim_due_notifications/);
   assert.match(notificationRoute, /complete_notification_attempt/);
   assert.doesNotMatch(notificationRoute, /console\.(?:log|error)|row\.endpoint\)/);
+});
+
+test("notification claim hotfix uses the concrete attempt constraint and has a traceable rollback", () => {
+  assert.match(notificationClaimFixMigration, /create or replace function public\.claim_due_notifications/);
+  assert.match(notificationClaimFixMigration, /on conflict on constraint notification_attempts_delivery_id_subscription_id_attempt_n_key/);
+  assert.doesNotMatch(notificationClaimFixMigration, /on conflict \(delivery_id, subscription_id, attempt_number\)/);
+  assert.match(notificationClaimFixRollback, /on conflict \(delivery_id, subscription_id, attempt_number\)/);
 });
 
 test("browser notification permission is explicit and service worker records opens", () => {

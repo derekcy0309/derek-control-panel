@@ -17,6 +17,8 @@ Migration `20260724162344_notification_system.sql` 新增：
 
 四張帳戶資料表都已啟用 RLS。使用者只能讀取自己的 preference、subscription、delivery 及 attempt；delivery history 不授權由瀏覽器直接新增、修改或刪除。狹窄的 RPC 會重新確認 `auth.uid()` 和該 delivery 的 owner，再處理 Focus cancel／本機完成／通知開啟。Push endpoint 儲存由一個受驗證 RPC 處理，確保同一個瀏覽器 endpoint 只屬於目前帳戶。
 
+Migration `20260724181119_fix_notification_claim_conflict.sql` 修正 dispatch claim RPC 的 PL/pgSQL 名稱歧義：改為指定既有的 notification-attempt 唯一約束，不改變 delivery、subscription 或 task 資料。配對 rollback 會還原當時的函式定義（亦會還原已知錯誤），只應在整個通知版本需要回退時使用。
+
 ## Server dispatch 與排程
 
 `/api/cron/notifications` 只接受與 `CRON_SECRET` 完全一致的 Bearer header。它會：
