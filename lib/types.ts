@@ -59,6 +59,7 @@ export type Task = {
   buffer_days?: number;
   latest_safe_start_date?: string | null;
   progress?: number;
+  project_id?: string | null;
 };
 
 export type Transaction = {
@@ -276,6 +277,28 @@ export type HandoffNote = {
   created_at: string;
 };
 
+export type TaskDependency = {
+  id: string;
+  task_id: string;
+  depends_on_task_id: string;
+  created_by_id: string;
+  created_at: string;
+};
+
+export type ProjectMilestone = {
+  id: string;
+  project_id: string;
+  created_by_id: string;
+  title: string;
+  description: string | null;
+  deadline: string | null;
+  status: "active" | "blocked" | "completed" | "cancelled";
+  critical: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CapacityCheckin = {
   id: string;
   user_id: string;
@@ -392,6 +415,8 @@ export type ControlData = AppData & {
   planning: PlanningMetadata[];
   capacity: CapacityCheckin | null;
   participants: Array<{ user_id: string; display_name: string }>;
+  taskDependencies: TaskDependency[];
+  projectMilestones: ProjectMilestone[];
   notificationPreferences: NotificationPreferences | null;
   notificationDeliveries: NotificationDelivery[];
   activePushSubscriptionCount: number;
@@ -407,6 +432,7 @@ export type TodayData = {
   planning: PlanningMetadata[];
   capacity: CapacityCheckin | null;
   participants: Array<{ user_id: string; display_name: string }>;
+  taskDependencies: TaskDependency[];
 };
 
 export type AppData = {

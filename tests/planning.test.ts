@@ -40,6 +40,38 @@ test("blocked and waiting tasks never become Now", () => {
   assert.equal(result.now?.task.id, "ready");
   assert.equal(result.excludedBlocked, 2);
 });
+test("a task awaiting an unfinished prerequisite never becomes Now", () => {
+  const result = recommendTodayTasks({
+    tasks: [
+      { ...baseTask, id: "prerequisite", title: "先完成這一步", estimated_minutes: 10 },
+      { ...baseTask, id: "dependent", title: "不能提早開始", safety_impact: true, estimated_minutes: 10 }
+    ],
+    dependencies: [{ id: "dependency", task_id: "dependent", depends_on_task_id: "prerequisite", created_by_id: "derek", created_at: "2026-07-22T00:00:00Z" }],
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: { id: "c", user_id: "derek", checkin_date: "2026-07-22", energy_level: "medium", available_minutes: 60, mode: "normal", essential_only: false, notes: null },
+    today: "2026-07-22"
+  });
+  assert.equal(result.now?.task.id, "prerequisite");
+  assert.equal(result.dependencyBlocked, 1);
+});
+test("a completed prerequisite releases the task for normal planning", () => {
+  const result = recommendTodayTasks({
+    tasks: [
+      { ...baseTask, id: "prerequisite", status: "done", title: "已完成", estimated_minutes: 10 },
+      { ...baseTask, id: "dependent", title: "可開始", safety_impact: true, estimated_minutes: 10 }
+    ],
+    dependencies: [{ id: "dependency", task_id: "dependent", depends_on_task_id: "prerequisite", created_by_id: "derek", created_at: "2026-07-22T00:00:00Z" }],
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: null,
+    today: "2026-07-22"
+  });
+  assert.equal(result.now?.task.id, "dependent");
+  assert.equal(result.dependencyBlocked, 0);
+});
 test("auto plan stays inside capacity and reserves buffer", () => {
   const result = recommendTodayTasks({
     tasks: Array.from({ length: 8 }, (_, index) => ({ ...baseTask, id: `t${index}`, estimated_minutes: 20, due_date: null })),

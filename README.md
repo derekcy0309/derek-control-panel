@@ -9,6 +9,7 @@
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
+- 任務依賴與項目里程碑：明確的 blocked-by／blocks 關係、防循環檢查、Project War Room 里程碑，以及不會自動完成或改派的下一步提示
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -46,6 +47,7 @@ supabase/migrations/20260724121803_checkpoint_resource_privacy.sql
 supabase/migrations/20260724150744_inbox_processing_mode.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.sql
 supabase/migrations/20260724162344_notification_system.sql
+supabase/migrations/20260724172250_task_dependencies_milestones.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -59,6 +61,7 @@ supabase/migrations/20260724121803_checkpoint_resource_privacy.rollback.sql
 supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql
 supabase/migrations/20260724162344_notification_system.rollback.sql
+supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -72,7 +75,7 @@ npm test
 npm run build
 ```
 
-測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
+測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
 
 ## 部署
 
@@ -87,3 +90,5 @@ Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback �
 Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 rollback 說明見 [`docs/today-auto-plan.md`](docs/today-auto-plan.md)。
 
 通知的授權、私隱 payload、RLS、server dispatch、排程啟用及 rollback 說明見 [`docs/notifications.md`](docs/notifications.md)。
+
+任務依賴、Project milestones、RLS、cycle prevention 及 rollback 說明見 [`docs/task-dependencies-milestones.md`](docs/task-dependencies-milestones.md)。

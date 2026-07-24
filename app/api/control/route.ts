@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, notificationPreferences, notificationDeliveries, pushSubscriptions] =
+  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, notificationPreferences, notificationDeliveries, pushSubscriptions] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
       client.from("user_planning_metadata").select("*").eq("user_id", user.id),
       client.from("daily_capacity_checkins").select("*").eq("user_id", user.id).eq("checkin_date", today).maybeSingle(),
       client.rpc("participant_profiles"),
+      client.from("task_dependencies").select("*").order("created_at", { ascending: false }),
+      client.from("project_milestones").select("*").order("deadline", { ascending: true, nullsFirst: false }),
       client.from("notification_preferences").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("notification_deliveries")
         .select("id,kind,deliver_at,status,generic_title,generic_body,target_path,sent_at,opened_at,failed_at,last_error_code,created_at")
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
         .limit(20)
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, notificationPreferences, notificationDeliveries, pushSubscriptions]
+  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, notificationPreferences, notificationDeliveries, pushSubscriptions]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -83,6 +85,8 @@ export async function GET(request: NextRequest) {
     planning: planning.data ?? [],
     capacity: capacity.data ?? null,
     participants: participants.data ?? [],
+    taskDependencies: taskDependencies.data ?? [],
+    projectMilestones: projectMilestones.data ?? [],
     notificationPreferences: notificationPreferences.data ?? null,
     notificationDeliveries: notificationDeliveries.data ?? [],
     activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0
@@ -180,6 +184,19 @@ async function todayDashboard({ client, user }: RequestContext) {
   for (const task of [...(activeTasks.data ?? []), ...(plannedTasks.data ?? [])]) {
     taskMap.set(String(task.id), task);
   }
+  const visibleTaskIds = [...taskMap.keys()];
+  const dependencies = visibleTaskIds.length
+    ? await client.from("task_dependencies").select("*").in("task_id", visibleTaskIds).limit(400)
+    : { data: [] as Array<Record<string, unknown>>, error: null };
+  if (dependencies.error) return databaseError(dependencies.error);
+  const prerequisiteIds = [...new Set((dependencies.data ?? []).map((dependency) => String(dependency.depends_on_task_id)))];
+  const prerequisiteTasks = prerequisiteIds.length
+    ? await client.from("tasks").select("*").in("id", prerequisiteIds).is("deleted_at", null).is("archived_at", null).limit(400)
+    : { data: [] as Array<Record<string, unknown>>, error: null };
+  if (prerequisiteTasks.error) return databaseError(prerequisiteTasks.error);
+  for (const task of prerequisiteTasks.data ?? []) {
+    taskMap.set(String(task.id), task);
+  }
   const planningMap = new Map<string, Record<string, unknown>>();
   for (const item of [...(activePlanning.data ?? []), ...(plannedToday.data ?? [])]) {
     planningMap.set(String(item.resource_id), item);
@@ -198,7 +215,8 @@ async function todayDashboard({ client, user }: RequestContext) {
     assignments: assignments.data ?? [],
     planning: [...planningMap.values()],
     capacity: capacity.data ?? null,
-    participants: participants.data ?? []
+    participants: participants.data ?? [],
+    taskDependencies: dependencies.data ?? []
   }, { headers: privateHeaders() });
 }
 
@@ -216,6 +234,10 @@ export async function POST(request: NextRequest) {
   switch (action) {
     case "create_task": return createTask(context, body);
     case "update_task": return updateTask(context, body);
+    case "create_task_dependency": return createTaskDependency(context, body);
+    case "remove_task_dependency": return removeTaskDependency(context, body);
+    case "save_project_milestone": return saveProjectMilestone(context, body);
+    case "delete_project_milestone": return deleteProjectMilestone(context, body);
     case "save_transaction": return saveTransaction(context, body);
     case "save_meeting": return saveMeeting(context, body);
     case "save_balance": return saveBalance(context, body);
@@ -428,7 +450,10 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const requestedHandoffTarget = nullableText(body.handoffToUserId);
   const handoffTarget = requestedHandoffTarget ? uuidValue(requestedHandoffTarget) : null;
   const handoffNote = nullableText(body.handoffNote);
+  const requestedProjectId = nullableText(body.projectId);
+  const projectId = requestedProjectId ? uuidValue(requestedProjectId) : null;
   if (requestedHandoffTarget && !handoffTarget) return jsonError("交接對象不正確。", 400);
+  if (requestedProjectId && !projectId) return jsonError("項目識別碼不正確。", 400);
   if (handoffTarget === user.id) return jsonError("請選擇另一位跟進者。", 422);
   if (handoffTarget && !handoffNote) return jsonError("請輸入交接 notes，讓對方知道第一步。", 422);
   const status = enumValue(body.status, ["not_started", "in_progress", "waiting", "done", "blocked", "cancelled"], "not_started");
@@ -461,6 +486,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     legal_impact: Boolean(body.legalImpact),
     estimated_duration_days: integerValue(body.estimatedDurationDays, 0, 3650),
     buffer_days: integerValue(body.bufferDays, 0, 365) ?? 0,
+    project_id: projectId,
     notes: nullableText(body.notes)
   };
   const result = await client.from("tasks").insert(payload).select("*").single();
@@ -493,7 +519,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
 
   const changes = objectValue(body.changes);
   const allowed = existing.data.owner_id === user.id
-    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at"]
+    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id"]
     : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
   const payload = pick(changes, allowed);
   if (payload.status === "in_progress" && !stringValue(payload.next_action ?? existing.data.next_action)) {
@@ -506,6 +532,97 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   if (!result.data) return jsonError("更新被拒絕。", 403);
   await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
   return Response.json({ task: result.data }, { headers: privateHeaders() });
+}
+
+async function createTaskDependency({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  const dependsOnTaskId = uuidValue(body.dependsOnTaskId);
+  if (!taskId || !dependsOnTaskId) return jsonError("請選擇兩項有效任務。", 400);
+  if (taskId === dependsOnTaskId) return jsonError("任務不能依賴自己。", 422);
+
+  const [task, prerequisite] = await Promise.all([
+    client.from("tasks").select("id").eq("id", taskId).maybeSingle(),
+    client.from("tasks").select("id").eq("id", dependsOnTaskId).maybeSingle()
+  ]);
+  const lookupError = task.error ?? prerequisite.error;
+  if (lookupError) return databaseError(lookupError);
+  if (!task.data || !prerequisite.data) return jsonError("找不到任務或你沒有查看權限。", 404);
+
+  const result = await client.from("task_dependencies")
+    .insert({ task_id: taskId, depends_on_task_id: dependsOnTaskId, created_by_id: user.id })
+    .select("*")
+    .single();
+  if (result.error) {
+    if (result.error.message.includes("TASK_DEPENDENCY_CYCLE")) {
+      return jsonError("這個關係會造成循環依賴，請改用不會互相卡住的次序。", 422);
+    }
+    if (result.error.code === "23505") return jsonError("這個依賴關係已存在。", 409);
+    return databaseError(result.error);
+  }
+  await recordActivity(client, user.id, "task", taskId, "dependency_add", "新增任務依賴");
+  return Response.json({ dependency: result.data }, { status: 201, headers: privateHeaders() });
+}
+
+async function removeTaskDependency({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("依賴關係識別碼不正確。", 400);
+  const existing = await client.from("task_dependencies").select("id,task_id").eq("id", id).maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到依賴關係或你沒有權限。", 404);
+  const result = await client.from("task_dependencies").delete().eq("id", id).select("id").maybeSingle();
+  if (result.error) return databaseError(result.error);
+  if (!result.data) return jsonError("移除依賴關係被拒絕。", 403);
+  await recordActivity(client, user.id, "task", existing.data.task_id, "dependency_remove", "移除任務依賴");
+  return Response.json({ id: result.data.id }, { headers: privateHeaders() });
+}
+
+async function saveProjectMilestone({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  const existing = id
+    ? await client.from("project_milestones").select("*").eq("id", id).maybeSingle()
+    : null;
+  if (existing?.error) return databaseError(existing.error);
+  if (id && !existing?.data) return jsonError("找不到里程碑或你沒有權限。", 404);
+
+  const projectId = id ? String(existing?.data.project_id) : uuidValue(body.projectId);
+  if (!projectId) return jsonError("請選擇有效項目。", 400);
+  const title = requiredText(body.title ?? existing?.data.title, "請輸入里程碑名稱。");
+  if (title instanceof Response) return title;
+  const status = enumValue(body.status ?? existing?.data.status, ["active", "blocked", "completed", "cancelled"], "active")!;
+  const payload = {
+    project_id: projectId,
+    created_by_id: user.id,
+    title,
+    description: nullableText(body.description ?? existing?.data.description),
+    deadline: dateValue(body.deadline ?? existing?.data.deadline),
+    status,
+    critical: typeof body.critical === "boolean" ? body.critical : Boolean(existing?.data.critical)
+  };
+  const result = id
+    ? await client.from("project_milestones").update({
+        title: payload.title,
+        description: payload.description,
+        deadline: payload.deadline,
+        status: payload.status,
+        critical: payload.critical
+      }).eq("id", id).select("*").single()
+    : await client.from("project_milestones").insert(payload).select("*").single();
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "operating_item", projectId, id ? "milestone_update" : "milestone_create", id ? "更新項目里程碑" : "新增項目里程碑");
+  return Response.json({ milestone: result.data }, { status: id ? 200 : 201, headers: privateHeaders() });
+}
+
+async function deleteProjectMilestone({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("里程碑識別碼不正確。", 400);
+  const existing = await client.from("project_milestones").select("id,project_id").eq("id", id).maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到里程碑或你沒有權限。", 404);
+  const result = await client.from("project_milestones").delete().eq("id", id).select("id").maybeSingle();
+  if (result.error) return databaseError(result.error);
+  if (!result.data) return jsonError("刪除里程碑被拒絕。", 403);
+  await recordActivity(client, user.id, "operating_item", existing.data.project_id, "milestone_delete", "刪除項目里程碑");
+  return Response.json({ id: result.data.id }, { headers: privateHeaders() });
 }
 
 async function saveTransaction({ client, user }: RequestContext, body: Record<string, unknown>) {

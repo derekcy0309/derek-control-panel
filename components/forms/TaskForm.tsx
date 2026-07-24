@@ -5,7 +5,7 @@ import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
-import type { Task } from "@/lib/types";
+import type { OperatingItem, Task } from "@/lib/types";
 
 type TaskFormState = {
   scope: string;
@@ -26,6 +26,7 @@ type TaskFormState = {
   estimated_duration_days: string;
   buffer_days: string;
   critical_path: boolean;
+  project_id: string;
   handoff_to_user_id: string;
   handoff_note: string;
 };
@@ -49,6 +50,7 @@ const defaultState: TaskFormState = {
   estimated_duration_days: "",
   buffer_days: "0",
   critical_path: false,
+  project_id: "",
   handoff_to_user_id: "",
   handoff_note: ""
 };
@@ -58,6 +60,7 @@ export function TaskForm({
   initialTask,
   preset,
   participants = [],
+  projects = [],
   compact = false,
   onSaved,
   onCancel
@@ -66,6 +69,7 @@ export function TaskForm({
   initialTask?: Task | null;
   preset?: Partial<TaskFormState>;
   participants?: Array<{ user_id: string; display_name: string }>;
+  projects?: OperatingItem[];
   compact?: boolean;
   onSaved: () => void;
   onCancel?: () => void;
@@ -91,6 +95,7 @@ export function TaskForm({
           estimated_duration_days: String(initialTask.estimated_duration_days ?? ""),
           buffer_days: String(initialTask.buffer_days ?? 0),
           critical_path: initialTask.critical_path ?? false,
+          project_id: initialTask.project_id ?? "",
           handoff_to_user_id: "",
           handoff_note: ""
         }
@@ -136,6 +141,7 @@ export function TaskForm({
       estimatedDurationDays: form.estimated_duration_days ? Number(form.estimated_duration_days) : null,
       bufferDays: Number(form.buffer_days || 0),
       criticalPath: form.critical_path,
+      projectId: form.project_id || null,
       handoffToUserId: form.handoff_to_user_id || null,
       handoffNote: form.handoff_note.trim() || null
     };
@@ -146,7 +152,7 @@ export function TaskForm({
           risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
           estimated_minutes: payload.estimatedMinutes, energy_level: payload.energyLevel, context: payload.context,
           definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
-          buffer_days: payload.bufferDays, critical_path: payload.criticalPath
+          buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId
         } });
       } else {
         await controlAction("create_task", payload);
@@ -185,6 +191,16 @@ export function TaskForm({
         <span className="label">任務標題</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} required />
       </label>
+      {projects.length ? (
+        <label>
+          <span className="label">所屬項目（可選）</span>
+          <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
+            <option value="">不連結項目</option>
+            {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+          </select>
+          <span className="mt-1 block text-xs text-slate-600">連結只用作規劃；不會自動分享任務或改變現有權限。</span>
+        </label>
+      ) : null}
       <label>
         <span className="label">下一步</span>
         <input

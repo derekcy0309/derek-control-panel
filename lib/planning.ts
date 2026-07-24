@@ -1,4 +1,4 @@
-import type { Assignment, CapacityCheckin, PlanningMetadata, Task, UserSettings } from "./types.ts";
+import type { Assignment, CapacityCheckin, PlanningMetadata, Task, TaskDependency, UserSettings } from "./types.ts";
 
 const dayMs = 86_400_000;
 
@@ -71,6 +71,7 @@ export function recommendTodayTasks(input: {
   settings: UserSettings;
   capacity: CapacityCheckin | null;
   planning?: PlanningMetadata[];
+  dependencies?: TaskDependency[];
   today?: string;
   minimumDay?: boolean;
   preference?: "balanced" | "easier";
@@ -92,11 +93,18 @@ export function recommendTodayTasks(input: {
       .filter((item) => item.resource_type === "task")
       .map((item) => [item.resource_id, item])
   );
+  const taskById = new Map(input.tasks.map((task) => [task.id, task]));
+  const dependencyBlockedTaskIds = new Set(
+    (input.dependencies ?? [])
+      .filter((dependency) => taskById.get(dependency.depends_on_task_id)?.status !== "done")
+      .map((dependency) => dependency.task_id)
+  );
   const wipCount = activeWipCount(input.tasks, input.assignments, input.currentUserId);
   const wipLimitReached = wipCount >= (input.settings.wip_limit ?? 3);
   const candidates = input.tasks.filter((task) => {
     if (["done","cancelled"].includes(task.status) || task.deleted_at || task.archived_at) return false;
     if (["blocked", "waiting"].includes(task.status) || Boolean(task.blocked_reason?.trim())) return false;
+    if (dependencyBlockedTaskIds.has(task.id)) return false;
     const owned = (task.owner_id ?? task.user_id) === input.currentUserId;
     const assignment = assignmentByResource.get(task.id);
     const assigned = Boolean(
@@ -217,7 +225,7 @@ export function recommendTodayTasks(input: {
   const eligibleMinutes = scored.reduce((sum, item) => sum + item.minutes, 0);
   const excludedBlocked = input.tasks.filter((task) =>
     !["done", "cancelled"].includes(task.status)
-    && (["blocked", "waiting"].includes(task.status) || Boolean(task.blocked_reason?.trim()))
+    && (["blocked", "waiting"].includes(task.status) || Boolean(task.blocked_reason?.trim()) || dependencyBlockedTaskIds.has(task.id))
   ).length;
   const unplannedMinutes = Math.max(0, eligibleMinutes - usedMinutes);
   return {
@@ -236,6 +244,7 @@ export function recommendTodayTasks(input: {
     unplannedCount: Math.max(0, scored.length - selected.size),
     unplannedMinutes,
     excludedBlocked,
+    dependencyBlocked: dependencyBlockedTaskIds.size,
     wipLimitReached
   };
 }

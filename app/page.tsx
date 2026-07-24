@@ -91,6 +91,7 @@ function TodayCommandCenter() {
           settings: currentData.settings,
           capacity: currentData.capacity,
           planning: currentData.planning,
+          dependencies: currentData.taskDependencies,
           minimumDay,
           preference,
           excludeNowTaskIds: excludedNowIds,
@@ -633,7 +634,7 @@ function PlanPreviewSummary({
           ) : null}
           {plan.excludedBlocked ? (
             <p className="mt-1 text-xs text-slate-600">
-              {plan.excludedBlocked} 項等待／被阻塞任務已排除，不會成為 Now。
+              {plan.excludedBlocked} 項等待／被阻塞任務已排除；尚待前置步驟的任務亦不會成為 Now。
             </p>
           ) : null}
         </div>

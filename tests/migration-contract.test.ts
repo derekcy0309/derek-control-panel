@@ -22,6 +22,8 @@ const todayPlanMigration = readFileSync(resolve(here, "../supabase/migrations/20
 const todayPlanRollback = readFileSync(resolve(here, "../supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql"), "utf8").toLowerCase();
 const notificationMigration = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.sql"), "utf8").toLowerCase();
 const notificationRollback = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.rollback.sql"), "utf8").toLowerCase();
+const dependencyMigration = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.sql"), "utf8").toLowerCase();
+const dependencyRollback = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
 const notificationSettings = readFileSync(resolve(here, "../components/NotificationSettings.tsx"), "utf8").toLowerCase();
@@ -374,4 +376,18 @@ test("notification rollback removes only notification objects and preserves core
     assert.match(notificationRollback, new RegExp(`drop\\s+table\\s+if\\s+exists\\s+public\\.${table}`));
   }
   assert.doesNotMatch(notificationRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|assignments|user_planning_metadata|daily_capacity_checkins)/);
+});
+
+test("dependency migration prevents cycles and keeps task and project access scoped", () => {
+  assert.match(dependencyMigration, /create table if not exists public\.task_dependencies/);
+  assert.match(dependencyMigration, /create table if not exists public\.project_milestones/);
+  assert.match(dependencyMigration, /task_dependency_cycle/);
+  assert.match(dependencyMigration, /alter table public\.task_dependencies enable row level security/);
+  assert.match(dependencyMigration, /alter table public\.project_milestones enable row level security/);
+  assert.match(dependencyMigration, /current_user_can_edit/);
+  assert.match(dependencyMigration, /current_user_can_read\('task', task_id\)/);
+  assert.match(dependencyMigration, /current_user_can_read\('operating_item', project_id\)/);
+  assert.match(dependencyMigration, /project_id uuid references public\.operating_items/);
+  assert.match(dependencyRollback, /rollback_requires_explicit_data_handling/);
+  assert.doesNotMatch(dependencyMigration, /drop table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items)/);
 });
