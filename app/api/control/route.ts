@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "task_resources") return taskResources(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
+  if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
@@ -1798,6 +1799,25 @@ async function openTaskStorageResource({ client }: RequestContext, body: Record<
   return Response.json({ url: signed.data.signedUrl }, { headers: privateHeaders() });
 }
 
+async function timeEstimateSuggestion({ client }: RequestContext, params: URLSearchParams) {
+  const sourceType = enumValue(params.get("sourceType"), ["meeting_action", "deadline", "follow_up"] as const, null);
+  const context = enumValue(params.get("context"), ["mobile", "computer", "home", "office", "phone", "night_shift"] as const, null);
+  const energyLevel = enumValue(params.get("energyLevel"), ["low", "medium", "high"] as const, null);
+  const estimatedMinutes = integerValue(params.get("estimatedMinutes"), 1, 14400);
+  if (!sourceType || !context || !energyLevel || !estimatedMinutes) {
+    return jsonError("估時建議的任務資料不正確。", 400);
+  }
+  const result = await client.rpc("time_estimate_suggestion", {
+    p_task_type: sourceType,
+    p_context: context,
+    p_energy_level: energyLevel,
+    p_estimated_minutes: estimatedMinutes
+  });
+  if (result.error) return databaseError(result.error);
+  const suggestion = Array.isArray(result.data) ? result.data[0] ?? null : result.data ?? null;
+  return Response.json({ suggestion }, { headers: privateHeaders() });
+}
+
 async function inboxCaptureFiles({ client }: RequestContext, requestedInboxItemId: string) {
   const inboxItemId = uuidValue(requestedInboxItemId);
   if (!inboxItemId) return jsonError("收集箱識別碼不正確。", 400);
@@ -2098,6 +2118,7 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("TASK_RESOURCE_OWNER_REQUIRED") || error.message?.includes("TASK_RESOURCE_FORBIDDEN")) return jsonError("你沒有權限管理這項任務的資源。", 403);
   if (error.message?.includes("TASK_RESOURCE_LINK_INVALID")) return jsonError("這個系統內項目不存在、類型不正確，或你沒有權限連結它。", 422);
   if (error.message?.includes("TASK_RESOURCE_IDENTITY_IMMUTABLE")) return jsonError("資源所屬任務及建立者不可直接修改；請移除後重新加入。", 409);
+  if (error.message?.includes("TIME_ESTIMATE_INPUT_INVALID")) return jsonError("估時建議的任務資料不正確。", 422);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

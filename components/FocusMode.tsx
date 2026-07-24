@@ -110,12 +110,26 @@ export function FocusMode({
     }
   }
 
-  function pause() {
+  function elapsedMinutes() {
+    const thisSession = Math.max(1, duration - Math.ceil(secondsLeft / 60));
+    return Math.max(task.actual_minutes ?? 0, thisSession);
+  }
+
+  async function pause() {
     setRunning(false);
     void cancelFocusReminder();
     setExitRequested(false);
     setEditorOpen(true);
-    setMessage("已暫停。草稿會自動保存，你可以先記下目前位置。");
+    setBusy(true);
+    try {
+      await controlAction("update_task", { id: task.id, changes: { actual_minutes: elapsedMinutes() } });
+      onChanged();
+      setMessage("已暫停並記錄這段實際時間。草稿會自動保存，你可以先記下目前位置。");
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "已暫停，但未能記錄這段實際時間。可在任務表單補回。");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function requestClose() {
@@ -164,7 +178,7 @@ export function FocusMode({
         id: task.id,
         changes: {
           status: "done",
-          actual_minutes: Math.max(1, duration - Math.ceil(secondsLeft / 60))
+          actual_minutes: elapsedMinutes()
         }
       });
       onChanged();
@@ -321,7 +335,7 @@ export function FocusMode({
         {message ? <p className="mt-4 rounded-xl bg-amber-400/15 p-3 text-sm font-semibold text-amber-100" role="status">{message}</p> : null}
         <div className="mt-6 flex flex-wrap gap-3">
           {running ? (
-            <Button variant="secondary" onClick={pause} disabled={busy}><CirclePause className="h-5 w-5" />暫停並記錄</Button>
+            <Button variant="secondary" onClick={() => void pause()} disabled={busy}><CirclePause className="h-5 w-5" />暫停並記錄</Button>
           ) : (
             <Button onClick={() => void start()} disabled={busy}><Play className="h-5 w-5" />{secondsLeft < duration * 60 ? "繼續" : "開始"}</Button>
           )}

@@ -14,6 +14,7 @@
 - Body Double 同步專注：兩人各自選任務、ready 後同步開始；可個別暫停／離開／完成，結束前必須儲存自己的 checkpoint，沒有排名或自動改動任務
 - Task Resource Pack：任務可連結網址、文件、Supabase Storage、聯絡人及現有 Notes／SOP／Decision／Project／Waiting；逐項明確分享，Focus Mode 只顯示可開啟資源
 - Mobile Quick Capture：手機文字、拍相、文件、語音轉文字、可選原始錄音與 PWA 網頁分享，全部先進既有 Inbox；上載可重試且私人附件不會因 Inbox 分享而外洩
+- Time Estimation Learning：按每人自己的預計／實際時間提出個人化估時；至少三筆資料才建議，絕不自動覆寫原本預計
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -61,6 +62,7 @@ supabase/migrations/20260725190100_body_double_checkpoint_eligibility.sql
 supabase/migrations/20260725200000_task_resource_pack.sql
 supabase/migrations/20260725200100_task_resource_pack_validation_fix.sql
 supabase/migrations/20260725210000_mobile_quick_capture.sql
+supabase/migrations/20260725220000_time_estimation_learning.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -84,6 +86,7 @@ supabase/migrations/20260725190100_body_double_checkpoint_eligibility.rollback.s
 supabase/migrations/20260725200000_task_resource_pack.rollback.sql
 supabase/migrations/20260725200100_task_resource_pack_validation_fix.rollback.sql
 supabase/migrations/20260725210000_mobile_quick_capture.rollback.sql
+supabase/migrations/20260725220000_time_estimation_learning.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -124,3 +127,5 @@ Body Double 的兩人 session、checkpoint 完成條件、私隱、重連及 rol
 Task Resource Pack 的類型、Focus Mode、RLS、Storage signed URL 及 rollback 說明見 [`docs/task-resource-pack.md`](docs/task-resource-pack.md)。
 
 Mobile Quick Capture 的 Inbox 整合、idempotency、PWA share target、私人附件與 rollback 說明見 [`docs/mobile-quick-capture.md`](docs/mobile-quick-capture.md)。
+
+Time Estimation Learning 的個人化建議、RLS、資料不足邊界及 rollback 說明見 [`docs/time-estimation-learning.md`](docs/time-estimation-learning.md)。

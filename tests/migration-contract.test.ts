@@ -41,6 +41,8 @@ const taskResourceRollback = readFileSync(resolve(here, "../supabase/migrations/
 const taskResourceValidationFix = readFileSync(resolve(here, "../supabase/migrations/20260725200100_task_resource_pack_validation_fix.sql"), "utf8").toLowerCase();
 const mobileCaptureMigration = readFileSync(resolve(here, "../supabase/migrations/20260725210000_mobile_quick_capture.sql"), "utf8").toLowerCase();
 const mobileCaptureRollback = readFileSync(resolve(here, "../supabase/migrations/20260725210000_mobile_quick_capture.rollback.sql"), "utf8").toLowerCase();
+const timeEstimationMigration = readFileSync(resolve(here, "../supabase/migrations/20260725220000_time_estimation_learning.sql"), "utf8").toLowerCase();
+const timeEstimationRollback = readFileSync(resolve(here, "../supabase/migrations/20260725220000_time_estimation_learning.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const quickCaptureRoute = readFileSync(resolve(here, "../app/api/quick-capture/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
@@ -56,6 +58,7 @@ const focusMode = readFileSync(resolve(here, "../components/FocusMode.tsx"), "ut
 const quickCapturePage = readFileSync(resolve(here, "../app/capture/page.tsx"), "utf8").toLowerCase();
 const captureFiles = readFileSync(resolve(here, "../components/inbox/CaptureFiles.tsx"), "utf8").toLowerCase();
 const manifest = readFileSync(resolve(here, "../app/manifest.ts"), "utf8").toLowerCase();
+const timeEstimateHint = readFileSync(resolve(here, "../components/TimeEstimateHint.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -594,4 +597,38 @@ test("Mobile Quick Capture provides mobile fallback, explicit audio retention an
   assert.match(controlRoute, /createSignedUrl\(file\.data\.object_path,\s*300\)/i);
   assert.match(mobileCaptureRollback, /mobile_quick_capture_rollback_requires_explicit_data_handling/);
   assert.doesNotMatch(mobileCaptureRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
+});
+
+test("Time Estimation Learning is private per worker and only records explicit actual-time updates", () => {
+  assert.match(timeEstimationMigration, /create\s+table\s+if\s+not\s+exists\s+public\.task_time_observations/);
+  assert.match(timeEstimationMigration, /unique\s*\(task_id,\s*user_id\)/);
+  assert.match(timeEstimationMigration, /alter\s+table\s+public\.task_time_observations\s+enable\s+row\s+level\s+security/);
+  assert.match(timeEstimationMigration, /using\s*\(user_id\s*=\s*\(select\s+auth\.uid\(\)\)\)/);
+  assert.match(timeEstimationMigration, /revoke\s+all\s+on\s+public\.task_time_observations\s+from\s+public,\s*anon,\s*authenticated/);
+  assert.match(timeEstimationMigration, /grant\s+select\s+on\s+public\.task_time_observations\s+to\s+authenticated/);
+  assert.doesNotMatch(timeEstimationMigration, /grant\s+[^;]*(?:insert|update|delete)[^;]*task_time_observations/);
+  assert.match(timeEstimationMigration, /function\s+public\.capture_task_time_observation/);
+  assert.match(timeEstimationMigration, /actor\s+uuid\s*:=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(timeEstimationMigration, /after\s+insert\s+or\s+update\s+of[\s\S]*actual_minutes/);
+  assert.match(timeEstimationMigration, /case\s+when\s+new\.status\s*=\s*'done'\s+then\s+'completed'\s+else\s+'paused'/);
+  assert.doesNotMatch(timeEstimationMigration, /drop\s+table\s+(?:if\s+exists\s+)?public\.tasks/);
+});
+
+test("Time suggestions require sufficient personal history and never overwrite the entered estimate", () => {
+  assert.match(timeEstimationMigration, /function\s+public\.time_estimate_suggestion/);
+  assert.match(timeEstimationMigration, /security\s+invoker/);
+  assert.match(timeEstimationMigration, /percentile_cont\(0\.5\)/);
+  assert.match(timeEstimationMigration, /having\s+count\(\*\)\s*>=\s*3/);
+  assert.match(timeEstimationMigration, /least\(4::numeric,\s*greatest\(0\.25::numeric/);
+  assert.match(timeEstimationMigration, /revoke\s+all\s+on\s+function\s+public\.time_estimate_suggestion[\s\S]*?from\s+public,\s*anon/);
+  assert.match(timeEstimationMigration, /grant\s+execute\s+on\s+function\s+public\.time_estimate_suggestion[\s\S]*?to\s+authenticated/);
+  assert.match(controlRoute, /view\s*===\s*"time_estimate_suggestion"/);
+  assert.match(controlRoute, /client\.rpc\("time_estimate_suggestion"/);
+  assert.match(timeEstimateHint, /資料不足/);
+  assert.match(timeEstimateHint, /原始預計/);
+  assert.match(timeEstimateHint, /採用建議/);
+  assert.match(taskForm, /actual_minutes/);
+  assert.match(focusMode, /actual_minutes:\s*elapsedminutes\(\)/);
+  assert.match(timeEstimationRollback, /time_estimation_learning_rollback_requires_explicit_data_handling/);
+  assert.doesNotMatch(timeEstimationRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
 });

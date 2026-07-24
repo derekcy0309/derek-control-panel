@@ -8,6 +8,7 @@ import type {
   InboxProcessingEvent,
   TaskCheckpointBundle,
   TaskResourceBundle,
+  TimeEstimateSuggestion,
   TodayData,
   WeeklyReview,
   WeeklyReviewSummary
@@ -34,6 +35,22 @@ export async function loadTaskCheckpoints(taskId: string): Promise<TaskCheckpoin
 
 export async function loadTaskResources(taskId: string): Promise<TaskResourceBundle> {
   return controlRequest<TaskResourceBundle>(`/api/control?view=task_resources&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
+}
+
+export async function loadTimeEstimateSuggestion(input: {
+  sourceType: string;
+  context: string;
+  energyLevel: string;
+  estimatedMinutes: number;
+}): Promise<{ suggestion: TimeEstimateSuggestion | null }> {
+  const params = new URLSearchParams({
+    view: "time_estimate_suggestion",
+    sourceType: input.sourceType,
+    context: input.context,
+    energyLevel: input.energyLevel,
+    estimatedMinutes: String(input.estimatedMinutes)
+  });
+  return controlRequest<{ suggestion: TimeEstimateSuggestion | null }>(`/api/control?${params.toString()}`, { method: "GET" });
 }
 
 export async function loadInboxCaptureFiles(inboxItemId: string): Promise<{ files: InboxCaptureFile[] }> {

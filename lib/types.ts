@@ -138,6 +138,13 @@ export type EnergyLevel = "low" | "medium" | "high";
 export type SharePermission = "view" | "comment" | "update_status" | "edit" | "co_owner";
 export type ShareType = "reference" | "assignment" | "joint";
 
+export type TimeEstimateSuggestion = {
+  suggested_minutes: number;
+  sample_count: number;
+  median_multiplier: number;
+  basis: string;
+};
+
 export type UserProfile = {
   user_id: string;
   display_name: string;

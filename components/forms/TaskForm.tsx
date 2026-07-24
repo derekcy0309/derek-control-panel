@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { TimeEstimateHint } from "@/components/TimeEstimateHint";
 import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import type { OperatingItem, Task } from "@/lib/types";
@@ -20,6 +21,7 @@ type TaskFormState = {
   next_action: string;
   notes: string;
   estimated_minutes: string;
+  actual_minutes: string;
   energy_level: string;
   context: string;
   definition_of_done: string;
@@ -53,6 +55,7 @@ const defaultState: TaskFormState = {
   next_action: "",
   notes: "",
   estimated_minutes: "",
+  actual_minutes: "",
   energy_level: "medium",
   context: "computer",
   definition_of_done: "",
@@ -107,6 +110,7 @@ export function TaskForm({
           next_action: initialTask.next_action ?? "",
           notes: initialTask.notes ?? "",
           estimated_minutes: String(initialTask.estimated_minutes ?? ""),
+          actual_minutes: String(initialTask.actual_minutes ?? ""),
           energy_level: initialTask.energy_level ?? "medium",
           context: initialTask.context ?? "computer",
           definition_of_done: initialTask.definition_of_done ?? "",
@@ -202,6 +206,7 @@ export function TaskForm({
       owner: form.owner.trim() || null,
       completedAt,
       estimatedMinutes: form.estimated_minutes ? Number(form.estimated_minutes) : null,
+      actualMinutes: form.actual_minutes ? Number(form.actual_minutes) : null,
       energyLevel: form.energy_level,
       context: form.context,
       definitionOfDone: form.definition_of_done.trim() || null,
@@ -217,7 +222,7 @@ export function TaskForm({
         await controlAction("update_task", { id: initialTask.id, changes: {
           title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
-          estimated_minutes: payload.estimatedMinutes, energy_level: payload.energyLevel, context: payload.context,
+          estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel, context: payload.context,
           definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
           buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId
         } });
@@ -460,11 +465,13 @@ export function TaskForm({
           />
         </label>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
+        {initialTask ? <label><span className="label">實際時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.actual_minutes} onChange={(event) => update("actual_minutes", event.target.value)} /><span className="mt-1 block text-xs text-slate-500">只用於你自己的估時學習</span></label> : null}
         <label><span className="label">能量</span><select className="field mt-2" value={form.energy_level} onChange={(event) => update("energy_level", event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
         <label><span className="label">情境</span><select className="field mt-2" value={form.context} onChange={(event) => update("context", event.target.value)}><option value="mobile">手機</option><option value="computer">電腦</option><option value="home">家中</option><option value="office">辦公室</option><option value="phone">電話</option><option value="night_shift">夜更可做</option></select></label>
       </div>
+      <TimeEstimateHint sourceType={form.source_type} context={form.context} energyLevel={form.energy_level} estimatedMinutes={form.estimated_minutes} onUse={(minutes) => update("estimated_minutes", String(minutes))} />
       {!compact ? (
         <>
           <div className="grid gap-4 sm:grid-cols-3">
