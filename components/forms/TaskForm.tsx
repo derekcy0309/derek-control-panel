@@ -29,6 +29,15 @@ type TaskFormState = {
   project_id: string;
   handoff_to_user_id: string;
   handoff_note: string;
+  recurrence_enabled: boolean;
+  recurrence_frequency: string;
+  recurrence_weekdays: number[];
+  recurrence_custom_interval_days: string;
+  recurrence_business_days_only: boolean;
+  recurrence_night_shift_pattern: boolean;
+  recurrence_night_shift_on_days: string;
+  recurrence_night_shift_off_days: string;
+  recurrence_cycle_anchor_date: string;
 };
 
 const defaultState: TaskFormState = {
@@ -52,7 +61,16 @@ const defaultState: TaskFormState = {
   critical_path: false,
   project_id: "",
   handoff_to_user_id: "",
-  handoff_note: ""
+  handoff_note: "",
+  recurrence_enabled: false,
+  recurrence_frequency: "weekly",
+  recurrence_weekdays: [],
+  recurrence_custom_interval_days: "7",
+  recurrence_business_days_only: false,
+  recurrence_night_shift_pattern: false,
+  recurrence_night_shift_on_days: "4",
+  recurrence_night_shift_off_days: "2",
+  recurrence_cycle_anchor_date: ""
 };
 
 export function TaskForm({
@@ -97,16 +115,65 @@ export function TaskForm({
           critical_path: initialTask.critical_path ?? false,
           project_id: initialTask.project_id ?? "",
           handoff_to_user_id: "",
-          handoff_note: ""
+          handoff_note: "",
+          recurrence_enabled: false,
+          recurrence_frequency: "weekly",
+          recurrence_weekdays: [],
+          recurrence_custom_interval_days: "7",
+          recurrence_business_days_only: false,
+          recurrence_night_shift_pattern: false,
+          recurrence_night_shift_on_days: "4",
+          recurrence_night_shift_off_days: "2",
+          recurrence_cycle_anchor_date: ""
         }
       : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
+  const [recurrenceWarning, setRecurrenceWarning] = useState("");
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
 
   function update(name: keyof TaskFormState, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function toggleRecurrenceWeekday(day: number) {
+    setForm((current) => ({
+      ...current,
+      recurrence_weekdays: current.recurrence_weekdays.includes(day)
+        ? current.recurrence_weekdays.filter((value) => value !== day)
+        : [...current.recurrence_weekdays, day].sort((left, right) => left - right)
+    }));
+  }
+
+  function recurrencePayload(taskId: string) {
+    return {
+      taskId,
+      frequency: form.recurrence_frequency,
+      weekdays: form.recurrence_weekdays,
+      customIntervalDays: Number(form.recurrence_custom_interval_days),
+      businessDaysOnly: form.recurrence_business_days_only,
+      nightShiftPattern: form.recurrence_night_shift_pattern,
+      nightShiftOnDays: Number(form.recurrence_night_shift_on_days),
+      nightShiftOffDays: Number(form.recurrence_night_shift_off_days),
+      cycleAnchorDate: form.recurrence_cycle_anchor_date || null
+    };
+  }
+
+  async function retryRecurrence() {
+    if (!createdTaskId) return;
+    setSaving(true);
+    setError("");
+    try {
+      await controlAction("save_task_recurrence", recurrencePayload(createdTaskId));
+      setRecurrenceWarning("");
+      onSaved();
+    } catch (caught) {
+      setRecurrenceWarning(caught instanceof Error ? caught.message : "未能設定重複工作，任務仍然安全保留。");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -155,7 +222,17 @@ export function TaskForm({
           buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId
         } });
       } else {
-        await controlAction("create_task", payload);
+        const created = await controlAction<{ task: Task }>("create_task", payload);
+        if (form.recurrence_enabled) {
+          try {
+            await controlAction("save_task_recurrence", recurrencePayload(created.task.id));
+          } catch (caught) {
+            setCreatedTaskId(created.task.id);
+            setRecurrenceWarning(caught instanceof Error ? caught.message : "任務已建立，但未能設定重複工作。");
+            setSaving(false);
+            return;
+          }
+        }
       }
     } catch (caught) {
       setSaving(false);
@@ -169,6 +246,16 @@ export function TaskForm({
 
   return (
     <form className="grid gap-4" onSubmit={save}>
+      {createdTaskId ? (
+        <section className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4" aria-live="polite">
+          <p className="font-extrabold text-amber-950">任務已建立，但重複工作尚未設定。</p>
+          <p className="mt-1 text-sm leading-6 text-amber-900">{recurrenceWarning || "任務沒有遺失；你可以重試，或先返回任務列表。"}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button type="button" onClick={() => void retryRecurrence()} disabled={saving}>{saving ? "設定中…" : "重試設定重複工作"}</Button>
+            <Button type="button" variant="secondary" onClick={onSaved}>先查看任務</Button>
+          </div>
+        </section>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">範圍</span>
@@ -191,6 +278,75 @@ export function TaskForm({
         <span className="label">任務標題</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} required />
       </label>
+      {!initialTask ? (
+        <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input
+              className="mt-1 h-5 w-5 accent-indigo-600"
+              type="checkbox"
+              checked={form.recurrence_enabled}
+              onChange={(event) => update("recurrence_enabled", event.target.checked)}
+            />
+            <span>
+              <span className="block font-extrabold text-slate-900">這是一項重複工作</span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">完成目前這一項後才建立下一項，不會預先產生大量 backlog。之後可在任務卡暫停或恢復。</span>
+            </span>
+          </label>
+          {form.recurrence_enabled ? (
+            <div className="mt-4 grid gap-4">
+              <label>
+                <span className="label">重複方式</span>
+                <select className="field mt-2 bg-white" value={form.recurrence_frequency} onChange={(event) => update("recurrence_frequency", event.target.value)}>
+                  <option value="daily">每日</option>
+                  <option value="weekly">每星期指定日</option>
+                  <option value="monthly">每月同一日</option>
+                  <option value="custom">自訂相隔日數</option>
+                </select>
+              </label>
+              {form.recurrence_frequency === "weekly" ? (
+                <div>
+                  <p className="label">每星期哪一天</p>
+                  <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {[
+                      [0, "日"], [1, "一"], [2, "二"], [3, "三"], [4, "四"], [5, "五"], [6, "六"]
+                    ].map(([day, label]) => {
+                      const value = Number(day);
+                      const checked = form.recurrence_weekdays.includes(value);
+                      return (
+                        <label className={`cursor-pointer rounded-lg border-2 px-3 py-2 text-center text-sm font-bold ${checked ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-200 bg-white text-slate-700"}`} key={value}>
+                          <input className="sr-only" type="checkbox" checked={checked} onChange={() => toggleRecurrenceWeekday(value)} />
+                          星期{label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+              {form.recurrence_frequency === "custom" ? (
+                <label>
+                  <span className="label">每隔幾日</span>
+                  <input className="field mt-2 bg-white" type="number" min="1" max="3650" value={form.recurrence_custom_interval_days} onChange={(event) => update("recurrence_custom_interval_days", event.target.value)} />
+                </label>
+              ) : null}
+              <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.recurrence_business_days_only} onChange={(event) => update("recurrence_business_days_only", event.target.checked)} />
+                只在工作日產生下一項
+              </label>
+              <label className="flex items-start gap-3 rounded-xl bg-white p-3 text-sm text-slate-700">
+                <input className="mt-1 h-5 w-5 accent-indigo-600" type="checkbox" checked={form.recurrence_night_shift_pattern} onChange={(event) => update("recurrence_night_shift_pattern", event.target.checked)} />
+                <span><span className="block font-bold">按夜更週期</span><span className="mt-1 block leading-5">開啟後會以「工作幾日／休息幾日」取代上方日期規則。</span></span>
+              </label>
+              {form.recurrence_night_shift_pattern ? (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label><span className="label">工作日數</span><input className="field mt-2 bg-white" type="number" min="1" max="365" value={form.recurrence_night_shift_on_days} onChange={(event) => update("recurrence_night_shift_on_days", event.target.value)} /></label>
+                  <label><span className="label">休息日數</span><input className="field mt-2 bg-white" type="number" min="0" max="365" value={form.recurrence_night_shift_off_days} onChange={(event) => update("recurrence_night_shift_off_days", event.target.value)} /></label>
+                  <label><span className="label">週期第一日（可選）</span><input className="field mt-2 bg-white" type="date" value={form.recurrence_cycle_anchor_date} onChange={(event) => update("recurrence_cycle_anchor_date", event.target.value)} /></label>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </fieldset>
+      ) : null}
       {projects.length ? (
         <label>
           <span className="label">所屬項目（可選）</span>
@@ -364,7 +520,7 @@ export function TaskForm({
       ) : null}
       {error ? <p className="rounded-lg bg-red-50 p-3 text-base font-semibold text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={saving}>
+        <Button type="submit" disabled={saving || Boolean(createdTaskId)}>
           {saving ? "儲存中..." : initialTask ? "儲存修改" : "新增任務"}
         </Button>
         {onCancel ? (

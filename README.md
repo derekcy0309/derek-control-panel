@@ -10,6 +10,7 @@
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
 - 任務依賴與項目里程碑：明確的 blocked-by／blocks 關係、防循環檢查、Project War Room 里程碑，以及不會自動完成或改派的下一步提示
+- 重複工作：每日／每週／每月／自訂週期／夜更模式；只在完成當前任務後安全建立下一項，可隨時暫停
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -48,6 +49,8 @@ supabase/migrations/20260724150744_inbox_processing_mode.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.sql
 supabase/migrations/20260724162344_notification_system.sql
 supabase/migrations/20260724172250_task_dependencies_milestones.sql
+supabase/migrations/20260724173935_recurring_task_routines.sql
+supabase/migrations/20260724175911_recurrence_foreign_key_indexes.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -62,6 +65,8 @@ supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql
 supabase/migrations/20260724162344_notification_system.rollback.sql
 supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql
+supabase/migrations/20260724173935_recurring_task_routines.rollback.sql
+supabase/migrations/20260724175911_recurrence_foreign_key_indexes.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -75,7 +80,7 @@ npm test
 npm run build
 ```
 
-測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
+測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、重複工作 dedupe／暫停合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
 
 ## 部署
 
@@ -92,3 +97,5 @@ Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 ro
 通知的授權、私隱 payload、RLS、server dispatch、排程啟用及 rollback 說明見 [`docs/notifications.md`](docs/notifications.md)。
 
 任務依賴、Project milestones、RLS、cycle prevention 及 rollback 說明見 [`docs/task-dependencies-milestones.md`](docs/task-dependencies-milestones.md)。
+
+重複工作的 completion-only generation、RLS、私隱與 rollback 說明見 [`docs/recurring-routines.md`](docs/recurring-routines.md)。

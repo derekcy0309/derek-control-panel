@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, notificationPreferences, notificationDeliveries, pushSubscriptions] =
+  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       client.rpc("participant_profiles"),
       client.from("task_dependencies").select("*").order("created_at", { ascending: false }),
       client.from("project_milestones").select("*").order("deadline", { ascending: true, nullsFirst: false }),
+      client.from("task_recurrence_rules").select("*").order("updated_at", { ascending: false }).limit(100),
       client.from("notification_preferences").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("notification_deliveries")
         .select("id,kind,deliver_at,status,generic_title,generic_body,target_path,sent_at,opened_at,failed_at,last_error_code,created_at")
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
         .limit(20)
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, notificationPreferences, notificationDeliveries, pushSubscriptions]
+  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
     participants: participants.data ?? [],
     taskDependencies: taskDependencies.data ?? [],
     projectMilestones: projectMilestones.data ?? [],
+    taskRecurrenceRules: taskRecurrenceRules.data ?? [],
     notificationPreferences: notificationPreferences.data ?? null,
     notificationDeliveries: notificationDeliveries.data ?? [],
     activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0
@@ -238,6 +240,8 @@ export async function POST(request: NextRequest) {
     case "remove_task_dependency": return removeTaskDependency(context, body);
     case "save_project_milestone": return saveProjectMilestone(context, body);
     case "delete_project_milestone": return deleteProjectMilestone(context, body);
+    case "save_task_recurrence": return saveTaskRecurrence(context, body);
+    case "set_task_recurrence_active": return setTaskRecurrenceActive(context, body);
     case "save_transaction": return saveTransaction(context, body);
     case "save_meeting": return saveMeeting(context, body);
     case "save_balance": return saveBalance(context, body);
@@ -574,6 +578,72 @@ async function removeTaskDependency({ client, user }: RequestContext, body: Reco
   if (!result.data) return jsonError("移除依賴關係被拒絕。", 403);
   await recordActivity(client, user.id, "task", existing.data.task_id, "dependency_remove", "移除任務依賴");
   return Response.json({ id: result.data.id }, { headers: privateHeaders() });
+}
+
+async function saveTaskRecurrence({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const recurrence = recurrenceOptions(body);
+  if (recurrence instanceof Response) return recurrence;
+
+  const task = await client.from("tasks").select("*").eq("id", taskId).maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (!task.data) return jsonError("找不到任務或你沒有權限。", 404);
+  if (task.data.owner_id !== user.id) return jsonError("只有任務擁有者可以設定重複工作。", 403);
+  if (["done", "cancelled"].includes(task.data.status)) {
+    return jsonError("請在未完成的任務上設定重複工作。", 422);
+  }
+
+  const payload = {
+    seed_task_id: taskId,
+    owner_id: user.id,
+    created_by_id: user.id,
+    frequency: recurrence.frequency,
+    weekdays: recurrence.weekdays,
+    custom_interval_days: recurrence.customIntervalDays,
+    business_days_only: recurrence.businessDaysOnly,
+    night_shift_pattern: recurrence.nightShiftPattern,
+    night_shift_on_days: recurrence.nightShiftOnDays,
+    night_shift_off_days: recurrence.nightShiftOffDays,
+    cycle_anchor_date: recurrence.cycleAnchorDate,
+    template: recurrenceTemplate(task.data)
+  };
+  const rule = await client.from("task_recurrence_rules")
+    .upsert(payload, { onConflict: "seed_task_id" })
+    .select("*")
+    .single();
+  if (rule.error) return databaseError(rule.error);
+
+  const linked = await client.from("tasks")
+    .update({ recurrence_rule_id: rule.data.id })
+    .eq("id", taskId)
+    .select("id")
+    .maybeSingle();
+  if (linked.error) return databaseError(linked.error);
+  if (!linked.data) return jsonError("重複規則已儲存，但未能連結任務；請重新整理後重試。", 409);
+
+  await recordActivity(client, user.id, "task", taskId, "recurrence_save", "設定重複工作");
+  return Response.json({ rule: rule.data }, { headers: privateHeaders() });
+}
+
+async function setTaskRecurrenceActive({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id || typeof body.isActive !== "boolean") return jsonError("重複工作設定不正確。", 400);
+  const existing = await client.from("task_recurrence_rules")
+    .select("id,seed_task_id,is_active")
+    .eq("id", id)
+    .maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到重複工作或你沒有權限。", 404);
+  const result = await client.from("task_recurrence_rules")
+    .update({ is_active: body.isActive })
+    .eq("id", id)
+    .select("*")
+    .maybeSingle();
+  if (result.error) return databaseError(result.error);
+  if (!result.data) return jsonError("更新重複工作被拒絕。", 403);
+  await recordActivity(client, user.id, "task", existing.data.seed_task_id, body.isActive ? "recurrence_resume" : "recurrence_pause", body.isActive ? "恢復重複工作" : "暫停重複工作");
+  return Response.json({ rule: result.data }, { headers: privateHeaders() });
 }
 
 async function saveProjectMilestone({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -1298,6 +1368,91 @@ function hkDateString() {
   }).format(new Date());
 }
 
+type RecurrenceOptions = {
+  frequency: "daily" | "weekly" | "monthly" | "custom";
+  weekdays: number[];
+  customIntervalDays: number | null;
+  businessDaysOnly: boolean;
+  nightShiftPattern: boolean;
+  nightShiftOnDays: number | null;
+  nightShiftOffDays: number | null;
+  cycleAnchorDate: string | null;
+};
+
+function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | Response {
+  const frequency = enumValue(body.frequency, ["daily", "weekly", "monthly", "custom"] as const, null);
+  if (!frequency) return jsonError("請選擇有效的重複方式。", 422);
+  const rawWeekdays = body.weekdays === undefined ? [] : body.weekdays;
+  if (!Array.isArray(rawWeekdays) || rawWeekdays.length > 7) return jsonError("重複日子不正確。", 422);
+  const weekdays = [...new Set(rawWeekdays.map((value) => integerValue(value, 0, 6)))];
+  if (weekdays.some((value) => value === null)) return jsonError("重複日子不正確。", 422);
+  const validWeekdays = weekdays as number[];
+  if (frequency === "weekly" && validWeekdays.length === 0) return jsonError("每星期重複請至少選擇一天。", 422);
+
+  const customIntervalDays = frequency === "custom"
+    ? integerValue(body.customIntervalDays, 1, 3650)
+    : null;
+  if (frequency === "custom" && customIntervalDays === null) {
+    return jsonError("自訂週期請填寫 1 至 3650 日。", 422);
+  }
+  const nightShiftPattern = typeof body.nightShiftPattern === "boolean" ? body.nightShiftPattern : false;
+  const businessDaysOnly = typeof body.businessDaysOnly === "boolean" ? body.businessDaysOnly : false;
+  const nightShiftOnDays = nightShiftPattern ? integerValue(body.nightShiftOnDays, 1, 365) : null;
+  const nightShiftOffDays = nightShiftPattern ? integerValue(body.nightShiftOffDays, 0, 365) : null;
+  if (nightShiftPattern && (nightShiftOnDays === null || nightShiftOffDays === null)) {
+    return jsonError("夜更週期請填寫工作日和休息日數目。", 422);
+  }
+  const rawAnchor = stringValue(body.cycleAnchorDate);
+  const cycleAnchorDate = rawAnchor ? dateValue(rawAnchor) : null;
+  if (rawAnchor && !cycleAnchorDate) return jsonError("夜更週期開始日期不正確。", 422);
+
+  return {
+    frequency,
+    weekdays: frequency === "weekly" ? validWeekdays : [],
+    customIntervalDays,
+    businessDaysOnly,
+    nightShiftPattern,
+    nightShiftOnDays,
+    nightShiftOffDays,
+    cycleAnchorDate
+  };
+}
+
+function recurrenceTemplate(task: Record<string, unknown>) {
+  const dueDate = dateValue(task.due_date);
+  const followUpDate = dateValue(task.follow_up_date);
+  const followUpOffsetDays = dueDate && followUpDate ? calendarDayDifference(followUpDate, dueDate) : null;
+  const area = enumValue(task.area, ["work", "family", "personal"] as const, "personal")!;
+  return {
+    scope: area === "work" ? "company" : "home",
+    area,
+    sourceType: enumValue(task.source_type, ["meeting_action", "deadline", "follow_up"] as const, "follow_up"),
+    title: stringValue(task.title).trim().slice(0, 500),
+    description: nullableText(task.description),
+    nextAction: nullableText(task.next_action),
+    definitionOfDone: nullableText(task.definition_of_done),
+    estimatedMinutes: integerValue(task.estimated_minutes, 0, 14400),
+    energyLevel: enumValue(task.energy_level, ["low", "medium", "high"] as const, null),
+    context: nullableText(task.context),
+    risk: enumValue(task.risk, ["low", "medium", "high"] as const, "low"),
+    criticalPath: Boolean(task.critical_path),
+    safetyImpact: Boolean(task.safety_impact),
+    childImpact: Boolean(task.child_impact),
+    legalImpact: Boolean(task.legal_impact),
+    estimatedDurationDays: integerValue(task.estimated_duration_days, 0, 3650),
+    bufferDays: integerValue(task.buffer_days, 0, 365) ?? 0,
+    projectId: uuidValue(task.project_id),
+    followUpOffsetDays
+  };
+}
+
+function calendarDayDifference(laterDate: string, earlierDate: string) {
+  const later = Date.parse(`${laterDate}T00:00:00Z`);
+  const earlier = Date.parse(`${earlierDate}T00:00:00Z`);
+  const difference = Math.round((later - earlier) / 86_400_000);
+  return Number.isFinite(difference) && difference >= 0 && difference <= 3650 ? difference : null;
+}
+
 function stringValue(value: unknown) { return typeof value === "string" ? value : ""; }
 function nullableText(value: unknown) { const text = stringValue(value).trim(); return text ? text.slice(0, 10000) : null; }
 function requiredText(value: unknown, message: string) { const text = stringValue(value).trim(); return text ? text.slice(0, 500) : jsonError(message, 422); }
@@ -1403,6 +1558,9 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("INBOX_UNDO_SOURCE_MISSING")) return jsonError("原始收集箱內容已不存在，未有改動其他資料。", 409);
   if (error.message?.includes("INVALID_PLAN_") || error.message?.includes("DUPLICATE_TASK") || error.message?.includes("PLAN_DATE_REQUIRED") || error.message?.includes("IDEMPOTENCY_KEY_REQUIRED")) return jsonError("今日建議內容不正確，未有加入任何任務。", 422);
   if (error.message?.includes("TASK_NOT_ELIGIBLE")) return jsonError("其中一項任務已完成、被阻塞或權限有變，請重新安排。", 409);
+  if (error.message?.includes("RECURRENCE_SEED_TASK_OWNER_INVALID") || error.message?.includes("TASK_RECURRENCE_ACCESS_DENIED")) return jsonError("重複工作必須由任務擁有者設定。", 403);
+  if (error.message?.includes("RECURRENCE_OWNER_REQUIRED") || error.message?.includes("RECURRENCE_CREATOR_REQUIRED") || error.message?.includes("RECURRENCE_IDENTITY_IMMUTABLE")) return jsonError("重複工作身份資料不可更改。", 403);
+  if (error.message?.includes("RECURRENCE_TEMPLATE_INVALID") || error.message?.includes("RECURRENCE_DATE_NOT_FOUND")) return jsonError("重複工作設定不正確，未有建立下一項任務。", 422);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

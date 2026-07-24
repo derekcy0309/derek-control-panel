@@ -24,6 +24,10 @@ const notificationMigration = readFileSync(resolve(here, "../supabase/migrations
 const notificationRollback = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.rollback.sql"), "utf8").toLowerCase();
 const dependencyMigration = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.sql"), "utf8").toLowerCase();
 const dependencyRollback = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql"), "utf8").toLowerCase();
+const recurrenceMigration = readFileSync(resolve(here, "../supabase/migrations/20260724173935_recurring_task_routines.sql"), "utf8").toLowerCase();
+const recurrenceRollback = readFileSync(resolve(here, "../supabase/migrations/20260724173935_recurring_task_routines.rollback.sql"), "utf8").toLowerCase();
+const recurrenceIndexesMigration = readFileSync(resolve(here, "../supabase/migrations/20260724175911_recurrence_foreign_key_indexes.sql"), "utf8").toLowerCase();
+const recurrenceIndexesRollback = readFileSync(resolve(here, "../supabase/migrations/20260724175911_recurrence_foreign_key_indexes.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
 const notificationSettings = readFileSync(resolve(here, "../components/NotificationSettings.tsx"), "utf8").toLowerCase();
@@ -390,4 +394,31 @@ test("dependency migration prevents cycles and keeps task and project access sco
   assert.match(dependencyMigration, /project_id uuid references public\.operating_items/);
   assert.match(dependencyRollback, /rollback_requires_explicit_data_handling/);
   assert.doesNotMatch(dependencyMigration, /drop table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items)/);
+});
+
+test("recurring routines are owner-scoped, generate only on completion, and do not prefill a backlog", () => {
+  assert.match(recurrenceMigration, /create table if not exists public\.task_recurrence_rules/);
+  assert.match(recurrenceMigration, /create table if not exists public\.task_recurrence_generations/);
+  assert.match(recurrenceMigration, /alter table public\.task_recurrence_rules enable row level security/);
+  assert.match(recurrenceMigration, /alter table public\.task_recurrence_generations enable row level security/);
+  assert.match(recurrenceMigration, /unique \(recurrence_rule_id, source_task_id\)/);
+  assert.match(recurrenceMigration, /after update of status on public\.tasks/);
+  assert.match(recurrenceMigration, /new\.status <> 'done' or old\.status = 'done'/);
+  assert.match(recurrenceMigration, /where id = new\.recurrence_rule_id and owner_id = new\.owner_id and is_active/);
+  assert.match(recurrenceMigration, /visibility\n  \) values \([\s\S]*?'private'/);
+  assert.match(recurrenceMigration, /task_recurrence_rules_select_own/);
+  assert.match(recurrenceMigration, /task_recurrence_generations_select_own/);
+  assert.match(recurrenceRollback, /recurring_routines_rollback_requires_explicit_data_handling/);
+  assert.doesNotMatch(recurrenceMigration, /drop table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items)/);
+});
+
+test("recurrence foreign keys have additive, reversible covering indexes", () => {
+  for (const index of [
+    "task_recurrence_rules_created_by_idx",
+    "task_recurrence_generations_source_task_idx",
+    "task_recurrence_generations_generated_task_idx"
+  ]) {
+    assert.match(recurrenceIndexesMigration, new RegExp(`create\\s+index\\s+if\\s+not\\s+exists\\s+${index}`));
+    assert.match(recurrenceIndexesRollback, new RegExp(`drop\\s+index\\s+if\\s+exists\\s+public\\.${index}`));
+  }
 });

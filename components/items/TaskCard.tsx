@@ -8,7 +8,7 @@ import { RiskBadge, ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
-import type { Assignment, HandoffNote, Task, TaskDependency } from "@/lib/types";
+import type { Assignment, HandoffNote, Task, TaskDependency, TaskRecurrenceRule } from "@/lib/types";
 
 export function TaskCard({
   task,
@@ -20,6 +20,7 @@ export function TaskCard({
   handoffNotes,
   allTasks,
   taskDependencies,
+  taskRecurrenceRules,
   prominent = false
 }: {
   task: Task;
@@ -31,6 +32,7 @@ export function TaskCard({
   handoffNotes: HandoffNote[];
   allTasks: Task[];
   taskDependencies: TaskDependency[];
+  taskRecurrenceRules: TaskRecurrenceRule[];
   prominent?: boolean;
 }) {
   const activeHandoff = assignments.some((item) =>
@@ -40,6 +42,9 @@ export function TaskCard({
   );
   const incomingDependencies = taskDependencies.filter((item) => item.task_id === task.id);
   const blockedTasks = taskDependencies.filter((item) => item.depends_on_task_id === task.id);
+  const recurrenceRule = task.recurrence_rule_id
+    ? taskRecurrenceRules.find((rule) => rule.id === task.recurrence_rule_id) ?? null
+    : null;
   async function updateTask(values: Partial<Task>) {
     await controlAction("update_task", { id: task.id, changes: values });
     onChanged();
@@ -90,6 +95,12 @@ export function TaskCard({
         currentUserId={currentUserId}
         onChanged={onChanged}
       />
+      <TaskRecurrencePanel
+        task={task}
+        rule={recurrenceRule}
+        currentUserId={currentUserId}
+        onChanged={onChanged}
+      />
       <div className="mt-4 grid gap-3 text-base text-slate-700 sm:grid-cols-2">
         <p className="flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-indigo-600" />
@@ -128,6 +139,75 @@ export function TaskCard({
       </div>
     </article>
   );
+}
+
+function TaskRecurrencePanel({
+  task,
+  rule,
+  currentUserId,
+  onChanged
+}: {
+  task: Task;
+  rule: TaskRecurrenceRule | null;
+  currentUserId: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const ownerCanManage = (task.owner_id ?? task.user_id) === currentUserId;
+  if (!rule) return null;
+  const recurrenceRule: TaskRecurrenceRule = rule;
+
+  async function setActive(isActive: boolean) {
+    setBusy(true);
+    setError("");
+    try {
+      await controlAction("set_task_recurrence_active", { id: recurrenceRule.id, isActive });
+      onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "未能更新重複工作。請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3" aria-label="重複工作">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h4 className="text-sm font-extrabold text-slate-900">重複工作</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-700">{recurrenceSummary(recurrenceRule)}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-xs font-bold ${recurrenceRule.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-700"}`}>
+          {recurrenceRule.is_active ? "已啟用" : "已暫停"}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {recurrenceRule.is_active ? "完成目前任務後才會建立下一項，不會預先堆積未來任務。" : "規則已暫停；完成目前任務不會再建立下一項。"}
+        {recurrenceRule.last_generated_for ? ` 最近一次安排：${formatDate(recurrenceRule.last_generated_for)}。` : ""}
+      </p>
+      {ownerCanManage ? (
+        <div className="mt-3">
+          <Button type="button" variant={recurrenceRule.is_active ? "secondary" : "success"} disabled={busy} onClick={() => void setActive(!recurrenceRule.is_active)}>
+            {busy ? "處理中…" : recurrenceRule.is_active ? "暫停重複工作" : "恢復重複工作"}
+          </Button>
+        </div>
+      ) : null}
+      {error ? <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs font-semibold text-amber-900" role="alert">{error}</p> : null}
+    </section>
+  );
+}
+
+function recurrenceSummary(rule: TaskRecurrenceRule) {
+  if (rule.night_shift_pattern) {
+    return `夜更週期：工作 ${rule.night_shift_on_days ?? 0} 日，休息 ${rule.night_shift_off_days ?? 0} 日`;
+  }
+  if (rule.frequency === "daily") return rule.business_days_only ? "每個工作日" : "每日";
+  if (rule.frequency === "monthly") return rule.business_days_only ? "每月同一日（遇週末順延）" : "每月同一日";
+  if (rule.frequency === "custom") return `每隔 ${rule.custom_interval_days ?? 0} 日`;
+  const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+  const days = rule.weekdays.map((day) => `週${weekdayLabels[day] ?? "?"}`).join("、");
+  return `每星期：${days || "未設定"}`;
 }
 
 function TaskDependencyPanel({

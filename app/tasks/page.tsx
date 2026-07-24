@@ -99,6 +99,7 @@ function TasksContent() {
               handoffNotes={data.handoffNotes}
               allTasks={data.tasks}
               taskDependencies={data.taskDependencies}
+              taskRecurrenceRules={data.taskRecurrenceRules}
               onChanged={reload}
               onEdit={setEditingTask}
             />

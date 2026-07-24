@@ -60,6 +60,7 @@ export type Task = {
   latest_safe_start_date?: string | null;
   progress?: number;
   project_id?: string | null;
+  recurrence_rule_id?: string | null;
 };
 
 export type Transaction = {
@@ -299,6 +300,29 @@ export type ProjectMilestone = {
   updated_at: string;
 };
 
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "custom";
+
+export type TaskRecurrenceRule = {
+  id: string;
+  seed_task_id: string;
+  owner_id: string;
+  created_by_id: string;
+  frequency: RecurrenceFrequency;
+  weekdays: number[];
+  custom_interval_days: number | null;
+  business_days_only: boolean;
+  night_shift_pattern: boolean;
+  night_shift_on_days: number | null;
+  night_shift_off_days: number | null;
+  cycle_anchor_date: string | null;
+  template: Record<string, unknown>;
+  is_active: boolean;
+  last_generated_at: string | null;
+  last_generated_for: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CapacityCheckin = {
   id: string;
   user_id: string;
@@ -417,6 +441,7 @@ export type ControlData = AppData & {
   participants: Array<{ user_id: string; display_name: string }>;
   taskDependencies: TaskDependency[];
   projectMilestones: ProjectMilestone[];
+  taskRecurrenceRules: TaskRecurrenceRule[];
   notificationPreferences: NotificationPreferences | null;
   notificationDeliveries: NotificationDelivery[];
   activePushSubscriptionCount: number;
