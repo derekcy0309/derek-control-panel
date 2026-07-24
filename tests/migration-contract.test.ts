@@ -12,6 +12,10 @@ const handoffRollback = readFileSync(resolve(here, "../supabase/migrations/20260
 const connectionMigration = readFileSync(resolve(here, "../supabase/migrations/20260724042142_trusted_handoff_connections.sql"), "utf8").toLowerCase();
 const reclaimMigration = readFileSync(resolve(here, "../supabase/migrations/20260724050000_reclaim_task_handoff.sql"), "utf8").toLowerCase();
 const reclaimRollback = readFileSync(resolve(here, "../supabase/migrations/20260724050000_reclaim_task_handoff.rollback.sql"), "utf8").toLowerCase();
+const checkpointMigration = readFileSync(resolve(here, "../supabase/migrations/20260724120731_restart_checkpoints.sql"), "utf8").toLowerCase();
+const checkpointRollback = readFileSync(resolve(here, "../supabase/migrations/20260724120731_restart_checkpoints.rollback.sql"), "utf8").toLowerCase();
+const checkpointResourceMigration = readFileSync(resolve(here, "../supabase/migrations/20260724121803_checkpoint_resource_privacy.sql"), "utf8").toLowerCase();
+const checkpointResourceRollback = readFileSync(resolve(here, "../supabase/migrations/20260724121803_checkpoint_resource_privacy.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const taskForm = readFileSync(resolve(here, "../components/forms/TaskForm.tsx"), "utf8").toLowerCase();
 const handoffControls = readFileSync(resolve(here, "../components/items/TaskHandoffControls.tsx"), "utf8").toLowerCase();
@@ -133,4 +137,63 @@ test("sender reclaim is transactional, attributed and protected by invoker right
   assert.doesNotMatch(reclaimMigration, /security\s+definer/);
   assert.match(reclaimRollback, /drop\s+function\s+if\s+exists\s+public\.reclaim_task_handoff/);
   assert.match(reclaimRollback, /intentionally\s+preserved/);
+});
+
+test("restart checkpoints are additive, persistent and indexed for latest-first reads", () => {
+  assert.match(checkpointMigration, /create\s+table\s+if\s+not\s+exists\s+public\.task_checkpoints/);
+  assert.match(checkpointMigration, /task_id\s+uuid\s+not\s+null\s+references\s+public\.tasks/);
+  assert.match(checkpointMigration, /last_worked_at\s+timestamptz\s+not\s+null\s+default\s+now\(\)/);
+  assert.match(checkpointMigration, /task_checkpoints_task_history_idx/);
+  assert.match(checkpointMigration, /where\s+state\s*=\s*'draft'/);
+  assert.doesNotMatch(checkpointMigration, /drop\s+table\s+(?:if\s+exists\s+)?public\.tasks/);
+});
+
+test("checkpoint drafts and saved history have separate RLS visibility", () => {
+  assert.match(checkpointMigration, /alter\s+table\s+public\.task_checkpoints\s+enable\s+row\s+level\s+security/);
+  assert.match(checkpointMigration, /state\s*=\s*'saved'[\s\S]*current_user_can_read\('task',\s*task_id\)/);
+  assert.match(checkpointMigration, /state\s*=\s*'draft'[\s\S]*author_id\s*=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(checkpointMigration, /permission\s+in\s+\('update_status',\s*'edit',\s*'co_owner'\)/);
+  assert.match(checkpointMigration, /a\.status\s+in\s+\('accepted',\s*'in_progress',\s*'waiting',\s*'blocked'\)/);
+});
+
+test("checkpoint writes are idempotent, validated and use invoker rights", () => {
+  assert.match(checkpointMigration, /function\s+public\.save_task_checkpoint/);
+  assert.match(checkpointMigration, /security\s+invoker/);
+  assert.match(checkpointMigration, /pg_advisory_xact_lock/);
+  assert.match(checkpointMigration, /checkpoint_content_required/);
+  assert.match(checkpointMigration, /checkpoint_immutable/);
+  assert.match(checkpointMigration, /resource_url\s*!~\s*'\^https:/);
+  assert.doesNotMatch(checkpointMigration, /function\s+public\.save_task_checkpoint[\s\S]*?security\s+definer/);
+});
+
+test("latest checkpoint view honours underlying RLS and rollback preserves task data", () => {
+  assert.match(checkpointMigration, /view\s+public\.latest_task_checkpoints[\s\S]*security_invoker\s*=\s*true/);
+  assert.match(checkpointRollback, /drop\s+table\s+if\s+exists\s+public\.task_checkpoints/);
+  assert.doesNotMatch(checkpointRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|assignments|share_records)/);
+});
+
+test("checkpoint API exposes explicit read, draft and final-save operations", () => {
+  assert.match(controlRoute, /view\s*===\s*"task_checkpoints"/);
+  assert.match(controlRoute, /case\s+"save_checkpoint_draft"/);
+  assert.match(controlRoute, /case\s+"save_checkpoint"/);
+  assert.match(controlRoute, /client\.rpc\("save_task_checkpoint"/);
+  assert.match(controlRoute, /checkpointtext\(body\.nextminimumstep,\s*2000/);
+  assert.match(controlRoute, /related resources|相關資源/);
+});
+
+test("checkpoint resource URLs remain author-private when a task is shared", () => {
+  assert.match(checkpointResourceMigration, /create\s+table\s+if\s+not\s+exists\s+public\.task_checkpoint_resources/);
+  assert.match(checkpointResourceMigration, /alter\s+table\s+public\.task_checkpoint_resources\s+enable\s+row\s+level\s+security/);
+  assert.match(checkpointResourceMigration, /task_checkpoint_resources_select_author/);
+  assert.match(checkpointResourceMigration, /author_id\s*=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(checkpointResourceMigration, /new\.resource_links\s*:=\s*'\[\]'/);
+  assert.match(checkpointResourceMigration, /insert\s+into\s+public\.task_checkpoint_resources/);
+  assert.match(controlRoute, /from\("task_checkpoint_resources"\)/);
+});
+
+test("saved checkpoint resources are immutable and privacy rollback preserves core data", () => {
+  assert.match(checkpointResourceMigration, /checkpoint_state\s*<>\s*'draft'/);
+  assert.match(checkpointResourceMigration, /raise\s+exception\s+'checkpoint_immutable'/);
+  assert.match(checkpointResourceRollback, /drop\s+table\s+if\s+exists\s+public\.task_checkpoint_resources/);
+  assert.doesNotMatch(checkpointResourceRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|assignments|share_records)/);
 });

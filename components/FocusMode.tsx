@@ -1,50 +1,295 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, CirclePause, Clock3, Play, X } from "lucide-react";
+import { Check, CirclePause, Clock3, FilePenLine, Play, X } from "lucide-react";
+import { RestartCheckpointPanel } from "@/components/RestartCheckpointPanel";
 import { Button } from "@/components/ui/Button";
+import { hasCheckpointContent } from "@/lib/checkpoints";
 import { controlAction } from "@/lib/control-api";
-import type { Task } from "@/lib/types";
+import type { Task, TaskCheckpoint } from "@/lib/types";
+import { useTaskCheckpoint } from "@/hooks/useTaskCheckpoint";
 
-export function FocusMode({ task, defaultMinutes = 25, onClose, onChanged }: { task: Task; defaultMinutes?: number; onClose: () => void; onChanged: () => void }) {
+type FocusModeProps = {
+  task: Task;
+  defaultMinutes?: number;
+  participants?: Array<{ user_id: string; display_name: string }>;
+  sharedTask?: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+};
+
+export function FocusMode({
+  task,
+  defaultMinutes = 25,
+  participants = [],
+  sharedTask = false,
+  onClose,
+  onChanged
+}: FocusModeProps) {
   const [duration, setDuration] = useState(defaultMinutes);
   const [secondsLeft, setSecondsLeft] = useState(defaultMinutes * 60);
   const [running, setRunning] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   const [message, setMessage] = useState("");
   const [blockedReason, setBlockedReason] = useState("缺資料");
+  const [activeStep, setActiveStep] = useState(task.next_action ?? "");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [exitRequested, setExitRequested] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const checkpoint = useTaskCheckpoint(task.id);
+  const { flushDraft, saveState } = checkpoint;
 
-  useEffect(() => { if (!running || secondsLeft <= 0) return; const id = window.setInterval(() => setSecondsLeft((value) => value - 1), 1000); return () => clearInterval(id); }, [running, secondsLeft]);
-  const clock = useMemo(() => `${String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:${String(secondsLeft % 60).padStart(2, "0")}`, [secondsLeft]);
+  useEffect(() => {
+    if (!running || secondsLeft <= 0) return;
+    const id = window.setInterval(() => setSecondsLeft((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(id);
+  }, [running, secondsLeft]);
 
-  function changeDuration(minutes: number) { setDuration(minutes); setSecondsLeft(minutes * 60); setRunning(false); }
+  useEffect(() => {
+    if (secondsLeft > 0 || !hasStarted) return;
+    setRunning(false);
+    setEditorOpen(true);
+    setMessage("這一節已完成。記下目前位置，讓下次可以直接接續。");
+  }, [hasStarted, secondsLeft]);
 
-  async function start() {
-    if (!task.next_action?.trim()) { setMessage("開始前先加入一個清晰、可見的下一步。"); return; }
-    await controlAction("update_task", { id: task.id, changes: { status: "in_progress", last_progress_at: new Date().toISOString() } });
-    setRunning(true); onChanged();
+  useEffect(() => {
+    function flushWhenHidden() {
+      if (document.visibilityState === "hidden") void flushDraft();
+    }
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      if (!["pending", "saving", "error"].includes(saveState)) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    document.addEventListener("visibilitychange", flushWhenHidden);
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", flushWhenHidden);
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+    };
+  }, [flushDraft, saveState]);
+
+  const clock = useMemo(
+    () => `${String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:${String(secondsLeft % 60).padStart(2, "0")}`,
+    [secondsLeft]
+  );
+
+  function changeDuration(minutes: number) {
+    setDuration(minutes);
+    setSecondsLeft(minutes * 60);
+    setRunning(false);
+  }
+
+  async function start(requestedStep?: string) {
+    const nextStep = requestedStep?.trim() || activeStep.trim() || task.next_action?.trim() || "";
+    if (!nextStep) {
+      setMessage("開始前先加入一個清晰、可見的下一步。");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const changes: Record<string, unknown> = { status: "in_progress", last_progress_at: new Date().toISOString() };
+      if (!task.next_action?.trim()) changes.next_action = nextStep;
+      await controlAction("update_task", { id: task.id, changes });
+      setActiveStep(nextStep);
+      setHasStarted(true);
+      setRunning(true);
+      setEditorOpen(false);
+      setExitRequested(false);
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "未能開始專注時段。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function pause() {
+    setRunning(false);
+    setExitRequested(false);
+    setEditorOpen(true);
+    setMessage("已暫停。草稿會自動保存，你可以先記下目前位置。");
+  }
+
+  function requestClose() {
+    if (!hasStarted && !hasCheckpointContent(checkpoint.form)) {
+      onClose();
+      return;
+    }
+    setRunning(false);
+    setExitRequested(true);
+    setEditorOpen(true);
+    setMessage("離開前留下 checkpoint，避免下次重新搜尋工作位置。");
+  }
+
+  async function saveCheckpointFromPanel() {
+    setBusy(true);
+    const shouldClose = exitRequested;
+    const saved = await checkpoint.saveCheckpoint();
+    setBusy(false);
+    if (!saved) {
+      setMessage("Checkpoint 尚未儲存，請保留此畫面並重試。");
+      return;
+    }
+    setMessage("Checkpoint 已安全儲存。");
+    setEditorOpen(false);
+    setExitRequested(false);
+    if (shouldClose) onClose();
   }
 
   async function complete() {
-    await controlAction("update_task", { id: task.id, changes: { status: "done", actual_minutes: Math.max(1, duration - Math.ceil(secondsLeft / 60)) } });
-    onChanged(); onClose();
+    setRunning(false);
+    setBusy(true);
+    const saved = await checkpoint.saveCheckpoint({
+      completedSummary: checkpoint.form.completedSummary || "已完成目前專注步驟",
+      currentPosition: checkpoint.form.currentPosition || "已到達這一步的完成標準"
+    });
+    if (!saved) {
+      setBusy(false);
+      setEditorOpen(true);
+      setMessage("Checkpoint 尚未儲存，所以任務未被標記完成。請重試。");
+      return;
+    }
+    try {
+      await controlAction("update_task", {
+        id: task.id,
+        changes: {
+          status: "done",
+          actual_minutes: Math.max(1, duration - Math.ceil(secondsLeft / 60))
+        }
+      });
+      onChanged();
+      onClose();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Checkpoint 已儲存，但未能更新任務狀態。");
+      setBusy(false);
+    }
   }
 
   async function block() {
-    await controlAction("update_task", { id: task.id, changes: { status: "blocked", blocked_reason: blockedReason } });
-    onChanged(); onClose();
+    setRunning(false);
+    setBusy(true);
+    const saved = await checkpoint.saveCheckpoint({
+      currentPosition: checkpoint.form.currentPosition || "工作已暫停，等待處理阻塞",
+      nextMinimumStep: checkpoint.form.nextMinimumStep || activeStep || task.next_action || "",
+      blockedReason
+    });
+    if (!saved) {
+      setBusy(false);
+      setEditorOpen(true);
+      setMessage("Checkpoint 尚未儲存，所以任務未被標記受阻。請重試。");
+      return;
+    }
+    try {
+      await controlAction("update_task", { id: task.id, changes: { status: "blocked", blocked_reason: blockedReason } });
+      onChanged();
+      onClose();
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : "Checkpoint 已儲存，但未能更新任務狀態。");
+      setBusy(false);
+    }
+  }
+
+  function resumeFromCheckpoint(savedCheckpoint: TaskCheckpoint) {
+    const nextStep = savedCheckpoint.next_minimum_step?.trim();
+    if (!nextStep) return;
+    setActiveStep(nextStep);
+    void start(nextStep);
+  }
+
+  function authorName(authorId: string) {
+    return participants.find((participant) => participant.user_id === authorId)?.display_name ?? "任務參與者";
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex min-h-[100dvh] flex-col bg-[#111318] text-white" role="dialog" aria-modal="true" aria-label="專注模式">
-      <header className="flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-8"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-300">專注模式</p><p className="mt-1 text-sm text-white/60">只處理眼前這一步</p></div><button className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-white/10" onClick={onClose} aria-label="離開專注模式"><X className="h-5 w-5" /></button></header>
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-5 py-8 sm:px-8">
-        <div className="mb-5 flex flex-wrap gap-2">{[15,25,45].map((minutes) => <button key={minutes} className={`min-h-11 rounded-xl px-4 text-sm font-bold ${duration === minutes ? "bg-white text-slate-900" : "bg-white/8 text-white/70 hover:bg-white/12"}`} onClick={() => changeDuration(minutes)}>{minutes} 分鐘</button>)}</div>
-        <p className="font-mono text-5xl font-bold tabular-nums tracking-tight sm:text-7xl" aria-live="polite">{clock}</p>
-        <h1 className="mt-8 text-2xl font-bold leading-tight sm:text-4xl">{task.title}</h1>
-        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.06] p-5"><p className="text-xs font-bold uppercase tracking-[.14em] text-indigo-300">現在做</p><p className="mt-2 text-lg font-semibold leading-8">{task.next_action || "請先返回任務加入下一步"}</p>{task.definition_of_done ? <><p className="mt-5 text-xs font-bold uppercase tracking-[.14em] text-white/45">完成定義</p><p className="mt-2 leading-7 text-white/75">{task.definition_of_done}</p></> : null}</section>
-        {message ? <p className="mt-4 rounded-xl bg-amber-400/15 p-3 text-sm font-semibold text-amber-100" role="alert">{message}</p> : null}
-        <div className="mt-6 flex flex-wrap gap-3">{running ? <Button variant="secondary" onClick={() => setRunning(false)}><CirclePause className="h-5 w-5" />暫停</Button> : <Button onClick={start}><Play className="h-5 w-5" />{secondsLeft < duration * 60 ? "繼續" : "開始"}</Button>}<Button variant="success" onClick={complete}><Check className="h-5 w-5" />完成</Button></div>
-        <details className="mt-7 rounded-2xl border border-white/10 p-4"><summary className="cursor-pointer text-sm font-bold text-white/65">遇到阻礙</summary><div className="mt-4 flex flex-col gap-3 sm:flex-row"><select className="field border-white/15 bg-white/10 text-white" value={blockedReason} onChange={(event) => setBlockedReason(event.target.value)}><option className="text-slate-900">缺資料</option><option className="text-slate-900">等人回覆</option><option className="text-slate-900">不知道怎樣做</option><option className="text-slate-900">任務太大</option><option className="text-slate-900">沒有時間</option><option className="text-slate-900">今日能量不足</option><option className="text-slate-900">應該交辦</option><option className="text-slate-900">其他</option></select><Button variant="danger" onClick={block}><Clock3 className="h-5 w-5" />標記受阻</Button></div></details>
+    <div className="fixed inset-0 z-[80] flex min-h-[100dvh] flex-col overflow-y-auto bg-[#111318] text-white" role="dialog" aria-modal="true" aria-label="專注模式">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-[#111318]/95 px-4 py-3 backdrop-blur sm:px-8">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[.16em] text-indigo-300">專注模式</p>
+          <p className="mt-1 text-sm text-white/60">只處理眼前這一步</p>
+        </div>
+        <button className="grid min-h-11 min-w-11 place-items-center rounded-xl hover:bg-white/10" onClick={requestClose} aria-label="離開專注模式">
+          <X className="h-5 w-5" />
+        </button>
+      </header>
+      <main className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8">
+        <h1 className="text-2xl font-bold leading-tight sm:text-4xl">{task.title}</h1>
+
+        <RestartCheckpointPanel
+          latest={checkpoint.latest}
+          history={checkpoint.history}
+          form={checkpoint.form}
+          loading={checkpoint.loading}
+          loadError={checkpoint.loadError}
+          saveError={checkpoint.saveError}
+          saveState={checkpoint.saveState}
+          busy={busy}
+          editorOpen={editorOpen}
+          exitRequested={exitRequested}
+          sharedTask={sharedTask}
+          authorName={authorName}
+          onUpdate={checkpoint.updateField}
+          onResume={resumeFromCheckpoint}
+          onRetryLoad={() => void checkpoint.retryLoad()}
+          onRetrySave={() => void checkpoint.flushDraft()}
+          onSave={() => void saveCheckpointFromPanel()}
+          onCancelExit={() => {
+            setExitRequested(false);
+            setMessage("你仍在專注模式；草稿會繼續自動保存。");
+          }}
+        />
+
+        <div className="mt-7 flex flex-wrap gap-2">
+          {[15, 25, 45].map((minutes) => (
+            <button
+              key={minutes}
+              className={`min-h-11 rounded-xl px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${duration === minutes ? "bg-white text-slate-900" : "bg-white/8 text-white/70 hover:bg-white/12"}`}
+              onClick={() => changeDuration(minutes)}
+              disabled={running || busy}
+            >
+              {minutes} 分鐘
+            </button>
+          ))}
+        </div>
+        <p className="mt-5 font-mono text-5xl font-bold tabular-nums tracking-tight sm:text-7xl" aria-live="polite">{clock}</p>
+        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.06] p-5">
+          <p className="text-xs font-bold uppercase tracking-[.14em] text-indigo-300">現在做</p>
+          <p className="mt-2 text-lg font-semibold leading-8">{activeStep || "請先返回任務加入下一步"}</p>
+          {task.definition_of_done ? (
+            <>
+              <p className="mt-5 text-xs font-bold uppercase tracking-[.14em] text-white/45">完成定義</p>
+              <p className="mt-2 leading-7 text-white/75">{task.definition_of_done}</p>
+            </>
+          ) : null}
+        </section>
+        {message ? <p className="mt-4 rounded-xl bg-amber-400/15 p-3 text-sm font-semibold text-amber-100" role="status">{message}</p> : null}
+        <div className="mt-6 flex flex-wrap gap-3">
+          {running ? (
+            <Button variant="secondary" onClick={pause} disabled={busy}><CirclePause className="h-5 w-5" />暫停並記錄</Button>
+          ) : (
+            <Button onClick={() => void start()} disabled={busy}><Play className="h-5 w-5" />{secondsLeft < duration * 60 ? "繼續" : "開始"}</Button>
+          )}
+          <Button variant="secondary" onClick={() => { setEditorOpen(true); setExitRequested(false); }} disabled={busy}>
+            <FilePenLine className="h-5 w-5" />記錄進度
+          </Button>
+          <Button variant="success" onClick={() => void complete()} disabled={busy}><Check className="h-5 w-5" />完成</Button>
+        </div>
+        <details className="mt-7 rounded-2xl border border-white/10 p-4">
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-bold text-white/65">遇到阻礙</summary>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <select className="field border-white/15 bg-white/10 text-white" value={blockedReason} onChange={(event) => setBlockedReason(event.target.value)}>
+              <option className="text-slate-900">缺資料</option>
+              <option className="text-slate-900">等人回覆</option>
+              <option className="text-slate-900">不知道怎樣做</option>
+              <option className="text-slate-900">任務太大</option>
+              <option className="text-slate-900">沒有時間</option>
+              <option className="text-slate-900">今日能量不足</option>
+              <option className="text-slate-900">應該交辦</option>
+              <option className="text-slate-900">其他</option>
+            </select>
+            <Button variant="secondary" onClick={() => void block()} disabled={busy}><Clock3 className="h-5 w-5" />記錄並標記受阻</Button>
+          </div>
+        </details>
       </main>
     </div>
   );

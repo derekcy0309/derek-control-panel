@@ -250,6 +250,32 @@ export type CapacityCheckin = {
   notes: string | null;
 };
 
+export type TaskCheckpointResource = {
+  label: string;
+  url: string;
+};
+
+export type TaskCheckpoint = {
+  id: string;
+  task_id: string;
+  author_id: string;
+  state: "draft" | "saved";
+  completed_summary: string | null;
+  current_position: string | null;
+  next_minimum_step: string | null;
+  resource_links: TaskCheckpointResource[];
+  blocked_reason: string | null;
+  last_worked_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskCheckpointBundle = {
+  latest: TaskCheckpoint | null;
+  draft: TaskCheckpoint | null;
+  history: TaskCheckpoint[];
+};
+
 export type ControlData = AppData & {
   currentUser: CurrentUser;
   profile: UserProfile;

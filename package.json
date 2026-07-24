@@ -1,6 +1,6 @@
 {
   "name": "derek-control-panel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit --incremental false",
-    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/migration-contract.test.ts"
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/checkpoints.test.ts tests/migration-contract.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.52.0",

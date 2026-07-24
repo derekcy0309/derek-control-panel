@@ -1,6 +1,6 @@
 "use client";
 
-import type { ControlData } from "@/lib/types";
+import type { ControlData, TaskCheckpointBundle } from "@/lib/types";
 
 let refreshInFlight: Promise<void> | null = null;
 let lastRefreshAt = 0;
@@ -11,6 +11,10 @@ export async function loadControlData(): Promise<ControlData> {
 
 export async function searchControlData(query: string) {
   return controlRequest<{ results: Array<Record<string, unknown>> }>(`/api/control?view=search&q=${encodeURIComponent(query)}`, { method: "GET" });
+}
+
+export async function loadTaskCheckpoints(taskId: string): Promise<TaskCheckpointBundle> {
+  return controlRequest<TaskCheckpointBundle>(`/api/control?view=task_checkpoints&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
 }
 
 export async function controlAction<T = Record<string, unknown>>(action: string, payload: Record<string, unknown> = {}) {

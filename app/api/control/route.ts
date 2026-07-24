@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
 
   const view = request.nextUrl.searchParams.get("view") ?? "bootstrap";
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
+  if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view !== "bootstrap") return jsonError("不支援的資料檢視。", 400);
 
   const { client, user } = context;
@@ -101,6 +102,8 @@ export async function POST(request: NextRequest) {
     case "save_settings": return saveSettings(context, body);
     case "admin_reset_password": return adminResetPassword(context, body);
     case "capacity_checkin": return saveCapacity(context, body);
+    case "save_checkpoint_draft": return saveTaskCheckpoint(context, body, "draft");
+    case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
     default: return jsonError("不支援的操作。", 400);
   }
 }
@@ -612,6 +615,81 @@ async function search({ client }: RequestContext, query: string) {
   return Response.json({ results }, { headers: privateHeaders() });
 }
 
+async function taskCheckpoints({ client, user }: RequestContext, requestedTaskId: string) {
+  const taskId = uuidValue(requestedTaskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const task = await client.from("tasks").select("id").eq("id", taskId).maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (!task.data) return jsonError("找不到任務或你沒有權限查看。", 404);
+
+  const result = await client.from("task_checkpoints")
+    .select("*")
+    .eq("task_id", taskId)
+    .order("last_worked_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(21);
+  if (result.error) return databaseError(result.error);
+  const rows = result.data ?? [];
+  const checkpointIds = rows.map((item) => item.id);
+  const resources = checkpointIds.length
+    ? await client.from("task_checkpoint_resources")
+      .select("checkpoint_id,label,url,position")
+      .in("checkpoint_id", checkpointIds)
+      .order("position", { ascending: true })
+    : { data: [], error: null };
+  if (resources.error) return databaseError(resources.error);
+  const rowsWithPrivateResources = rows.map((item) => ({
+    ...item,
+    resource_links: (resources.data ?? [])
+      .filter((resource) => resource.checkpoint_id === item.id)
+      .map((resource) => ({ label: resource.label, url: resource.url }))
+  }));
+  const history = rowsWithPrivateResources.filter((item) => item.state === "saved").slice(0, 20);
+  return Response.json({
+    latest: history[0] ?? null,
+    draft: rowsWithPrivateResources.find((item) => item.state === "draft" && item.author_id === user.id) ?? null,
+    history
+  }, { headers: privateHeaders() });
+}
+
+async function saveTaskCheckpoint(
+  { client, user }: RequestContext,
+  body: Record<string, unknown>,
+  state: "draft" | "saved"
+) {
+  const taskId = uuidValue(body.taskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const completedSummary = checkpointText(body.completedSummary, 4000, "剛完成的內容");
+  if (completedSummary instanceof Response) return completedSummary;
+  const currentPosition = checkpointText(body.currentPosition, 4000, "目前進度");
+  if (currentPosition instanceof Response) return currentPosition;
+  const nextMinimumStep = checkpointText(body.nextMinimumStep, 2000, "下一個最小步驟");
+  if (nextMinimumStep instanceof Response) return nextMinimumStep;
+  const blockedReason = checkpointText(body.blockedReason, 2000, "阻塞原因");
+  if (blockedReason instanceof Response) return blockedReason;
+  const resourceLinks = checkpointResources(body.resourceLinks);
+  if (resourceLinks instanceof Response) return resourceLinks;
+
+  const result = await client.rpc("save_task_checkpoint", {
+    p_task_id: taskId,
+    p_state: state,
+    p_completed_summary: completedSummary,
+    p_current_position: currentPosition,
+    p_next_minimum_step: nextMinimumStep,
+    p_resource_links: resourceLinks,
+    p_blocked_reason: blockedReason
+  });
+  if (result.error) return databaseError(result.error);
+  const checkpoint = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!checkpoint) return jsonError("未能讀取已儲存的 checkpoint。", 500);
+  if (state === "saved") {
+    await recordActivity(client, user.id, "task", taskId, "checkpoint_saved", "已儲存工作重啟記錄");
+  }
+  return Response.json({
+    checkpoint: { ...checkpoint, resource_links: resourceLinks }
+  }, { headers: privateHeaders() });
+}
+
 async function recordActivity(client: SupabaseClient, actorId: string, resourceType: string, resourceId: string, action: string, summary: string) {
   await client.from("activity_logs").insert({ resource_type: resourceType, resource_id: resourceId, actor_id: actorId, action, summary });
 }
@@ -638,6 +716,24 @@ function objectValue(value: unknown): Record<string, unknown> { return value && 
 function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: T[number] | null): T[number] | null { const text = stringValue(value); return allowed.includes(text) ? text as T[number] : fallback; }
 function pick(source: Record<string, unknown>, keys: readonly string[]) { return Object.fromEntries(Object.entries(source).filter(([key]) => keys.includes(key))); }
 function safeUrl(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; try { const url = new URL(text); return url.protocol === "https:" ? text.slice(0, 2000) : null; } catch { return null; } }
+function checkpointText(value: unknown, maxLength: number, label: string) {
+  const text = stringValue(value).trim();
+  if (text.length > maxLength) return jsonError(`${label}太長，請縮短後再儲存。`, 422);
+  return text || null;
+}
+function checkpointResources(value: unknown) {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 10) return jsonError("相關資源格式不正確；最多可加入 10 個連結。", 422);
+  const resources: Array<{ label: string; url: string }> = [];
+  for (const item of value) {
+    const resource = objectValue(item);
+    const url = safeUrl(resource.url);
+    const label = stringValue(resource.label).trim();
+    if (!url || label.length > 200) return jsonError("相關資源必須是有效的 HTTPS 網址。", 422);
+    resources.push({ label: label || new URL(url).hostname, url });
+  }
+  return resources;
+}
 function privateHeaders() { return { "Cache-Control": "private, no-store, max-age=0", "X-Content-Type-Options": "nosniff" }; }
 function jsonError(message: string, status: number) { return Response.json({ error: message }, { status, headers: privateHeaders() }); }
 function databaseError(error: { code?: string; message?: string }) {
@@ -647,6 +743,10 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("TASK_ALREADY_HANDED_OFF")) return jsonError("此任務已經有人跟進，請先完成目前交接。", 409);
   if (error.message?.includes("HANDOFF_TARGET_NOT_CONNECTED")) return jsonError("這位使用者尚未加入你的交接名單。", 422);
   if (error.message?.includes("INVALID_HANDOFF")) return jsonError("交接資料不正確，請重新檢查。", 422);
+  if (error.message?.includes("CHECKPOINT_FORBIDDEN")) return jsonError("你沒有權限更新這項任務的工作記錄。", 403);
+  if (error.message?.includes("CHECKPOINT_CONTENT_REQUIRED")) return jsonError("請至少填寫目前進度或下一個最小步驟。", 422);
+  if (error.message?.includes("CHECKPOINT_RESOURCE_INVALID")) return jsonError("相關資源必須是有效的 HTTPS 網址。", 422);
+  if (error.message?.includes("CHECKPOINT_IMMUTABLE")) return jsonError("已儲存的歷史記錄不可覆寫；請新增一筆。", 409);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

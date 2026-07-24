@@ -71,7 +71,16 @@ function TodayCommandCenter() {
 
       {adding ? <Modal title="快速新增任務" onClose={() => setAdding(false)}><TaskForm userId={data.currentUser.id} participants={data.participants} compact onSaved={() => { setAdding(false); void reload(); }} onCancel={() => setAdding(false)} /></Modal> : null}
       {capacityOpen ? <CapacityModal current={data.capacity} onClose={() => setCapacityOpen(false)} onSaved={() => { setCapacityOpen(false); void reload(); }} /> : null}
-      {focusTask ? <FocusMode task={focusTask} defaultMinutes={data.settings.focus_minutes ?? 25} onClose={() => setFocusTask(null)} onChanged={reload} /> : null}
+      {focusTask ? (
+        <FocusMode
+          task={focusTask}
+          defaultMinutes={data.settings.focus_minutes ?? 25}
+          participants={data.participants}
+          sharedTask={focusTask.visibility !== "private" || data.shares.some((share) => share.resource_type === "task" && share.resource_id === focusTask.id && !share.revoked_at)}
+          onClose={() => setFocusTask(null)}
+          onChanged={reload}
+        />
+      ) : null}
     </div>
   );
 }
