@@ -542,6 +542,7 @@ function TodayCommandCenter() {
           task={focusTask}
           defaultMinutes={focusMinutes ?? currentData.settings.focus_minutes ?? 25}
           participants={currentData.participants}
+          currentUserId={currentData.currentUser.id}
           sharedTask={
             focusTask.visibility !== "private"
             || currentData.shares.some((share) =>

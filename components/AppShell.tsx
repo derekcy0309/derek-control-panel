@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
+import { clearOfflineWrites } from "@/lib/offline-write-queue";
+import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 
 const navGroups = [
   {
@@ -76,6 +78,7 @@ const mobileNav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [displayName, setDisplayName] = useState("我的");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
 
@@ -86,6 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const data = await loadControlData();
         if (!active) return;
         setDisplayName(data.currentUser.displayName);
+        setCurrentUserId(data.currentUser.id);
         setMustChangePassword(Boolean(data.profile.must_change_password));
         if (data.settings) {
         const theme = data.settings.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.settings.theme;
@@ -104,7 +108,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => { setMoreOpen(false); }, [pathname]);
 
   async function signOut() {
-    await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" });
+    const response = await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" });
+    if (response.ok && currentUserId) await clearOfflineWrites(currentUserId).catch(() => undefined);
     window.location.reload();
   }
 
@@ -123,6 +128,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <Brand displayName={displayName} compact />
           <div className="flex items-center gap-2">
+            <OfflineWriteQueueStatus userId={currentUserId} />
             <Link className="icon-button" href="/capture" aria-label="快速收集"><PlusCircle className="h-5 w-5" /></Link>
             <Link className="icon-button" href="/search" aria-label="搜尋"><Search className="h-5 w-5" /></Link>
             <button className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:block lg:hidden" onClick={signOut}>登出</button>

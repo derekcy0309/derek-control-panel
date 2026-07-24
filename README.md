@@ -16,6 +16,7 @@
 - Mobile Quick Capture：手機文字、拍相、文件、語音轉文字、可選原始錄音與 PWA 網頁分享，全部先進既有 Inbox；上載可重試且私人附件不會因 Inbox 分享而外洩
 - Time Estimation Learning：按每人自己的預計／實際時間提出個人化估時；至少三筆資料才建議，絕不自動覆寫原本預計
 - Focus Session History：持久保留每節專注的計劃／實際時間、暫停、結果、阻塞與 checkpoint，只用於恢復工作和個人估時
+- Offline Write Queue：離線安全保留純文字 Inbox、checkpoint 與 Focus 暫停／完成；恢復連線後按帳戶同步、衝突不覆蓋、登出即清除本機待同步資料
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -65,6 +66,7 @@ supabase/migrations/20260725200100_task_resource_pack_validation_fix.sql
 supabase/migrations/20260725210000_mobile_quick_capture.sql
 supabase/migrations/20260725220000_time_estimation_learning.sql
 supabase/migrations/20260725230000_focus_session_history.sql
+supabase/migrations/20260725235900_offline_write_queue.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -90,6 +92,7 @@ supabase/migrations/20260725200100_task_resource_pack_validation_fix.rollback.sq
 supabase/migrations/20260725210000_mobile_quick_capture.rollback.sql
 supabase/migrations/20260725220000_time_estimation_learning.rollback.sql
 supabase/migrations/20260725230000_focus_session_history.rollback.sql
+supabase/migrations/20260725235900_offline_write_queue.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -134,3 +137,5 @@ Mobile Quick Capture 的 Inbox 整合、idempotency、PWA share target、私人�
 Time Estimation Learning 的個人化建議、RLS、資料不足邊界及 rollback 說明見 [`docs/time-estimation-learning.md`](docs/time-estimation-learning.md)。
 
 Focus Session History 的狀態、checkpoint 關聯、RLS、idempotency 及 rollback 說明見 [`docs/focus-session-history.md`](docs/focus-session-history.md)。
+
+Offline Write Queue 的帳戶分區、本機私隱、衝突、冪等同步及 rollback 說明見 [`docs/offline-write-queue.md`](docs/offline-write-queue.md)。

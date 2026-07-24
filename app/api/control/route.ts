@@ -615,6 +615,7 @@ export async function POST(request: NextRequest) {
     case "pause_focus_session": return pauseFocusSession(context, body);
     case "resume_focus_session": return resumeFocusSession(context, body);
     case "finish_focus_session": return finishFocusSession(context, body);
+    case "finish_focus_session_after_checkpoint": return finishFocusSessionAfterCheckpoint(context, body);
     case "notification_opened": return markNotificationOpened(context, body);
     case "test_notification": return enqueueTestNotification(context);
     case "save_weekly_review": return saveWeeklyReview(context, body);
@@ -873,6 +874,16 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   const existing = await client.from("tasks").select("*").eq("id", id).maybeSingle();
   if (existing.error) return databaseError(existing.error);
   if (!existing.data) return jsonError("找不到任務或你沒有權限。", 404);
+
+  const expectedLastProgressAt = body.expectedLastProgressAt === undefined ? null : timestampValue(body.expectedLastProgressAt);
+  if (body.expectedLastProgressAt !== undefined && !expectedLastProgressAt) return jsonError("離線同步版本資料不正確。", 400);
+  if (
+    expectedLastProgressAt
+    && existing.data.last_progress_at
+    && new Date(existing.data.last_progress_at).getTime() > new Date(expectedLastProgressAt).getTime()
+  ) {
+    return jsonError("OFFLINE_TASK_CONFLICT", 409);
+  }
 
   const changes = objectValue(body.changes);
   const allowed = existing.data.owner_id === user.id
@@ -1893,6 +1904,26 @@ async function finishFocusSession({ client }: RequestContext, body: Record<strin
   return Response.json({ session }, { headers: privateHeaders() });
 }
 
+async function finishFocusSessionAfterCheckpoint({ client }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  const status = enumValue(body.status, ["completed", "partial", "interrupted"] as const, null);
+  const checkpointClientMutationId = uuidValue(body.checkpointClientMutationId);
+  const blockReason = resourceText(body.blockReason, 2000);
+  if (!sessionId || !status || !checkpointClientMutationId) {
+    return jsonError("離線專注時段完成資料不正確。", 400);
+  }
+  const result = await client.rpc("finish_focus_session_after_checkpoint", {
+    p_session_id: sessionId,
+    p_status: status,
+    p_checkpoint_client_mutation_id: checkpointClientMutationId,
+    p_block_reason: blockReason
+  });
+  if (result.error) return databaseError(result.error);
+  const session = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!session) return jsonError("未能完成離線專注時段記錄。", 500);
+  return Response.json({ session }, { headers: privateHeaders() });
+}
+
 async function inboxCaptureFiles({ client }: RequestContext, requestedInboxItemId: string) {
   const inboxItemId = uuidValue(requestedInboxItemId);
   if (!inboxItemId) return jsonError("收集箱識別碼不正確。", 400);
@@ -1939,16 +1970,29 @@ async function saveTaskCheckpoint(
   if (blockedReason instanceof Response) return blockedReason;
   const resourceLinks = checkpointResources(body.resourceLinks);
   if (resourceLinks instanceof Response) return resourceLinks;
+  const clientMutationId = body.clientMutationId ? uuidValue(body.clientMutationId) : null;
+  if (body.clientMutationId && !clientMutationId) return jsonError("離線 checkpoint 識別碼不正確。", 400);
 
-  const result = await client.rpc("save_task_checkpoint", {
-    p_task_id: taskId,
-    p_state: state,
-    p_completed_summary: completedSummary,
-    p_current_position: currentPosition,
-    p_next_minimum_step: nextMinimumStep,
-    p_resource_links: resourceLinks,
-    p_blocked_reason: blockedReason
-  });
+  const result = clientMutationId
+    ? await client.rpc("save_task_checkpoint_idempotent", {
+      p_task_id: taskId,
+      p_state: state,
+      p_client_mutation_id: clientMutationId,
+      p_completed_summary: completedSummary,
+      p_current_position: currentPosition,
+      p_next_minimum_step: nextMinimumStep,
+      p_resource_links: resourceLinks,
+      p_blocked_reason: blockedReason
+    })
+    : await client.rpc("save_task_checkpoint", {
+      p_task_id: taskId,
+      p_state: state,
+      p_completed_summary: completedSummary,
+      p_current_position: currentPosition,
+      p_next_minimum_step: nextMinimumStep,
+      p_resource_links: resourceLinks,
+      p_blocked_reason: blockedReason
+    });
   if (result.error) return databaseError(result.error);
   const checkpoint = Array.isArray(result.data) ? result.data[0] : result.data;
   if (!checkpoint) return jsonError("未能讀取已儲存的 checkpoint。", 500);

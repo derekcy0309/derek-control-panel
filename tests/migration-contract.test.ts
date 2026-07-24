@@ -45,6 +45,8 @@ const timeEstimationMigration = readFileSync(resolve(here, "../supabase/migratio
 const timeEstimationRollback = readFileSync(resolve(here, "../supabase/migrations/20260725220000_time_estimation_learning.rollback.sql"), "utf8").toLowerCase();
 const focusSessionMigration = readFileSync(resolve(here, "../supabase/migrations/20260725230000_focus_session_history.sql"), "utf8").toLowerCase();
 const focusSessionRollback = readFileSync(resolve(here, "../supabase/migrations/20260725230000_focus_session_history.rollback.sql"), "utf8").toLowerCase();
+const offlineQueueMigration = readFileSync(resolve(here, "../supabase/migrations/20260725235900_offline_write_queue.sql"), "utf8").toLowerCase();
+const offlineQueueRollback = readFileSync(resolve(here, "../supabase/migrations/20260725235900_offline_write_queue.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const quickCaptureRoute = readFileSync(resolve(here, "../app/api/quick-capture/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
@@ -62,6 +64,9 @@ const captureFiles = readFileSync(resolve(here, "../components/inbox/CaptureFile
 const manifest = readFileSync(resolve(here, "../app/manifest.ts"), "utf8").toLowerCase();
 const timeEstimateHint = readFileSync(resolve(here, "../components/TimeEstimateHint.tsx"), "utf8").toLowerCase();
 const focusSessionHistory = readFileSync(resolve(here, "../components/FocusSessionHistory.tsx"), "utf8").toLowerCase();
+const offlineWriteQueue = readFileSync(resolve(here, "../lib/offline-write-queue.ts"), "utf8").toLowerCase();
+const offlineQueueStatus = readFileSync(resolve(here, "../components/OfflineWriteQueueStatus.tsx"), "utf8").toLowerCase();
+const appShell = readFileSync(resolve(here, "../components/AppShell.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -670,4 +675,33 @@ test("Focus Session RPCs are authenticated, idempotent, checkpoint-aware and wir
   assert.match(focusSessionHistory, /已連結 checkpoint/);
   assert.match(focusSessionRollback, /focus_session_history_rollback_requires_explicit_data_handling/);
   assert.doesNotMatch(focusSessionRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|body_double_sessions)/);
+});
+
+test("Offline Write Queue is account-scoped, conflict-safe and idempotent without caching account data", () => {
+  assert.match(offlineQueueMigration, /add\s+column\s+if\s+not\s+exists\s+client_mutation_id\s+uuid/);
+  assert.match(offlineQueueMigration, /unique\s+index[\s\S]*?\(author_id,\s*client_mutation_id\)/);
+  assert.match(offlineQueueMigration, /function\s+public\.save_task_checkpoint_idempotent/);
+  assert.match(offlineQueueMigration, /security\s+invoker/);
+  assert.match(offlineQueueMigration, /where\s+author_id\s*=\s*actor\s+and\s+client_mutation_id\s*=\s*p_client_mutation_id/);
+  assert.match(offlineQueueMigration, /function\s+public\.finish_focus_session_after_checkpoint/);
+  assert.match(offlineQueueMigration, /return\s+public\.finish_focus_session/);
+  assert.match(offlineQueueMigration, /revoke\s+all\s+on\s+function\s+public\.save_task_checkpoint_idempotent[\s\S]*?from\s+public,\s*anon/);
+  assert.match(offlineQueueMigration, /revoke\s+all\s+on\s+function\s+public\.finish_focus_session_after_checkpoint[\s\S]*?from\s+public,\s*anon/);
+  assert.match(controlRoute, /case\s+"finish_focus_session_after_checkpoint"/);
+  assert.match(controlRoute, /expectedlastprogressat/);
+  assert.match(offlineWriteQueue, /indexeddb/);
+  assert.match(offlineWriteQueue, /index\("by_user"\)/);
+  assert.match(offlineWriteQueue, /clientmutationid/);
+  assert.match(offlineWriteQueue, /offline_task_conflict/);
+  assert.match(offlineWriteQueue, /queuequickcapture/);
+  assert.match(offlineWriteQueue, /queuefocuspause/);
+  assert.match(offlineWriteQueue, /queuefocusfinish/);
+  assert.doesNotMatch(offlineWriteQueue, /localstorage|sessionstorage|console\.log/);
+  assert.match(offlineQueueStatus, /未有覆蓋現有資料/);
+  assert.match(appShell, /clearofflinewrites/);
+  assert.match(quickCapturePage, /附件不會離線保存/);
+  assert.match(focusMode, /queuefocusfinish/);
+  assert.match(focusMode, /queuefocuspause/);
+  assert.match(offlineQueueRollback, /offline_write_queue_rollback_requires_explicit_data_handling/);
+  assert.doesNotMatch(offlineQueueRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|focus_sessions)/);
 });

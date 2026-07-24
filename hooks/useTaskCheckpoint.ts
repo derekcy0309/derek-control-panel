@@ -10,11 +10,12 @@ import {
   type CheckpointForm
 } from "@/lib/checkpoints";
 import { controlAction, loadTaskCheckpoints } from "@/lib/control-api";
+import { isOffline, queueCheckpointWrite } from "@/lib/offline-write-queue";
 import type { TaskCheckpoint, TaskCheckpointBundle } from "@/lib/types";
 
-export type CheckpointSaveState = "idle" | "pending" | "saving" | "saved" | "error";
+export type CheckpointSaveState = "idle" | "pending" | "saving" | "saved" | "queued" | "error";
 
-export function useTaskCheckpoint(taskId: string) {
+export function useTaskCheckpoint(taskId: string, userId?: string) {
   const [bundle, setBundle] = useState<TaskCheckpointBundle>({ latest: null, draft: null, history: [] });
   const [form, setForm] = useState<CheckpointForm>(emptyCheckpointForm);
   const [loading, setLoading] = useState(true);
@@ -67,6 +68,50 @@ export function useTaskCheckpoint(taskId: string) {
       return Promise.resolve(null);
     }
 
+    if (isOffline()) {
+      if (!userId) {
+        setSaveError("目前離線，未能確認帳戶以安全保留 checkpoint。請先恢復連線。\n");
+        setSaveState("error");
+        return Promise.resolve(null);
+      }
+      return queueCheckpointWrite(userId, state, { taskId, ...payload })
+        .then(({ clientMutationId }) => {
+          const queuedAt = new Date().toISOString();
+          const queued: TaskCheckpoint = {
+            id: clientMutationId,
+            task_id: taskId,
+            author_id: userId,
+            state,
+            completed_summary: payload.completedSummary || null,
+            current_position: payload.currentPosition || null,
+            next_minimum_step: payload.nextMinimumStep || null,
+            resource_links: payload.resourceLinks,
+            blocked_reason: payload.blockedReason || null,
+            last_worked_at: queuedAt,
+            created_at: queuedAt,
+            updated_at: queuedAt
+          };
+          if (state === "draft") {
+            lastSavedKeyRef.current = checkpointFormKey(snapshot);
+            setBundle((current) => ({ ...current, draft: queued }));
+          } else {
+            const cleared = emptyCheckpointForm();
+            formRef.current = cleared;
+            lastSavedKeyRef.current = checkpointFormKey(cleared);
+            setForm(cleared);
+            setBundle((current) => ({ latest: queued, draft: null, history: [queued, ...current.history.filter((item) => item.id !== queued.id)].slice(0, 20) }));
+          }
+          setSaveError("");
+          setSaveState("queued");
+          return queued;
+        })
+        .catch(() => {
+          setSaveError("未能安全保留 checkpoint 到這部裝置。請保持畫面並重試。\n");
+          setSaveState("error");
+          return null;
+        });
+    }
+
     let resolveResult: (saved: TaskCheckpoint | null) => void = () => undefined;
     const result = new Promise<TaskCheckpoint | null>((resolve) => { resolveResult = resolve; });
     saveQueueRef.current = saveQueueRef.current.catch(() => undefined).then(async () => {
@@ -104,7 +149,7 @@ export function useTaskCheckpoint(taskId: string) {
       }
     });
     return result;
-  }, [taskId]);
+  }, [taskId, userId]);
 
   useEffect(() => {
     if (!readyRef.current) return;

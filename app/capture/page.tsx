@@ -6,6 +6,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/Button";
 import { useControlData } from "@/hooks/useControlData";
+import { queueQuickCapture } from "@/lib/offline-write-queue";
 
 export default function CapturePage() {
   return <AuthGate><CaptureContent /></AuthGate>;
@@ -58,6 +59,7 @@ function CaptureContent() {
   }, []);
 
   if (loading || !data) return <LoadingState error={error} />;
+  const currentUserId = data.currentUser.id;
 
   function chooseFile(file: File | null, kind: "photo" | "document") {
     setAttachment(file);
@@ -130,17 +132,41 @@ function CaptureContent() {
       setMessage("先記下一句內容就可以了。");
       return;
     }
+    const activeCaptureId = captureId.current ?? crypto.randomUUID();
+    captureId.current = activeCaptureId;
+    if (attachment && !fileId.current) fileId.current = crypto.randomUUID();
+    const source = sourceUrl ? "web" : attachmentKind === "photo" ? "photo" : attachmentKind === "document" ? "document" : attachmentKind === "audio" || listening ? "voice" : "text";
     if (!online) {
-      setMessage("目前離線，未能安全上載。請保持此頁，網絡恢復後再按儲存。");
+      if (attachment) {
+        setMessage("離線時只會安全保留文字收集；附件不會存到本機。請保持此頁，連線後再上載附件。");
+        return;
+      }
+      setSaving(true);
+      try {
+        await queueQuickCapture(currentUserId, {
+          clientCaptureId: activeCaptureId,
+          title: trimmed.slice(0, 500),
+          description: trimmed.length > 500 ? trimmed : "",
+          area,
+          source,
+          targetUserId: targetUserId || null,
+          sourceUrl: sourceUrl || null
+        });
+        setContent("");
+        setSourceUrl("");
+        captureId.current = null;
+        setMessage("已安全保留在這部裝置；恢復連線後會自動存進收集箱。附件不會離線保存。");
+      } catch {
+        setMessage("未能安全保留到這部裝置。請保持此頁並稍後再試。");
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     setSaving(true);
     setMessage("");
-    captureId.current ??= crypto.randomUUID();
-    if (attachment && !fileId.current) fileId.current = crypto.randomUUID();
-    const source = sourceUrl ? "web" : attachmentKind === "photo" ? "photo" : attachmentKind === "document" ? "document" : attachmentKind === "audio" || listening ? "voice" : "text";
     const body = new FormData();
-    body.set("clientCaptureId", captureId.current);
+    body.set("clientCaptureId", activeCaptureId);
     body.set("title", trimmed.slice(0, 500));
     body.set("description", trimmed.length > 500 ? trimmed : "");
     body.set("area", area);
@@ -169,7 +195,27 @@ function CaptureContent() {
       fileId.current = null;
       setMessage(hasFile ? "已安全存進收集箱，附件亦已上載。" : "已存進收集箱；稍後可逐項決定下一步。");
     } catch {
-      setMessage("網絡暫時中斷。請保持此頁後按重試；系統會使用同一個識別碼避免重複建立。");
+      if (!attachment) {
+        try {
+          await queueQuickCapture(currentUserId, {
+            clientCaptureId: activeCaptureId,
+            title: trimmed.slice(0, 500),
+            description: trimmed.length > 500 ? trimmed : "",
+            area,
+            source,
+            targetUserId: targetUserId || null,
+            sourceUrl: sourceUrl || null
+          });
+          setContent("");
+          setSourceUrl("");
+          captureId.current = null;
+          setMessage("網絡剛中斷；文字已安全保留在這部裝置，恢復連線後會自動存進收集箱。");
+        } catch {
+          setMessage("網絡中斷，且未能安全保留到這部裝置。請保持此頁並重試。");
+        }
+      } else {
+        setMessage("網絡暫時中斷。附件不會離線保存；請保持此頁後按重試，系統會使用同一個識別碼避免重複建立。");
+      }
     } finally {
       setSaving(false);
     }
@@ -183,7 +229,7 @@ function CaptureContent() {
         <p className="muted mt-2 text-sm leading-6">任何內容先安全放入現有收集箱。之後才安排、交接或整理，不會自動建立任務。</p>
       </section>
 
-      {!online ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">目前離線。文字仍留在這個畫面；網絡恢復後可重試，避免遺失。</p> : null}
+      {!online ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">目前離線。純文字可存到此裝置並在連線後同步；相片、文件和錄音不會離線保存，保障私隱。</p> : null}
 
       <form className="panel space-y-5 p-4 sm:p-6" onSubmit={(event) => void submit(event)}>
         <label className="block"><span className="label">想先記下甚麼？</span><textarea className="field mt-2 min-h-36 text-base" value={content} onChange={(event) => setContent(event.target.value)} placeholder="例如：下星期要問學校有關活動安排" autoFocus /></label>
@@ -205,7 +251,7 @@ function CaptureContent() {
 
         {attachment ? <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900"><Upload className="mr-1 inline h-4 w-4" />已選擇：{attachment.name}（{Math.max(1, Math.ceil(attachment.size / 1024))} KB）</p> : null}
         {message ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="status">{message}</p> : null}
-        <Button className="w-full" type="submit" disabled={saving || !online}>{saving ? "安全儲存中…" : <><Send className="h-5 w-5" />存進收集箱</>}</Button>
+        <Button className="w-full" type="submit" disabled={saving}>{saving ? "安全儲存中…" : <><Send className="h-5 w-5" />存進收集箱</>}</Button>
       </form>
 
       <p className="muted px-2 text-xs leading-5">相片、文件和原始錄音最多 12 MB，預設私人。若瀏覽器不支援 PWA 分享或語音轉文字，仍可直接輸入、貼上網址或選擇檔案。</p>

@@ -8,6 +8,7 @@ import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { Button } from "@/components/ui/Button";
 import { hasCheckpointContent } from "@/lib/checkpoints";
 import { controlAction } from "@/lib/control-api";
+import { isOffline, queueFocusFinish, queueFocusPause } from "@/lib/offline-write-queue";
 import type { Task, TaskCheckpoint } from "@/lib/types";
 import { useTaskCheckpoint } from "@/hooks/useTaskCheckpoint";
 
@@ -16,6 +17,7 @@ type FocusModeProps = {
   defaultMinutes?: number;
   participants?: Array<{ user_id: string; display_name: string }>;
   sharedTask?: boolean;
+  currentUserId: string;
   onClose: () => void;
   onChanged: () => void;
 };
@@ -31,6 +33,7 @@ export function FocusMode({
   defaultMinutes = 25,
   participants = [],
   sharedTask = false,
+  currentUserId,
   onClose,
   onChanged
 }: FocusModeProps) {
@@ -49,7 +52,7 @@ export function FocusMode({
   const notificationIdRef = useRef<string | null>(null);
   const focusSessionIdRef = useRef<string | null>(null);
   const focusClientSessionIdRef = useRef<string | null>(null);
-  const checkpoint = useTaskCheckpoint(task.id);
+  const checkpoint = useTaskCheckpoint(task.id, currentUserId);
   const { flushDraft, saveState } = checkpoint;
 
   useEffect(() => {
@@ -103,6 +106,10 @@ export function FocusMode({
       setMessage("開始前先加入一個清晰、可見的下一步。");
       return;
     }
+    if (isOffline()) {
+      setMessage("開始新的專注時段需要連線；恢復連線後再開始計時。\n");
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
@@ -134,6 +141,23 @@ export function FocusMode({
     void cancelFocusReminder();
     setExitRequested(false);
     setEditorOpen(true);
+    if (isOffline()) {
+      setBusy(true);
+      try {
+        await queueFocusPause(currentUserId, {
+          taskId: task.id,
+          actualMinutes: elapsedMinutes(),
+          expectedLastProgressAt: task.last_progress_at ?? null,
+          sessionId: focusSessionIdRef.current
+        });
+        setMessage("已在本機暫停；實際時間和專注歷史會在恢復連線後安全同步。\n");
+      } catch {
+        setMessage("未能安全保留這次暫停。請保持畫面並在恢復連線後重試。\n");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     setBusy(true);
     try {
       const [taskResult, historyResult] = await Promise.allSettled([
@@ -156,7 +180,6 @@ export function FocusMode({
       return;
     }
     setRunning(false);
-    void pauseFocusHistory();
     void cancelFocusReminder();
     setExitRequested(true);
     setEditorOpen(true);
@@ -176,6 +199,24 @@ export function FocusMode({
     setEditorOpen(false);
     setExitRequested(false);
     if (shouldClose) {
+      if (isOffline()) {
+        try {
+          await queueFocusFinish(currentUserId, {
+            taskId: task.id,
+            taskChanges: null,
+            expectedLastProgressAt: task.last_progress_at ?? null,
+            sessionId: focusSessionIdRef.current,
+            status: "partial",
+            checkpointClientMutationId: saved.id,
+            blockReason: null
+          });
+          setMessage("Checkpoint 和這節專注已保留在本機；恢復連線後才會安全同步。\n");
+          onClose();
+        } catch {
+          setMessage("未能安全保留這節專注。請保留此畫面並重試。\n");
+        }
+        return;
+      }
       const historyIssue = await finishFocusHistory("partial", saved.id);
       if (historyIssue) {
         setPendingHistoryFinish({ status: "partial", checkpointId: saved.id });
@@ -201,6 +242,21 @@ export function FocusMode({
       return;
     }
     try {
+      if (isOffline()) {
+        await queueFocusFinish(currentUserId, {
+          taskId: task.id,
+          taskChanges: { status: "done", actual_minutes: elapsedMinutes() },
+          expectedLastProgressAt: task.last_progress_at ?? null,
+          sessionId: focusSessionIdRef.current,
+          status: "completed",
+          checkpointClientMutationId: saved.id,
+          blockReason: null
+        });
+        setMessage("任務完成和專注紀錄已保留在本機；恢復連線後才會正式同步。\n");
+        setBusy(false);
+        onClose();
+        return;
+      }
       await controlAction("update_task", {
         id: task.id,
         changes: {
@@ -240,6 +296,21 @@ export function FocusMode({
       return;
     }
     try {
+      if (isOffline()) {
+        await queueFocusFinish(currentUserId, {
+          taskId: task.id,
+          taskChanges: { status: "blocked", blocked_reason: blockedReason },
+          expectedLastProgressAt: task.last_progress_at ?? null,
+          sessionId: focusSessionIdRef.current,
+          status: "interrupted",
+          checkpointClientMutationId: saved.id,
+          blockReason: blockedReason
+        });
+        setMessage("阻塞記錄和專注歷史已保留在本機；恢復連線後才會正式同步。\n");
+        setBusy(false);
+        onClose();
+        return;
+      }
       await controlAction("update_task", { id: task.id, changes: { status: "blocked", blocked_reason: blockedReason } });
       const historyIssue = await finishFocusHistory("interrupted", saved.id, blockedReason);
       if (historyIssue) {
@@ -295,6 +366,15 @@ export function FocusMode({
 
   async function pauseFocusHistory() {
     if (!focusSessionIdRef.current) return;
+    if (isOffline()) {
+      await queueFocusPause(currentUserId, {
+        taskId: task.id,
+        actualMinutes: elapsedMinutes(),
+        expectedLastProgressAt: task.last_progress_at ?? null,
+        sessionId: focusSessionIdRef.current
+      });
+      return;
+    }
     const result = await controlAction("pause_focus_session", { sessionId: focusSessionIdRef.current });
     if (result) setHistoryVersion((value) => value + 1);
   }

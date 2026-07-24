@@ -1,4 +1,7 @@
-const CACHE = "dcp-public-shell-v2";
+// Only public shell files are cached here. Account data and API responses are
+// intentionally excluded; pending writes live in account-scoped IndexedDB and
+// are cleared by the app on logout.
+const CACHE = "dcp-public-shell-v3";
 const PUBLIC_FALLBACK = "/offline";
 
 self.addEventListener("install", (event) => {

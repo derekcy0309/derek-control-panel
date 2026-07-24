@@ -113,7 +113,7 @@ export function RestartCheckpointPanel({
             </div>
             <SaveStatus state={saveState} error={saveError} onRetry={onRetrySave} />
           </div>
-          <p className="mt-3 text-sm leading-6 text-white/60">草稿會自動保存；只有顯示「草稿已安全儲存」才代表已寫入伺服器。</p>
+          <p className="mt-3 text-sm leading-6 text-white/60">草稿會自動保存；顯示「草稿已安全儲存」才代表已寫入伺服器。離線時會清楚標示為只保留在此裝置、等待同步。</p>
 
           <div className="mt-5 grid gap-4">
             <CheckpointField label="我剛才完成了甚麼" value={form.completedSummary} maxLength={4000} onChange={(value) => onUpdate("completedSummary", value)} />
@@ -196,6 +196,8 @@ function SaveStatus({ state, error, onRetry }: { state: CheckpointSaveState; err
     ? "自動儲存中…"
     : state === "pending"
       ? "有未儲存變更"
+      : state === "queued"
+        ? "已保留在此裝置，待連線安全同步"
       : state === "saved"
         ? "草稿已安全儲存"
         : "尚未修改";
