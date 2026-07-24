@@ -71,6 +71,8 @@ const offlineQueueStatus = readFileSync(resolve(here, "../components/OfflineWrit
 const appShell = readFileSync(resolve(here, "../components/AppShell.tsx"), "utf8").toLowerCase();
 const backupRoute = readFileSync(resolve(here, "../app/api/backup/route.ts"), "utf8").toLowerCase();
 const backupPanel = readFileSync(resolve(here, "../components/BackupRestorePanel.tsx"), "utf8").toLowerCase();
+const capacityOverload = readFileSync(resolve(here, "../lib/capacity-overload.ts"), "utf8").toLowerCase();
+const capacityOverloadPanel = readFileSync(resolve(here, "../components/CapacityOverloadPanel.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -729,4 +731,18 @@ test("Backup Restore is same-account, additive, audited and protected by RLS", (
   assert.doesNotMatch(backupRoute, /service_role/);
   assert.match(backupPanel, /confirmation\s*!==\s*"restore"/);
   assert.match(backupPanel, /只新增，不覆蓋/);
+});
+
+test("Capacity overload uses owner-scoped commitments and only offers confirmed existing actions", () => {
+  assert.match(controlRoute, /capacitycommitments/);
+  assert.match(controlRoute, /from\("operating_items"\)[\s\S]*?\.eq\("owner_id",\s*user\.id\)/);
+  for (const protectedField of ["critical_path", "safety_impact", "child_impact", "legal_impact", "revenue_impact"]) {
+    assert.match(capacityOverload, new RegExp(protectedField));
+  }
+  assert.match(capacityOverload, /capacity\?\.mode\s*===\s*"shift"/);
+  assert.match(capacityOverload, /item_type\s*===\s*"health"\s*\|\|\s*item\.item_type\s*===\s*"school"/);
+  assert.match(capacityOverloadPanel, /不會自動延期、交接或改動任何任務/);
+  assert.match(capacityOverloadPanel, /onpostpone\(task\)/);
+  assert.match(capacityOverloadPanel, /onhandoff\(assessment\.handoffcandidates\[0\]\)/);
+  assert.doesNotMatch(capacityOverloadPanel, /controlaction\(|fetch\(/);
 });

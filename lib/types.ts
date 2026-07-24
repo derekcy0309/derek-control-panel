@@ -614,6 +614,8 @@ export type TodayData = {
   capacity: CapacityCheckin | null;
   participants: Array<{ user_id: string; display_name: string }>;
   taskDependencies: TaskDependency[];
+  capacityCommitments: Array<Pick<OperatingItem, "id" | "item_type" | "area" | "due_date" | "status">>;
+  weeklyAvailableMinutes: number | null;
 };
 
 export type AppData = {

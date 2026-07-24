@@ -105,7 +105,10 @@ export async function GET(request: NextRequest) {
 async function todayDashboard({ client, user }: RequestContext) {
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, assignments, plannedToday, capacity, participants, shares] =
+  const weekStart = weekStartForDate(today);
+  const weekEnd = weekStart ? addCalendarDays(weekStart, 6) : null;
+  const capacityReviewWeek = weekStart ? addCalendarDays(weekStart, -7) : null;
+  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -130,10 +133,27 @@ async function todayDashboard({ client, user }: RequestContext) {
         .select("*")
         .is("revoked_at", null)
         .order("created_at", { ascending: false })
-        .limit(200)
+        .limit(200),
+      weekEnd
+        ? client.from("operating_items")
+            .select("id,item_type,area,due_date,status")
+            .eq("owner_id", user.id)
+            .is("archived_at", null)
+            .gte("due_date", today)
+            .lte("due_date", weekEnd)
+            .in("item_type", ["school", "health", "pet", "household", "event", "important_date"])
+            .limit(30)
+        : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
+      capacityReviewWeek
+        ? client.from("weekly_reviews")
+            .select("next_week_available_minutes")
+            .eq("user_id", user.id)
+            .eq("week_start", capacityReviewWeek)
+            .maybeSingle()
+        : Promise.resolve({ data: null as Record<string, unknown> | null, error: null })
     ]);
 
-  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares]
+  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -225,7 +245,9 @@ async function todayDashboard({ client, user }: RequestContext) {
     planning: [...planningMap.values()],
     capacity: capacity.data ?? null,
     participants: participants.data ?? [],
-    taskDependencies: dependencies.data ?? []
+    taskDependencies: dependencies.data ?? [],
+    capacityCommitments: capacityCommitments.data ?? [],
+    weeklyAvailableMinutes: weeklyReview.data?.next_week_available_minutes ?? null
   }, { headers: privateHeaders() });
 }
 

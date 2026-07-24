@@ -18,6 +18,7 @@
 - Focus Session History：持久保留每節專注的計劃／實際時間、暫停、結果、阻塞與 checkpoint，只用於恢復工作和個人估時
 - Offline Write Queue：離線安全保留純文字 Inbox、checkpoint 與 Focus 暫停／完成；恢復連線後按帳戶同步、衝突不覆蓋、登出即清除本機待同步資料
 - Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
+- Capacity Overload Warning：以能量、可用時間、WIP、deadline、night-shift 及未來家庭／健康承諾作溫和容量提示；只建議可延期／交接項目，所有改動仍要本人確認
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -144,3 +145,5 @@ Focus Session History 的狀態、checkpoint 關聯、RLS、idempotency 及 roll
 Offline Write Queue 的帳戶分區、本機私隱、衝突、冪等同步及 rollback 說明見 [`docs/offline-write-queue.md`](docs/offline-write-queue.md)。
 
 Backup／Restore 的匯出範圍、預覽、只新增 transaction、RLS 及 rollback 說明見 [`docs/backup-restore.md`](docs/backup-restore.md)。
+
+Capacity Overload Warning 的計算資料、buffer、低影響候選、確認邊界及私隱說明見 [`docs/capacity-overload-warning.md`](docs/capacity-overload-warning.md)。

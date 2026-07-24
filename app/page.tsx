@@ -19,12 +19,14 @@ import {
   Zap
 } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { CapacityOverloadPanel } from "@/components/CapacityOverloadPanel";
 import { FocusMode } from "@/components/FocusMode";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
+import { assessCapacityOverload } from "@/lib/capacity-overload";
 import { formatDate } from "@/lib/date";
 import {
   activeWipCount,
@@ -99,6 +101,20 @@ function TodayCommandCenter() {
         })
       : null,
     [currentData, excludedNowIds, minimumDay, preference, today]
+  );
+  const overloadAssessment = useMemo(
+    () => currentData ? assessCapacityOverload({
+      tasks: currentData.tasks,
+      assignments: currentData.assignments,
+      planning: currentData.planning,
+      currentUserId: currentData.currentUser.id,
+      settings: currentData.settings,
+      capacity: currentData.capacity,
+      commitments: currentData.capacityCommitments,
+      weeklyAvailableMinutes: currentData.weeklyAvailableMinutes,
+      today
+    }) : null,
+    [currentData, today]
   );
 
   if (loading || error || !currentData || !recommendation) {
@@ -359,6 +375,15 @@ function TodayCommandCenter() {
           </Button>
         </section>
       )}
+
+      {overloadAssessment ? (
+        <CapacityOverloadPanel
+          assessment={overloadAssessment}
+          handoffTargetName={handoffTarget?.display_name}
+          onPostpone={setPostponeTask}
+          onHandoff={setHandoffTask}
+        />
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,.7fr)]">
         <div className="relative overflow-hidden rounded-2xl border border-indigo-200 bg-white p-5 sm:p-7">
