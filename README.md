@@ -49,6 +49,7 @@ supabase/migrations/20260724150744_inbox_processing_mode.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.sql
 supabase/migrations/20260724162344_notification_system.sql
 supabase/migrations/20260724181119_fix_notification_claim_conflict.sql
+supabase/migrations/20260724182259_weekly_review.sql
 supabase/migrations/20260724172250_task_dependencies_milestones.sql
 supabase/migrations/20260724173935_recurring_task_routines.sql
 supabase/migrations/20260724175911_recurrence_foreign_key_indexes.sql
@@ -66,6 +67,7 @@ supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql
 supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql
 supabase/migrations/20260724162344_notification_system.rollback.sql
 supabase/migrations/20260724181119_fix_notification_claim_conflict.rollback.sql
+supabase/migrations/20260724182259_weekly_review.rollback.sql
 supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql
 supabase/migrations/20260724173935_recurring_task_routines.rollback.sql
 supabase/migrations/20260724175911_recurrence_foreign_key_indexes.rollback.sql
@@ -82,7 +84,7 @@ npm test
 npm run build
 ```
 
-測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、重複工作 dedupe／暫停合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
+測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、重複工作 dedupe／暫停合約、Weekly Review 日期／容量／RLS 合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
 
 ## 部署
 
@@ -101,3 +103,5 @@ Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 ro
 任務依賴、Project milestones、RLS、cycle prevention 及 rollback 說明見 [`docs/task-dependencies-milestones.md`](docs/task-dependencies-milestones.md)。
 
 重複工作的 completion-only generation、RLS、私隱與 rollback 說明見 [`docs/recurring-routines.md`](docs/recurring-routines.md)。
+
+低壓力 Weekly Review 的資料、capacity 提示、確認邊界及 rollback 說明見 [`docs/weekly-review.md`](docs/weekly-review.md)。

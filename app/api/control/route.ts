@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
+import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
+  if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
   if (view !== "bootstrap") return jsonError("不支援的資料檢視。", 400);
 
   const { client, user } = context;
@@ -222,6 +224,190 @@ async function todayDashboard({ client, user }: RequestContext) {
   }, { headers: privateHeaders() });
 }
 
+const weeklyReviewTaskFields = "id,title,next_action,due_date,follow_up_date,estimated_minutes,risk";
+
+async function weeklyReview(
+  { client, user }: RequestContext,
+  searchParams: URLSearchParams
+) {
+  const requested = searchParams.get("weekStart");
+  const suppliedDate = requested ? dateValue(requested) : hkDateString();
+  const weekStart = suppliedDate ? weekStartForDate(suppliedDate) : null;
+  const weekEnd = weekStart ? addCalendarDays(weekStart, 6) : null;
+  const nextWeekStart = weekStart ? addCalendarDays(weekStart, 7) : null;
+  const nextWeekEnd = weekStart ? addCalendarDays(weekStart, 13) : null;
+  if (!weekStart || !weekEnd || !nextWeekStart || !nextWeekEnd) {
+    return jsonError("週檢視日期不正確。", 400);
+  }
+
+  const completedStart = `${weekStart}T00:00:00+08:00`;
+  const completedEnd = `${nextWeekStart}T00:00:00+08:00`;
+  const ownedTasks = () => client.from("tasks")
+    .select(weeklyReviewTaskFields, { count: "exact" })
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .eq("owner_id", user.id);
+
+  const [completed, active, blocked, waiting, upcoming, review, history] = await Promise.all([
+    ownedTasks()
+      .eq("status", "done")
+      .gte("completed_at", completedStart)
+      .lt("completed_at", completedEnd)
+      .order("completed_at", { ascending: false })
+      .limit(12),
+    ownedTasks()
+      .in("status", ["not_started", "in_progress"])
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(12),
+    ownedTasks()
+      .eq("status", "blocked")
+      .order("updated_at", { ascending: false })
+      .limit(12),
+    ownedTasks()
+      .eq("status", "waiting")
+      .or(`follow_up_date.is.null,follow_up_date.lte.${weekEnd}`)
+      .order("follow_up_date", { ascending: true, nullsFirst: true })
+      .limit(12),
+    ownedTasks()
+      .in("status", ["not_started", "in_progress", "waiting"])
+      .gte("due_date", nextWeekStart)
+      .lte("due_date", nextWeekEnd)
+      .order("due_date", { ascending: true })
+      .limit(30),
+    client.from("weekly_reviews")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("week_start", weekStart)
+      .maybeSingle(),
+    client.from("weekly_reviews")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("week_start", { ascending: false })
+      .limit(8)
+  ]);
+  const firstError = [completed, active, blocked, waiting, upcoming, review, history]
+    .find((result) => result.error)?.error;
+  if (firstError) return databaseError(firstError);
+
+  const upcomingItems = weeklyReviewItems(upcoming.data ?? []);
+  const knownEstimatedMinutes = upcomingItems.reduce((total, task) => total + (task.estimated_minutes ?? 0), 0);
+  return Response.json({
+    week_start: weekStart,
+    week_end: weekEnd,
+    next_week_start: nextWeekStart,
+    next_week_end: nextWeekEnd,
+    completed: weeklyReviewItems(completed.data ?? []),
+    active: weeklyReviewItems(active.data ?? []),
+    blocked: weeklyReviewItems(blocked.data ?? []),
+    waiting: weeklyReviewItems(waiting.data ?? []),
+    upcoming: upcomingItems,
+    counts: {
+      completed: completed.count ?? 0,
+      active: active.count ?? 0,
+      blocked: blocked.count ?? 0,
+      waiting: waiting.count ?? 0,
+      upcoming: upcoming.count ?? 0
+    },
+    known_estimated_minutes: knownEstimatedMinutes,
+    review: review.data ?? null,
+    history: history.data ?? []
+  }, { headers: privateHeaders() });
+}
+
+async function saveWeeklyReview(
+  { client, user }: RequestContext,
+  body: Record<string, unknown>
+) {
+  const requestedDate = dateValue(body.weekStart);
+  const weekStart = requestedDate ? weekStartForDate(requestedDate) : null;
+  if (!weekStart) return jsonError("週檢視日期不正確。", 422);
+
+  if (!Array.isArray(body.nextWeekOutcomes) || body.nextWeekOutcomes.length > 3) {
+    return jsonError("下星期成果最多可填寫三項。", 422);
+  }
+  const nextWeekOutcomes = normalizeWeeklyOutcomes(body.nextWeekOutcomes);
+  const nextWeekAvailableMinutes = body.nextWeekAvailableMinutes === null || body.nextWeekAvailableMinutes === ""
+    ? null
+    : integerValue(body.nextWeekAvailableMinutes, 0, 10080);
+  if (body.nextWeekAvailableMinutes !== null && body.nextWeekAvailableMinutes !== "" && nextWeekAvailableMinutes === null) {
+    return jsonError("下星期可用時間必須是 0 至 10080 分鐘。", 422);
+  }
+  const rebalancingNote = weeklyReviewText(body.rebalancingNote, 2000, "重新分工備註");
+  if (rebalancingNote instanceof Response) return rebalancingNote;
+  const nextMinimumAction = weeklyReviewText(body.nextMinimumAction, 500, "下星期第一步");
+  if (nextMinimumAction instanceof Response) return nextMinimumAction;
+  const reflection = weeklyReviewText(body.reflection, 4000, "週檢視備註");
+  if (reflection instanceof Response) return reflection;
+  const complete = body.complete === true;
+  if (complete && !nextMinimumAction) return jsonError("完成檢視前，請寫下下星期第一個最小行動。", 422);
+
+  const snapshot = await weeklyReviewSnapshot(client, user.id, weekStart);
+  if (snapshot instanceof Response) return snapshot;
+  const result = await client.from("weekly_reviews").upsert({
+    user_id: user.id,
+    week_start: weekStart,
+    status: complete ? "completed" : "draft",
+    next_week_outcomes: nextWeekOutcomes,
+    next_week_available_minutes: nextWeekAvailableMinutes,
+    rebalancing_note: rebalancingNote,
+    next_minimum_action: nextMinimumAction,
+    reflection,
+    review_snapshot: snapshot,
+    completed_at: complete ? new Date().toISOString() : null
+  }, { onConflict: "user_id,week_start" }).select("*").single();
+  if (result.error) return databaseError(result.error);
+  if (complete) {
+    await recordActivity(client, user.id, "weekly_review", result.data.id, "weekly_review_completed", "已完成低壓力週檢視");
+  }
+  return Response.json({ review: result.data }, { headers: privateHeaders() });
+}
+
+function weeklyReviewItems(rows: Array<Record<string, unknown>>) {
+  return rows.map((row) => ({
+    id: String(row.id),
+    title: stringValue(row.title),
+    next_action: nullableText(row.next_action),
+    due_date: dateValue(row.due_date),
+    follow_up_date: dateValue(row.follow_up_date),
+    estimated_minutes: integerValue(row.estimated_minutes, 0, 14400),
+    risk: enumValue(row.risk, ["low", "medium", "high"] as const, "low")!
+  }));
+}
+
+async function weeklyReviewSnapshot(client: SupabaseClient, userId: string, weekStart: string) {
+  const weekEnd = addCalendarDays(weekStart, 6);
+  const nextWeekStart = addCalendarDays(weekStart, 7);
+  if (!weekEnd || !nextWeekStart) return jsonError("週檢視日期不正確。", 422);
+  const completedStart = `${weekStart}T00:00:00+08:00`;
+  const completedEnd = `${nextWeekStart}T00:00:00+08:00`;
+  const ownedTasks = () => client.from("tasks")
+    .select("id", { count: "exact", head: true })
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .eq("owner_id", userId);
+  const [completed, active, blocked, waiting] = await Promise.all([
+    ownedTasks().eq("status", "done").gte("completed_at", completedStart).lt("completed_at", completedEnd),
+    ownedTasks().in("status", ["not_started", "in_progress"]),
+    ownedTasks().eq("status", "blocked"),
+    ownedTasks().eq("status", "waiting").or(`follow_up_date.is.null,follow_up_date.lte.${weekEnd}`)
+  ]);
+  const firstError = [completed, active, blocked, waiting].find((result) => result.error)?.error;
+  if (firstError) return databaseError(firstError);
+  return {
+    completed: completed.count ?? 0,
+    active: active.count ?? 0,
+    blocked: blocked.count ?? 0,
+    waiting: waiting.count ?? 0,
+    generated_at: new Date().toISOString()
+  };
+}
+
+function weeklyReviewText(value: unknown, maxLength: number, label: string) {
+  const text = stringValue(value).trim();
+  if (text.length > maxLength) return jsonError(`${label}太長，請縮短後再儲存。`, 422);
+  return text || null;
+}
+
 export async function POST(request: NextRequest) {
   const context = await authenticate(request);
   if (context instanceof Response) return context;
@@ -272,6 +458,7 @@ export async function POST(request: NextRequest) {
     case "complete_local_notification": return completeLocalNotification(context, body);
     case "notification_opened": return markNotificationOpened(context, body);
     case "test_notification": return enqueueTestNotification(context);
+    case "save_weekly_review": return saveWeeklyReview(context, body);
     default: return jsonError("不支援的操作。", 400);
   }
 }

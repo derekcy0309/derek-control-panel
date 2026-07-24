@@ -323,6 +323,50 @@ export type TaskRecurrenceRule = {
   updated_at: string;
 };
 
+export type WeeklyReviewStatus = "draft" | "completed";
+
+export type WeeklyReview = {
+  id: string;
+  user_id: string;
+  week_start: string;
+  status: WeeklyReviewStatus;
+  next_week_outcomes: string[];
+  next_week_available_minutes: number | null;
+  rebalancing_note: string | null;
+  next_minimum_action: string | null;
+  reflection: string | null;
+  review_snapshot: Record<string, number | string | boolean | null>;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type WeeklyReviewItem = {
+  id: string;
+  title: string;
+  next_action: string | null;
+  due_date: string | null;
+  follow_up_date: string | null;
+  estimated_minutes: number | null;
+  risk: Risk;
+};
+
+export type WeeklyReviewSummary = {
+  week_start: string;
+  week_end: string;
+  next_week_start: string;
+  next_week_end: string;
+  completed: WeeklyReviewItem[];
+  active: WeeklyReviewItem[];
+  blocked: WeeklyReviewItem[];
+  waiting: WeeklyReviewItem[];
+  upcoming: WeeklyReviewItem[];
+  counts: { completed: number; active: number; blocked: number; waiting: number; upcoming: number };
+  known_estimated_minutes: number;
+  review: WeeklyReview | null;
+  history: WeeklyReview[];
+};
+
 export type CapacityCheckin = {
   id: string;
   user_id: string;

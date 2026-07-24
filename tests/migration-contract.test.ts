@@ -24,6 +24,8 @@ const notificationMigration = readFileSync(resolve(here, "../supabase/migrations
 const notificationRollback = readFileSync(resolve(here, "../supabase/migrations/20260724162344_notification_system.rollback.sql"), "utf8").toLowerCase();
 const notificationClaimFixMigration = readFileSync(resolve(here, "../supabase/migrations/20260724181119_fix_notification_claim_conflict.sql"), "utf8").toLowerCase();
 const notificationClaimFixRollback = readFileSync(resolve(here, "../supabase/migrations/20260724181119_fix_notification_claim_conflict.rollback.sql"), "utf8").toLowerCase();
+const weeklyReviewMigration = readFileSync(resolve(here, "../supabase/migrations/20260724182259_weekly_review.sql"), "utf8").toLowerCase();
+const weeklyReviewRollback = readFileSync(resolve(here, "../supabase/migrations/20260724182259_weekly_review.rollback.sql"), "utf8").toLowerCase();
 const dependencyMigration = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.sql"), "utf8").toLowerCase();
 const dependencyRollback = readFileSync(resolve(here, "../supabase/migrations/20260724172250_task_dependencies_milestones.rollback.sql"), "utf8").toLowerCase();
 const recurrenceMigration = readFileSync(resolve(here, "../supabase/migrations/20260724173935_recurring_task_routines.sql"), "utf8").toLowerCase();
@@ -374,6 +376,20 @@ test("notification claim hotfix uses the concrete attempt constraint and has a t
   assert.match(notificationClaimFixRollback, /on conflict \(delivery_id, subscription_id, attempt_number\)/);
 });
 
+test("weekly review is owner-only, additive, and never grants direct task changes", () => {
+  assert.match(weeklyReviewMigration, /create table if not exists public\.weekly_reviews/);
+  assert.match(weeklyReviewMigration, /alter table public\.weekly_reviews enable row level security/);
+  assert.match(weeklyReviewMigration, /weekly_reviews_select_own/);
+  assert.match(weeklyReviewMigration, /weekly_reviews_insert_own/);
+  assert.match(weeklyReviewMigration, /weekly_reviews_update_own/);
+  assert.match(weeklyReviewMigration, /weekly_review_next_action_required/);
+  assert.match(weeklyReviewMigration, /grant select, insert, update on table public\.weekly_reviews to authenticated/);
+  assert.doesNotMatch(weeklyReviewMigration, /grant[^;]*delete[^;]*weekly_reviews/);
+  assert.doesNotMatch(weeklyReviewMigration, /(?:update|delete|insert)\s+public\.(?:tasks|assignments|share_records)/);
+  assert.match(weeklyReviewRollback, /drop table if exists public\.weekly_reviews/);
+  assert.doesNotMatch(weeklyReviewRollback, /drop table\s+(?:if\s+exists\s+)?public\.(?:tasks|assignments|share_records)/);
+});
+
 test("browser notification permission is explicit and service worker records opens", () => {
   assert.match(notificationSettings, /notification\.requestpermission\(\)/);
   assert.match(notificationSettings, /pushmanager\.subscribe/);
@@ -414,7 +430,7 @@ test("recurring routines are owner-scoped, generate only on completion, and do n
   assert.match(recurrenceMigration, /after update of status on public\.tasks/);
   assert.match(recurrenceMigration, /new\.status <> 'done' or old\.status = 'done'/);
   assert.match(recurrenceMigration, /where id = new\.recurrence_rule_id and owner_id = new\.owner_id and is_active/);
-  assert.match(recurrenceMigration, /visibility\n  \) values \([\s\S]*?'private'/);
+  assert.match(recurrenceMigration, /visibility\s*\) values \([\s\S]*?'private'/);
   assert.match(recurrenceMigration, /task_recurrence_rules_select_own/);
   assert.match(recurrenceMigration, /task_recurrence_generations_select_own/);
   assert.match(recurrenceRollback, /recurring_routines_rollback_requires_explicit_data_handling/);

@@ -5,7 +5,9 @@ import type {
   InboxProcessingBundle,
   InboxProcessingEvent,
   TaskCheckpointBundle,
-  TodayData
+  TodayData,
+  WeeklyReview,
+  WeeklyReviewSummary
 } from "@/lib/types";
 
 let refreshInFlight: Promise<void> | null = null;
@@ -39,6 +41,16 @@ export async function loadInboxProcessing(
   return controlRequest<InboxProcessingBundle>(`/api/control?${params.toString()}`, {
     method: "GET"
   });
+}
+
+export async function loadWeeklyReview(weekStart?: string) {
+  const params = new URLSearchParams({ view: "weekly_review" });
+  if (weekStart) params.set("weekStart", weekStart);
+  return controlRequest<WeeklyReviewSummary>(`/api/control?${params.toString()}`, { method: "GET" });
+}
+
+export async function saveWeeklyReview(payload: Record<string, unknown>) {
+  return controlAction<{ review: WeeklyReview }>("save_weekly_review", payload);
 }
 
 export async function processInboxItem(payload: Record<string, unknown>) {

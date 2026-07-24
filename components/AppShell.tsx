@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound,
+  Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
   Settings, Share2, Sparkles, UsersRound, X
 } from "lucide-react";
@@ -27,6 +27,7 @@ const navGroups = [
     items: [
       { href: "/workspace/project", label: "項目作戰室", icon: BriefcaseBusiness },
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
+      { href: "/weekly-review", label: "每週檢視", icon: ClipboardCheck },
       { href: "/sharing", label: "交辦中心", icon: Share2 },
       { href: "/workspace/decision", label: "決策紀錄", icon: Command },
       { href: "/workspace/client", label: "客戶流程", icon: UsersRound },
