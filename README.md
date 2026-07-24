@@ -12,6 +12,7 @@
 - 任務依賴與項目里程碑：明確的 blocked-by／blocks 關係、防循環檢查、Project War Room 里程碑，以及不會自動完成或改派的下一步提示
 - 重複工作：每日／每週／每月／自訂週期／夜更模式；只在完成當前任務後安全建立下一項，可隨時暫停
 - Body Double 同步專注：兩人各自選任務、ready 後同步開始；可個別暫停／離開／完成，結束前必須儲存自己的 checkpoint，沒有排名或自動改動任務
+- Task Resource Pack：任務可連結網址、文件、Supabase Storage、聯絡人及現有 Notes／SOP／Decision／Project／Waiting；逐項明確分享，Focus Mode 只顯示可開啟資源
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -56,6 +57,8 @@ supabase/migrations/20260724173935_recurring_task_routines.sql
 supabase/migrations/20260724175911_recurrence_foreign_key_indexes.sql
 supabase/migrations/20260725190000_body_double_mode.sql
 supabase/migrations/20260725190100_body_double_checkpoint_eligibility.sql
+supabase/migrations/20260725200000_task_resource_pack.sql
+supabase/migrations/20260725200100_task_resource_pack_validation_fix.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -76,6 +79,8 @@ supabase/migrations/20260724173935_recurring_task_routines.rollback.sql
 supabase/migrations/20260724175911_recurrence_foreign_key_indexes.rollback.sql
 supabase/migrations/20260725190000_body_double_mode.rollback.sql
 supabase/migrations/20260725190100_body_double_checkpoint_eligibility.rollback.sql
+supabase/migrations/20260725200000_task_resource_pack.rollback.sql
+supabase/migrations/20260725200100_task_resource_pack_validation_fix.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -112,3 +117,5 @@ Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 ro
 低壓力 Weekly Review 的資料、capacity 提示、確認邊界及 rollback 說明見 [`docs/weekly-review.md`](docs/weekly-review.md)。
 
 Body Double 的兩人 session、checkpoint 完成條件、私隱、重連及 rollback 說明見 [`docs/body-double.md`](docs/body-double.md)。
+
+Task Resource Pack 的類型、Focus Mode、RLS、Storage signed URL 及 rollback 說明見 [`docs/task-resource-pack.md`](docs/task-resource-pack.md)。

@@ -36,6 +36,9 @@ const bodyDoubleMigration = readFileSync(resolve(here, "../supabase/migrations/2
 const bodyDoubleRollback = readFileSync(resolve(here, "../supabase/migrations/20260725190000_body_double_mode.rollback.sql"), "utf8").toLowerCase();
 const bodyDoubleEligibilityMigration = readFileSync(resolve(here, "../supabase/migrations/20260725190100_body_double_checkpoint_eligibility.sql"), "utf8").toLowerCase();
 const bodyDoubleEligibilityRollback = readFileSync(resolve(here, "../supabase/migrations/20260725190100_body_double_checkpoint_eligibility.rollback.sql"), "utf8").toLowerCase();
+const taskResourceMigration = readFileSync(resolve(here, "../supabase/migrations/20260725200000_task_resource_pack.sql"), "utf8").toLowerCase();
+const taskResourceRollback = readFileSync(resolve(here, "../supabase/migrations/20260725200000_task_resource_pack.rollback.sql"), "utf8").toLowerCase();
+const taskResourceValidationFix = readFileSync(resolve(here, "../supabase/migrations/20260725200100_task_resource_pack_validation_fix.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
 const notificationSettings = readFileSync(resolve(here, "../components/NotificationSettings.tsx"), "utf8").toLowerCase();
@@ -45,6 +48,8 @@ const taskForm = readFileSync(resolve(here, "../components/forms/TaskForm.tsx"),
 const handoffControls = readFileSync(resolve(here, "../components/items/TaskHandoffControls.tsx"), "utf8").toLowerCase();
 const inboxProcessingMode = readFileSync(resolve(here, "../components/inbox/InboxProcessingMode.tsx"), "utf8").toLowerCase();
 const bodyDoublePage = readFileSync(resolve(here, "../app/body-double/page.tsx"), "utf8").toLowerCase();
+const taskResourcePack = readFileSync(resolve(here, "../components/TaskResourcePack.tsx"), "utf8").toLowerCase();
+const focusMode = readFileSync(resolve(here, "../components/FocusMode.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -503,4 +508,38 @@ test("Body Double UI preserves privacy, reconnects safely, and uses the existing
   assert.match(bodyDoubleRollback, /drop table if exists public\.body_double_participants/);
   assert.match(bodyDoubleRollback, /drop table if exists public\.body_double_sessions/);
   assert.doesNotMatch(bodyDoubleRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|assignments|share_records)/);
+});
+
+test("Task Resource Pack is additive, private by default, and explicitly shared only", () => {
+  assert.match(taskResourceMigration, /create\s+table\s+if\s+not\s+exists\s+public\.task_resources/);
+  assert.match(taskResourceMigration, /share_with_task\s+boolean\s+not\s+null\s+default\s+false/);
+  assert.match(taskResourceMigration, /alter\s+table\s+public\.task_resources\s+enable\s+row\s+level\s+security/);
+  assert.match(taskResourceMigration, /task_resources_select_explicit/);
+  assert.match(taskResourceMigration, /owner_id\s*=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(taskResourceMigration, /share_with_task[\s\S]*?private\.current_user_can_read\('task',\s*task_id\)/);
+  assert.match(taskResourceMigration, /linked_item_id\s+is\s+null\s+or\s+private\.current_user_can_read\('operating_item',\s*linked_item_id\)/);
+  assert.match(taskResourceMigration, /private\.current_user_can_checkpoint\(new\.task_id\)/);
+  assert.match(taskResourceMigration, /task_resource_link_invalid/);
+  assert.match(taskResourceValidationFix, /drop constraint if exists task_resources_storage_path_check/);
+  assert.match(taskResourceValidationFix, /storage_path !~ '\(\^\|\/\)\\\.\\\.\(\/\|\$\)'/);
+  assert.match(taskResourceValidationFix, /drop constraint if exists task_resources_contact_email_check/);
+  assert.match(taskResourceMigration, /revoke\s+all\s+on\s+public\.task_resources\s+from\s+public,\s*anon,\s*authenticated/);
+  assert.match(taskResourceMigration, /grant\s+select,\s*insert,\s*update,\s*delete\s+on\s+public\.task_resources\s+to\s+authenticated/);
+  assert.doesNotMatch(taskResourceMigration, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
+});
+
+test("Task Resource Pack uses a user-scoped Storage signed URL and is available in Focus Mode", () => {
+  assert.match(controlRoute, /view\s*===\s*"task_resources"/);
+  for (const action of ["create_task_resource", "set_task_resource_sharing", "delete_task_resource", "open_task_storage_resource"]) {
+    assert.match(controlRoute, new RegExp(`case "${action}"`));
+  }
+  assert.match(controlRoute, /client\.storage\.from\(resource\.data\.storage_bucket\)\.createsignedurl\(resource\.data\.storage_path,\s*300\)/);
+  assert.doesNotMatch(controlRoute, /service_role/);
+  assert.match(taskResourcePack, /任務分享不會自動分享私人資源/);
+  assert.match(taskResourcePack, /明確分享給可查看此任務的人/);
+  assert.match(taskResourcePack, /supabase storage 檔案/);
+  assert.match(focusMode, /taskresourcepack/);
+  assert.match(taskResourceRollback, /task_resource_pack_rollback_requires_explicit_data_handling/);
+  assert.match(taskResourceRollback, /drop table if exists public\.task_resources/);
+  assert.doesNotMatch(taskResourceRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
 });

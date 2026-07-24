@@ -4,11 +4,12 @@ import { useState } from "react";
 import { CalendarClock, FilePenLine, Link2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
+import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { RiskBadge, ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
-import type { Assignment, HandoffNote, Task, TaskDependency, TaskRecurrenceRule } from "@/lib/types";
+import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskRecurrenceRule } from "@/lib/types";
 
 export function TaskCard({
   task,
@@ -21,6 +22,7 @@ export function TaskCard({
   allTasks,
   taskDependencies,
   taskRecurrenceRules,
+  operatingItems = [],
   prominent = false
 }: {
   task: Task;
@@ -33,6 +35,7 @@ export function TaskCard({
   allTasks: Task[];
   taskDependencies: TaskDependency[];
   taskRecurrenceRules: TaskRecurrenceRule[];
+  operatingItems?: Array<Pick<OperatingItem, "id" | "title" | "item_type">>;
   prominent?: boolean;
 }) {
   const activeHandoff = assignments.some((item) =>
@@ -101,6 +104,7 @@ export function TaskCard({
         currentUserId={currentUserId}
         onChanged={onChanged}
       />
+      <TaskResourcePack taskId={task.id} currentUserId={currentUserId} availableItems={operatingItems} editable />
       <div className="mt-4 grid gap-3 text-base text-slate-700 sm:grid-cols-2">
         <p className="flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-indigo-600" />

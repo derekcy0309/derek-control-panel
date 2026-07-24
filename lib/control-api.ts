@@ -6,6 +6,7 @@ import type {
   InboxProcessingBundle,
   InboxProcessingEvent,
   TaskCheckpointBundle,
+  TaskResourceBundle,
   TodayData,
   WeeklyReview,
   WeeklyReviewSummary
@@ -28,6 +29,10 @@ export async function searchControlData(query: string) {
 
 export async function loadTaskCheckpoints(taskId: string): Promise<TaskCheckpointBundle> {
   return controlRequest<TaskCheckpointBundle>(`/api/control?view=task_checkpoints&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
+}
+
+export async function loadTaskResources(taskId: string): Promise<TaskResourceBundle> {
+  return controlRequest<TaskResourceBundle>(`/api/control?view=task_resources&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
 }
 
 export async function loadInboxProcessing(

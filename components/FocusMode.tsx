@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, CirclePause, Clock3, FilePenLine, Play, X } from "lucide-react";
 import { RestartCheckpointPanel } from "@/components/RestartCheckpointPanel";
+import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { Button } from "@/components/ui/Button";
 import { hasCheckpointContent } from "@/lib/checkpoints";
 import { controlAction } from "@/lib/control-api";
@@ -291,6 +292,8 @@ export function FocusMode({
             setMessage("你仍在專注模式；草稿會繼續自動保存。");
           }}
         />
+
+        <TaskResourcePack taskId={task.id} focus />
 
         <div className="mt-7 flex flex-wrap gap-2">
           {[15, 25, 45].map((minutes) => (

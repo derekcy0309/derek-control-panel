@@ -100,6 +100,7 @@ function TasksContent() {
               allTasks={data.tasks}
               taskDependencies={data.taskDependencies}
               taskRecurrenceRules={data.taskRecurrenceRules}
+              operatingItems={data.operatingItems}
               onChanged={reload}
               onEdit={setEditingTask}
             />

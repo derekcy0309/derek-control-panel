@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get("view") ?? "bootstrap";
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "task_resources") return taskResources(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
@@ -594,6 +595,10 @@ export async function POST(request: NextRequest) {
     case "snooze_today_task": return snoozeTodayTask(context, body);
     case "save_checkpoint_draft": return saveTaskCheckpoint(context, body, "draft");
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
+    case "create_task_resource": return createTaskResource(context, body);
+    case "set_task_resource_sharing": return setTaskResourceSharing(context, body);
+    case "delete_task_resource": return deleteTaskResource(context, body);
+    case "open_task_storage_resource": return openTaskStorageResource(context, body);
     case "process_inbox_item": return processInboxItem(context, body);
     case "undo_inbox_processing": return undoInboxProcessing(context, body);
     case "save_notification_preferences": return saveNotificationPreferences(context, body);
@@ -1646,6 +1651,151 @@ async function taskCheckpoints({ client, user }: RequestContext, requestedTaskId
   }, { headers: privateHeaders() });
 }
 
+async function taskResources({ client }: RequestContext, requestedTaskId: string) {
+  const taskId = uuidValue(requestedTaskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const task = await client.from("tasks").select("id").eq("id", taskId).maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (!task.data) return jsonError("找不到任務或你沒有權限查看。", 404);
+
+  const result = await client.from("task_resources")
+    .select("id,task_id,owner_id,resource_type,label,url,storage_bucket,storage_path,linked_item_id,contact_name,contact_phone,contact_email,share_with_task,created_at,updated_at")
+    .eq("task_id", taskId)
+    .order("updated_at", { ascending: false })
+    .limit(50);
+  if (result.error) return databaseError(result.error);
+  return Response.json({ resources: result.data ?? [] }, { headers: privateHeaders() });
+}
+
+const taskResourceTypes = ["url", "document", "storage_file", "contact", "note", "sop", "decision", "project", "waiting"] as const;
+
+type TaskResourceInput = {
+  taskId: string;
+  resourceType: (typeof taskResourceTypes)[number];
+  label: string;
+  url: string | null;
+  storageBucket: string | null;
+  storagePath: string | null;
+  linkedItemId: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  shareWithTask: boolean;
+};
+
+function taskResourceInput(body: Record<string, unknown>): TaskResourceInput | Response {
+  const taskId = uuidValue(body.taskId);
+  const resourceType = enumValue(body.resourceType, taskResourceTypes, null);
+  const label = resourceText(body.label, 200);
+  if (!taskId || !resourceType || !label) return jsonError("請選擇有效任務、資源類型並輸入名稱。", 422);
+  const url = safeUrl(body.url);
+  const storageBucket = resourceText(body.storageBucket, 100);
+  const storagePath = resourceText(body.storagePath, 1000);
+  const linkedItemId = uuidValue(body.linkedItemId);
+  const contactName = resourceText(body.contactName, 200);
+  const contactPhone = resourceText(body.contactPhone, 80);
+  const contactEmail = resourceText(body.contactEmail, 320)?.toLowerCase() ?? null;
+  const shareWithTask = body.shareWithTask === true;
+
+  if ((resourceType === "url" || resourceType === "document") && !url && !linkedItemId) {
+    return jsonError("網址或文件請輸入有效的 HTTPS 連結，或選擇已有文件。", 422);
+  }
+  if (resourceType === "url" && linkedItemId) return jsonError("網址不可同時連結系統內項目。", 422);
+  if (resourceType === "document" && Boolean(url) === Boolean(linkedItemId)) return jsonError("文件請只選擇一個網址或一份已有文件。", 422);
+  if (resourceType === "storage_file") {
+    if (!storageBucket || !storagePath || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(storageBucket) || storagePath.startsWith("/") || storagePath.split("/").some((part) => part === ".." || !part)) {
+      return jsonError("請輸入有效的 Supabase Storage bucket 及 object path。", 422);
+    }
+  }
+  if (resourceType === "contact") {
+    if (!contactName || (!contactPhone && !contactEmail) || (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail))) {
+      return jsonError("聯絡人請輸入姓名，以及電話或電郵。", 422);
+    }
+  }
+  if (["note", "sop", "decision", "project", "waiting"].includes(resourceType) && !linkedItemId) {
+    return jsonError("請選擇要連結的現有項目。", 422);
+  }
+
+  return {
+    taskId,
+    resourceType,
+    label,
+    url: resourceType === "url" || resourceType === "document" ? url : null,
+    storageBucket: resourceType === "storage_file" ? storageBucket : null,
+    storagePath: resourceType === "storage_file" ? storagePath : null,
+    linkedItemId: resourceType === "document" || ["note", "sop", "decision", "project", "waiting"].includes(resourceType) ? linkedItemId : null,
+    contactName: resourceType === "contact" ? contactName : null,
+    contactPhone: resourceType === "contact" ? contactPhone : null,
+    contactEmail: resourceType === "contact" ? contactEmail : null,
+    shareWithTask
+  };
+}
+
+async function createTaskResource({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const input = taskResourceInput(body);
+  if (input instanceof Response) return input;
+  const result = await client.from("task_resources").insert({
+    task_id: input.taskId,
+    owner_id: user.id,
+    resource_type: input.resourceType,
+    label: input.label,
+    url: input.url,
+    storage_bucket: input.storageBucket,
+    storage_path: input.storagePath,
+    linked_item_id: input.linkedItemId,
+    contact_name: input.contactName,
+    contact_phone: input.contactPhone,
+    contact_email: input.contactEmail,
+    share_with_task: input.shareWithTask
+  }).select("*").single();
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "task", input.taskId, "resource_added", "加入任務資源");
+  return Response.json({ resource: result.data }, { headers: privateHeaders() });
+}
+
+async function setTaskResourceSharing({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("資源識別碼不正確。", 422);
+  const result = await client.from("task_resources")
+    .update({ share_with_task: body.shareWithTask === true })
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .select("id,task_id,share_with_task")
+    .maybeSingle();
+  if (result.error) return databaseError(result.error);
+  if (!result.data) return jsonError("找不到這項私人資源，或你不能變更它。", 404);
+  await recordActivity(client, user.id, "task", result.data.task_id, result.data.share_with_task ? "resource_shared" : "resource_made_private", result.data.share_with_task ? "明確分享任務資源" : "將任務資源改回私人");
+  return Response.json({ resource: result.data }, { headers: privateHeaders() });
+}
+
+async function deleteTaskResource({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("資源識別碼不正確。", 422);
+  const existing = await client.from("task_resources").select("id,task_id").eq("id", id).eq("owner_id", user.id).maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到這項私人資源，或你不能刪除它。", 404);
+  const result = await client.from("task_resources").delete().eq("id", id).eq("owner_id", user.id);
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "task", existing.data.task_id, "resource_removed", "移除任務資源");
+  return Response.json({ id }, { headers: privateHeaders() });
+}
+
+async function openTaskStorageResource({ client }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("資源識別碼不正確。", 422);
+  const resource = await client.from("task_resources")
+    .select("resource_type,storage_bucket,storage_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (resource.error) return databaseError(resource.error);
+  if (!resource.data || resource.data.resource_type !== "storage_file" || !resource.data.storage_bucket || !resource.data.storage_path) {
+    return jsonError("找不到這個 Storage 檔案或你沒有權限。", 404);
+  }
+  const signed = await client.storage.from(resource.data.storage_bucket).createSignedUrl(resource.data.storage_path, 300);
+  if (signed.error || !signed.data?.signedUrl) return jsonError("未能開啟這個 Storage 檔案。請確認檔案仍存在，並且你的 Storage 權限容許讀取。", 403);
+  return Response.json({ url: signed.data.signedUrl }, { headers: privateHeaders() });
+}
+
 async function saveTaskCheckpoint(
   { client, user }: RequestContext,
   body: Record<string, unknown>,
@@ -1796,6 +1946,7 @@ function calendarDayDifference(laterDate: string, earlierDate: string) {
 function stringValue(value: unknown) { return typeof value === "string" ? value : ""; }
 function nullableText(value: unknown) { const text = stringValue(value).trim(); return text ? text.slice(0, 10000) : null; }
 function requiredText(value: unknown, message: string) { const text = stringValue(value).trim(); return text ? text.slice(0, 500) : jsonError(message, 422); }
+function resourceText(value: unknown, maxLength: number) { const text = stringValue(value).trim(); return text ? text.slice(0, maxLength) : null; }
 function dateValue(value: unknown) { const text = stringValue(value); return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null; }
 function timeValue(value: unknown) { const text = stringValue(value); return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : null; }
 function timestampValue(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; const date = new Date(text); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
@@ -1913,6 +2064,9 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("BODY_DOUBLE_PRESENCE_INVALID")) return jsonError("共用專注狀態不正確。", 422);
   if (error.message?.includes("BODY_DOUBLE_CHECKPOINT_REQUIRED")) return jsonError("請先儲存今節的 checkpoint，再完成自己的時段。", 409);
   if (error.message?.includes("BODY_DOUBLE_PARTICIPANT_FINISHED")) return jsonError("你已完成或離開這個共用專注時段。", 409);
+  if (error.message?.includes("TASK_RESOURCE_OWNER_REQUIRED") || error.message?.includes("TASK_RESOURCE_FORBIDDEN")) return jsonError("你沒有權限管理這項任務的資源。", 403);
+  if (error.message?.includes("TASK_RESOURCE_LINK_INVALID")) return jsonError("這個系統內項目不存在、類型不正確，或你沒有權限連結它。", 422);
+  if (error.message?.includes("TASK_RESOURCE_IDENTITY_IMMUTABLE")) return jsonError("資源所屬任務及建立者不可直接修改；請移除後重新加入。", 409);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

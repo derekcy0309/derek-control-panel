@@ -422,6 +422,39 @@ export type TaskCheckpointBundle = {
   history: TaskCheckpoint[];
 };
 
+export type TaskResourceType =
+  | "url"
+  | "document"
+  | "storage_file"
+  | "contact"
+  | "note"
+  | "sop"
+  | "decision"
+  | "project"
+  | "waiting";
+
+export type TaskResource = {
+  id: string;
+  task_id: string;
+  owner_id: string;
+  resource_type: TaskResourceType;
+  label: string;
+  url: string | null;
+  storage_bucket: string | null;
+  storage_path: string | null;
+  linked_item_id: string | null;
+  contact_name: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
+  share_with_task: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskResourceBundle = {
+  resources: TaskResource[];
+};
+
 export type BodyDoubleSessionStatus = "waiting" | "running" | "ended" | "cancelled";
 export type BodyDoubleParticipantStatus = "invited" | "ready" | "running" | "paused" | "completed" | "left";
 
