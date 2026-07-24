@@ -12,6 +12,12 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: "zh-Hant-HK",
     orientation: "any",
     categories: ["productivity", "business", "lifestyle"],
-    icons: [{ src: "/icon", sizes: "512x512", type: "image/png", purpose: "maskable" }]
+    icons: [{ src: "/icon", sizes: "512x512", type: "image/png", purpose: "maskable" }],
+    share_target: {
+      action: "/capture",
+      method: "GET",
+      enctype: "application/x-www-form-urlencoded",
+      params: { title: "title", text: "text", url: "url" }
+    }
   };
 }

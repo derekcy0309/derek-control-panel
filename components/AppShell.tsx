@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  Settings, Share2, Sparkles, UsersRound, X
+  PlusCircle, Settings, Share2, Sparkles, UsersRound, X
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -123,6 +123,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <Brand displayName={displayName} compact />
           <div className="flex items-center gap-2">
+            <Link className="icon-button" href="/capture" aria-label="快速收集"><PlusCircle className="h-5 w-5" /></Link>
             <Link className="icon-button" href="/search" aria-label="搜尋"><Search className="h-5 w-5" /></Link>
             <button className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:block lg:hidden" onClick={signOut}>登出</button>
           </div>

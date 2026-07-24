@@ -39,7 +39,10 @@ const bodyDoubleEligibilityRollback = readFileSync(resolve(here, "../supabase/mi
 const taskResourceMigration = readFileSync(resolve(here, "../supabase/migrations/20260725200000_task_resource_pack.sql"), "utf8").toLowerCase();
 const taskResourceRollback = readFileSync(resolve(here, "../supabase/migrations/20260725200000_task_resource_pack.rollback.sql"), "utf8").toLowerCase();
 const taskResourceValidationFix = readFileSync(resolve(here, "../supabase/migrations/20260725200100_task_resource_pack_validation_fix.sql"), "utf8").toLowerCase();
+const mobileCaptureMigration = readFileSync(resolve(here, "../supabase/migrations/20260725210000_mobile_quick_capture.sql"), "utf8").toLowerCase();
+const mobileCaptureRollback = readFileSync(resolve(here, "../supabase/migrations/20260725210000_mobile_quick_capture.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
+const quickCaptureRoute = readFileSync(resolve(here, "../app/api/quick-capture/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
 const notificationSettings = readFileSync(resolve(here, "../components/NotificationSettings.tsx"), "utf8").toLowerCase();
 const serviceWorker = readFileSync(resolve(here, "../public/sw.js"), "utf8").toLowerCase();
@@ -50,6 +53,9 @@ const inboxProcessingMode = readFileSync(resolve(here, "../components/inbox/Inbo
 const bodyDoublePage = readFileSync(resolve(here, "../app/body-double/page.tsx"), "utf8").toLowerCase();
 const taskResourcePack = readFileSync(resolve(here, "../components/TaskResourcePack.tsx"), "utf8").toLowerCase();
 const focusMode = readFileSync(resolve(here, "../components/FocusMode.tsx"), "utf8").toLowerCase();
+const quickCapturePage = readFileSync(resolve(here, "../app/capture/page.tsx"), "utf8").toLowerCase();
+const captureFiles = readFileSync(resolve(here, "../components/inbox/CaptureFiles.tsx"), "utf8").toLowerCase();
+const manifest = readFileSync(resolve(here, "../app/manifest.ts"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -542,4 +548,50 @@ test("Task Resource Pack uses a user-scoped Storage signed URL and is available 
   assert.match(taskResourceRollback, /task_resource_pack_rollback_requires_explicit_data_handling/);
   assert.match(taskResourceRollback, /drop table if exists public\.task_resources/);
   assert.doesNotMatch(taskResourceRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
+});
+
+test("Mobile Quick Capture extends the existing Inbox with idempotent, owner-private data", () => {
+  for (const table of ["mobile_capture_receipts", "inbox_capture_files"]) {
+    assert.match(mobileCaptureMigration, new RegExp(`create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${table}`));
+    assert.match(mobileCaptureMigration, new RegExp(`alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`));
+  }
+  assert.match(mobileCaptureMigration, /unique\s*\(owner_id,\s*client_capture_id\)/);
+  assert.match(mobileCaptureMigration, /unique\s*\(owner_id,\s*client_file_id\)/);
+  assert.match(mobileCaptureMigration, /inbox_item_id\s+uuid\s+not\s+null\s+references\s+public\.operating_items/);
+  assert.match(mobileCaptureMigration, /i\.owner_id\s*=\s*\(select\s+auth\.uid\(\)\)\s+and\s+i\.item_type\s*=\s*'inbox'/);
+  assert.match(mobileCaptureMigration, /sharing an inbox item does not share these files/);
+  assert.doesNotMatch(mobileCaptureMigration, /create\s+table\s+public\.(?:tasks|inbox_items)\b/);
+});
+
+test("Mobile Quick Capture Storage bucket and server entrypoint preserve privacy and retry safety", () => {
+  assert.match(mobileCaptureMigration, /'dcp-private-captures',\s*'dcp-private-captures',\s*false/);
+  assert.match(mobileCaptureMigration, /storage\.foldername\(name\)\)\[1\]\s*=\s*\(select\s+auth\.uid\(\)\)::text/);
+  assert.match(mobileCaptureMigration, /function\s+public\.create_mobile_capture/);
+  assert.match(mobileCaptureMigration, /security\s+definer/);
+  assert.match(mobileCaptureMigration, /actor\s+uuid\s*:=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(mobileCaptureMigration, /revoke\s+all\s+on\s+function\s+public\.create_mobile_capture[\s\S]*?from\s+public,\s*anon/);
+  assert.match(mobileCaptureMigration, /grant\s+execute\s+on\s+function\s+public\.create_mobile_capture[\s\S]*?to\s+authenticated/);
+  assert.match(quickCaptureRoute, /create_mobile_capture/);
+  assert.match(quickCaptureRoute, /clientcaptureid/);
+  assert.match(quickCaptureRoute, /clientfileid/);
+  assert.match(quickCaptureRoute, /authorization:\s*"bearer\s*"\s*\+\s*token/);
+  assert.match(quickCaptureRoute, /retryable:\s*true/);
+  assert.match(quickCaptureRoute, /private, no-store/);
+  assert.doesNotMatch(quickCaptureRoute, /service_role/);
+});
+
+test("Mobile Quick Capture provides mobile fallback, explicit audio retention and private attachment opening", () => {
+  assert.match(manifest, /share_target/);
+  assert.match(manifest, /action:\s*"\/capture"/);
+  assert.match(quickCapturePage, /webkitSpeechRecognition/i);
+  assert.match(quickCapturePage, /rawaudioretained/);
+  assert.match(quickCapturePage, /不會自動交辦或分享內容/);
+  assert.match(quickCapturePage, /navigator\.online/);
+  assert.match(quickCapturePage, /capture="environment"/);
+  assert.match(captureFiles, /查看私人附件/);
+  assert.match(controlRoute, /view\s*===\s*"inbox_capture_files"/);
+  assert.match(controlRoute, /case\s+"open_inbox_capture_file"/);
+  assert.match(controlRoute, /createSignedUrl\(file\.data\.object_path,\s*300\)/i);
+  assert.match(mobileCaptureRollback, /mobile_quick_capture_rollback_requires_explicit_data_handling/);
+  assert.doesNotMatch(mobileCaptureRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|task_checkpoints|share_records)/);
 });

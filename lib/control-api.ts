@@ -3,6 +3,7 @@
 import type {
   BodyDoubleData,
   ControlData,
+  InboxCaptureFile,
   InboxProcessingBundle,
   InboxProcessingEvent,
   TaskCheckpointBundle,
@@ -33,6 +34,10 @@ export async function loadTaskCheckpoints(taskId: string): Promise<TaskCheckpoin
 
 export async function loadTaskResources(taskId: string): Promise<TaskResourceBundle> {
   return controlRequest<TaskResourceBundle>(`/api/control?view=task_resources&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
+}
+
+export async function loadInboxCaptureFiles(inboxItemId: string): Promise<{ files: InboxCaptureFile[] }> {
+  return controlRequest<{ files: InboxCaptureFile[] }>("/api/control?view=inbox_capture_files&inboxItemId=" + encodeURIComponent(inboxItemId), { method: "GET" });
 }
 
 export async function loadInboxProcessing(

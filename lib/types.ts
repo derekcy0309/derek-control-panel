@@ -455,6 +455,18 @@ export type TaskResourceBundle = {
   resources: TaskResource[];
 };
 
+export type InboxCaptureFile = {
+  id: string;
+  inbox_item_id: string;
+  object_path: string;
+  file_name: string;
+  content_type: string;
+  byte_size: number;
+  file_kind: "photo" | "document" | "audio";
+  raw_audio_retained: boolean;
+  created_at: string;
+};
+
 export type BodyDoubleSessionStatus = "waiting" | "running" | "ended" | "cancelled";
 export type BodyDoubleParticipantStatus = "invited" | "ready" | "running" | "paused" | "completed" | "left";
 

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { Archive, CalendarClock, Check, FileLock2, Filter, List, Plus, Search, Share2, Sparkles } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { InboxProcessingMode } from "@/components/inbox/InboxProcessingMode";
+import { CaptureFiles } from "@/components/inbox/CaptureFiles";
 import { ProjectMilestonesPanel } from "@/components/projects/ProjectMilestonesPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
@@ -223,7 +224,35 @@ function InboxWorkspace() {
 function ItemCard({ item, currentUserId, onEdit, onComplete, onArchive }: { item: OperatingItem; currentUserId: string; onEdit: () => void; onComplete: () => void; onArchive: () => void }) {
   const owner = item.owner_id === currentUserId;
   const age = item.item_type === "waiting" && typeof item.metadata.lastContactDate === "string" ? waitingAge(item.metadata.lastContactDate) : null;
-  return <article className="panel p-4 sm:p-5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap gap-2"><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{itemTypeLabel[item.item_type] || item.item_type}</span>{item.sensitive ? <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600"><FileLock2 className="h-3.5 w-3.5" />敏感</span> : null}{item.visibility !== "private" ? <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700"><Share2 className="h-3.5 w-3.5" />{item.visibility === "assigned" ? "已指派" : item.visibility === "joint" ? "共同項目" : "已分享"}</span> : null}</div><h2 className="mt-3 break-words text-lg font-bold">{item.title}</h2></div><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.status === "blocked" ? "bg-red-50 text-red-700" : item.status === "waiting" ? "bg-amber-50 text-amber-700" : item.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{statusLabel[item.status]}</span></div>{item.description ? <p className="muted mt-3 line-clamp-3 text-sm leading-6">{item.description}</p> : null}<div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">{item.next_action ? <p><span className="font-semibold">下一步：</span>{item.next_action}</p> : null}{item.due_date ? <p className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4 text-slate-400" />{formatDate(item.due_date)}</p> : null}{age ? <p className="text-amber-700">已等待 {age.days} 日 · {age.band}</p> : null}{item.item_type === "client" && item.metadata.monthlyRevenue ? <p>每月收入：{formatCurrency(Number(item.metadata.monthlyRevenue))}</p> : null}</div>{owner ? <div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={onEdit}>修改</Button>{item.status !== "completed" ? <Button variant="success" onClick={onComplete}><Check className="h-4 w-4" />完成</Button> : null}<Button variant="ghost" onClick={onArchive}><Archive className="h-4 w-4" />封存</Button></div> : <p className="muted mt-4 text-xs">由對方分享 · 只按授權權限顯示</p>}</article>;
+  const mobileCapture = item.metadata.mobileCapture;
+  const hasPrivateCaptureFile = owner
+    && item.item_type === "inbox"
+    && Boolean(mobileCapture && typeof mobileCapture === "object" && !Array.isArray(mobileCapture) && (mobileCapture as Record<string, unknown>).hasAttachment === true);
+
+  return (
+    <article className="panel p-4 sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{itemTypeLabel[item.item_type] || item.item_type}</span>
+            {item.sensitive ? <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600"><FileLock2 className="h-3.5 w-3.5" />敏感</span> : null}
+            {item.visibility !== "private" ? <span className="flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700"><Share2 className="h-3.5 w-3.5" />{item.visibility === "assigned" ? "已指派" : item.visibility === "joint" ? "共同項目" : "已分享"}</span> : null}
+          </div>
+          <h2 className="mt-3 break-words text-lg font-bold">{item.title}</h2>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.status === "blocked" ? "bg-red-50 text-red-700" : item.status === "waiting" ? "bg-amber-50 text-amber-700" : item.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{statusLabel[item.status]}</span>
+      </div>
+      {item.description ? <p className="muted mt-3 line-clamp-3 text-sm leading-6">{item.description}</p> : null}
+      <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+        {item.next_action ? <p><span className="font-semibold">下一步：</span>{item.next_action}</p> : null}
+        {item.due_date ? <p className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4 text-slate-400" />{formatDate(item.due_date)}</p> : null}
+        {age ? <p className="text-amber-700">已等待 {age.days} 日 · {age.band}</p> : null}
+        {item.item_type === "client" && item.metadata.monthlyRevenue ? <p>每月收入：{formatCurrency(Number(item.metadata.monthlyRevenue))}</p> : null}
+      </div>
+      {hasPrivateCaptureFile ? <CaptureFiles inboxItemId={item.id} /> : null}
+      {owner ? <div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={onEdit}>修改</Button>{item.status !== "completed" ? <Button variant="success" onClick={onComplete}><Check className="h-4 w-4" />完成</Button> : null}<Button variant="ghost" onClick={onArchive}><Archive className="h-4 w-4" />封存</Button></div> : <p className="muted mt-4 text-xs">由對方分享 · 只按授權權限顯示</p>}
+    </article>
+  );
 }
 
 function ItemModal({ config, item, onClose, onSaved }: { config: ViewConfig; item: OperatingItem | null; currentUserId: string; onClose: () => void; onSaved: () => void }) {

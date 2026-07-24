@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "task_resources") return taskResources(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
@@ -599,6 +600,7 @@ export async function POST(request: NextRequest) {
     case "set_task_resource_sharing": return setTaskResourceSharing(context, body);
     case "delete_task_resource": return deleteTaskResource(context, body);
     case "open_task_storage_resource": return openTaskStorageResource(context, body);
+    case "open_inbox_capture_file": return openInboxCaptureFile(context, body);
     case "process_inbox_item": return processInboxItem(context, body);
     case "undo_inbox_processing": return undoInboxProcessing(context, body);
     case "save_notification_preferences": return saveNotificationPreferences(context, body);
@@ -1793,6 +1795,35 @@ async function openTaskStorageResource({ client }: RequestContext, body: Record<
   }
   const signed = await client.storage.from(resource.data.storage_bucket).createSignedUrl(resource.data.storage_path, 300);
   if (signed.error || !signed.data?.signedUrl) return jsonError("未能開啟這個 Storage 檔案。請確認檔案仍存在，並且你的 Storage 權限容許讀取。", 403);
+  return Response.json({ url: signed.data.signedUrl }, { headers: privateHeaders() });
+}
+
+async function inboxCaptureFiles({ client }: RequestContext, requestedInboxItemId: string) {
+  const inboxItemId = uuidValue(requestedInboxItemId);
+  if (!inboxItemId) return jsonError("收集箱識別碼不正確。", 400);
+  const item = await client.from("operating_items").select("id,item_type").eq("id", inboxItemId).maybeSingle();
+  if (item.error) return databaseError(item.error);
+  if (!item.data || item.data.item_type !== "inbox") return jsonError("找不到收集箱內容或你沒有權限。", 404);
+  const files = await client.from("inbox_capture_files")
+    .select("id,inbox_item_id,object_path,file_name,content_type,byte_size,file_kind,raw_audio_retained,created_at")
+    .eq("inbox_item_id", inboxItemId)
+    .order("created_at", { ascending: true })
+    .limit(10);
+  if (files.error) return databaseError(files.error);
+  return Response.json({ files: files.data ?? [] }, { headers: privateHeaders() });
+}
+
+async function openInboxCaptureFile({ client }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("附件識別碼不正確。", 422);
+  const file = await client.from("inbox_capture_files")
+    .select("bucket_id,object_path")
+    .eq("id", id)
+    .maybeSingle();
+  if (file.error) return databaseError(file.error);
+  if (!file.data) return jsonError("找不到這個私人附件或你沒有權限。", 404);
+  const signed = await client.storage.from(file.data.bucket_id).createSignedUrl(file.data.object_path, 300);
+  if (signed.error || !signed.data?.signedUrl) return jsonError("未能開啟附件。請確認檔案仍存在。", 403);
   return Response.json({ url: signed.data.signedUrl }, { headers: privateHeaders() });
 }
 
