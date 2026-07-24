@@ -20,6 +20,12 @@ type FocusModeProps = {
   onChanged: () => void;
 };
 
+type PendingHistoryFinish = {
+  status: "completed" | "partial" | "interrupted";
+  checkpointId: string;
+  blockReason?: string;
+};
+
 export function FocusMode({
   task,
   defaultMinutes = 25,
@@ -39,6 +45,7 @@ export function FocusMode({
   const [exitRequested, setExitRequested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [pendingHistoryFinish, setPendingHistoryFinish] = useState<PendingHistoryFinish | null>(null);
   const notificationIdRef = useRef<string | null>(null);
   const focusSessionIdRef = useRef<string | null>(null);
   const focusClientSessionIdRef = useRef<string | null>(null);
@@ -170,7 +177,11 @@ export function FocusMode({
     setExitRequested(false);
     if (shouldClose) {
       const historyIssue = await finishFocusHistory("partial", saved.id);
-      if (historyIssue) setMessage(historyIssue);
+      if (historyIssue) {
+        setPendingHistoryFinish({ status: "partial", checkpointId: saved.id });
+        setMessage(`${historyIssue} 請先重新儲存這筆專注紀錄，再離開。`);
+        return;
+      }
       onClose();
     }
   }
@@ -198,7 +209,13 @@ export function FocusMode({
         }
       });
       const historyIssue = await finishFocusHistory("completed", saved.id);
-      if (historyIssue) setMessage(historyIssue);
+      if (historyIssue) {
+        setPendingHistoryFinish({ status: "completed", checkpointId: saved.id });
+        setMessage(`${historyIssue} 請重新儲存這筆專注紀錄。`);
+        onChanged();
+        setBusy(false);
+        return;
+      }
       onChanged();
       onClose();
     } catch (caught) {
@@ -225,7 +242,13 @@ export function FocusMode({
     try {
       await controlAction("update_task", { id: task.id, changes: { status: "blocked", blocked_reason: blockedReason } });
       const historyIssue = await finishFocusHistory("interrupted", saved.id, blockedReason);
-      if (historyIssue) setMessage(historyIssue);
+      if (historyIssue) {
+        setPendingHistoryFinish({ status: "interrupted", checkpointId: saved.id, blockReason: blockedReason });
+        setMessage(`${historyIssue} 請重新儲存這筆專注紀錄。`);
+        onChanged();
+        setBusy(false);
+        return;
+      }
       onChanged();
       onClose();
     } catch (caught) {
@@ -287,6 +310,25 @@ export function FocusMode({
     } catch {
       return "Checkpoint 與任務已儲存；專注歷史暫時未能完成記錄。";
     }
+  }
+
+  async function retryFocusHistoryFinish() {
+    if (!pendingHistoryFinish) return;
+    setBusy(true);
+    const historyIssue = await finishFocusHistory(
+      pendingHistoryFinish.status,
+      pendingHistoryFinish.checkpointId,
+      pendingHistoryFinish.blockReason
+    );
+    if (historyIssue) {
+      setMessage(`${historyIssue} 你可以保留此畫面，稍後再試。`);
+      setBusy(false);
+      return;
+    }
+    setPendingHistoryFinish(null);
+    setMessage("專注歷史已安全儲存。");
+    onChanged();
+    onClose();
   }
 
   async function scheduleFocusReminder() {
@@ -397,6 +439,11 @@ export function FocusMode({
           ) : null}
         </section>
         {message ? <p className="mt-4 rounded-xl bg-amber-400/15 p-3 text-sm font-semibold text-amber-100" role="status">{message}</p> : null}
+        {pendingHistoryFinish ? (
+          <Button className="mt-3" variant="secondary" onClick={() => void retryFocusHistoryFinish()} disabled={busy}>
+            重新儲存專注紀錄
+          </Button>
+        ) : null}
         <div className="mt-6 flex flex-wrap gap-3">
           {running ? (
             <Button variant="secondary" onClick={() => void pause()} disabled={busy}><CirclePause className="h-5 w-5" />暫停並記錄</Button>
