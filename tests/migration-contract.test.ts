@@ -47,6 +47,8 @@ const focusSessionMigration = readFileSync(resolve(here, "../supabase/migrations
 const focusSessionRollback = readFileSync(resolve(here, "../supabase/migrations/20260725230000_focus_session_history.rollback.sql"), "utf8").toLowerCase();
 const offlineQueueMigration = readFileSync(resolve(here, "../supabase/migrations/20260725235900_offline_write_queue.sql"), "utf8").toLowerCase();
 const offlineQueueRollback = readFileSync(resolve(here, "../supabase/migrations/20260725235900_offline_write_queue.rollback.sql"), "utf8").toLowerCase();
+const backupRestoreMigration = readFileSync(resolve(here, "../supabase/migrations/20260726003000_backup_restore.sql"), "utf8").toLowerCase();
+const backupRestoreRollback = readFileSync(resolve(here, "../supabase/migrations/20260726003000_backup_restore.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const quickCaptureRoute = readFileSync(resolve(here, "../app/api/quick-capture/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
@@ -67,6 +69,8 @@ const focusSessionHistory = readFileSync(resolve(here, "../components/FocusSessi
 const offlineWriteQueue = readFileSync(resolve(here, "../lib/offline-write-queue.ts"), "utf8").toLowerCase();
 const offlineQueueStatus = readFileSync(resolve(here, "../components/OfflineWriteQueueStatus.tsx"), "utf8").toLowerCase();
 const appShell = readFileSync(resolve(here, "../components/AppShell.tsx"), "utf8").toLowerCase();
+const backupRoute = readFileSync(resolve(here, "../app/api/backup/route.ts"), "utf8").toLowerCase();
+const backupPanel = readFileSync(resolve(here, "../components/BackupRestorePanel.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -704,4 +708,25 @@ test("Offline Write Queue is account-scoped, conflict-safe and idempotent withou
   assert.match(focusMode, /queuefocuspause/);
   assert.match(offlineQueueRollback, /offline_write_queue_rollback_requires_explicit_data_handling/);
   assert.doesNotMatch(offlineQueueRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|focus_sessions)/);
+});
+
+test("Backup Restore is same-account, additive, audited and protected by RLS", () => {
+  assert.match(backupRestoreMigration, /create\s+table\s+if\s+not\s+exists\s+public\.backup_restore_audit_logs/);
+  assert.match(backupRestoreMigration, /alter\s+table\s+public\.backup_restore_audit_logs\s+enable\s+row\s+level\s+security/);
+  assert.match(backupRestoreMigration, /user_id\s*=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(backupRestoreMigration, /function\s+public\.restore_backup_v1\(p_backup\s+jsonb\)/);
+  assert.match(backupRestoreMigration, /security\s+invoker/);
+  assert.match(backupRestoreMigration, /p_backup\s*->>\s*'ownerid'\s*<>\s*actor::text/);
+  assert.match(backupRestoreMigration, /on\s+conflict\s+do\s+nothing/);
+  assert.match(backupRestoreMigration, /insert\s+into\s+public\.backup_restore_audit_logs/);
+  assert.match(backupRestoreMigration, /revoke\s+all\s+on\s+function\s+public\.restore_backup_v1[\s\S]*?from\s+public,\s*anon/);
+  assert.match(backupRestoreMigration, /grant\s+execute\s+on\s+function\s+public\.restore_backup_v1[\s\S]*?to\s+authenticated/);
+  assert.doesNotMatch(backupRestoreMigration, /service_role|security\s+definer/);
+  assert.match(backupRestoreRollback, /backup_restore_audit_exists/);
+  assert.match(backupRoute, /eq\("owner_id",\s*user\.id\)/);
+  assert.match(backupRoute, /restore_backup_v1/);
+  assert.match(backupRoute, /content-disposition/);
+  assert.doesNotMatch(backupRoute, /service_role/);
+  assert.match(backupPanel, /confirmation\s*!==\s*"restore"/);
+  assert.match(backupPanel, /只新增，不覆蓋/);
 });

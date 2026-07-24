@@ -17,6 +17,7 @@
 - Time Estimation Learning：按每人自己的預計／實際時間提出個人化估時；至少三筆資料才建議，絕不自動覆寫原本預計
 - Focus Session History：持久保留每節專注的計劃／實際時間、暫停、結果、阻塞與 checkpoint，只用於恢復工作和個人估時
 - Offline Write Queue：離線安全保留純文字 Inbox、checkpoint 與 Focus 暫停／完成；恢復連線後按帳戶同步、衝突不覆蓋、登出即清除本機待同步資料
+- Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -67,6 +68,7 @@ supabase/migrations/20260725210000_mobile_quick_capture.sql
 supabase/migrations/20260725220000_time_estimation_learning.sql
 supabase/migrations/20260725230000_focus_session_history.sql
 supabase/migrations/20260725235900_offline_write_queue.sql
+supabase/migrations/20260726003000_backup_restore.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -93,6 +95,7 @@ supabase/migrations/20260725210000_mobile_quick_capture.rollback.sql
 supabase/migrations/20260725220000_time_estimation_learning.rollback.sql
 supabase/migrations/20260725230000_focus_session_history.rollback.sql
 supabase/migrations/20260725235900_offline_write_queue.rollback.sql
+supabase/migrations/20260726003000_backup_restore.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -106,7 +109,7 @@ npm test
 npm run build
 ```
 
-測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、重複工作 dedupe／暫停合約、Weekly Review 日期／容量／RLS 合約、Body Double session／checkpoint／私隱合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
+測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、依賴 blockers、重複工作 dedupe／暫停合約、Weekly Review 日期／容量／RLS 合約、Body Double session／checkpoint／私隱合約、跨帳戶與分享權限、busy-only redaction、通知私隱、Backup／Restore 格式／帳戶隔離／CSV 安全及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
 
 ## 部署
 
@@ -139,3 +142,5 @@ Time Estimation Learning 的個人化建議、RLS、資料不足邊界及 rollba
 Focus Session History 的狀態、checkpoint 關聯、RLS、idempotency 及 rollback 說明見 [`docs/focus-session-history.md`](docs/focus-session-history.md)。
 
 Offline Write Queue 的帳戶分區、本機私隱、衝突、冪等同步及 rollback 說明見 [`docs/offline-write-queue.md`](docs/offline-write-queue.md)。
+
+Backup／Restore 的匯出範圍、預覽、只新增 transaction、RLS 及 rollback 說明見 [`docs/backup-restore.md`](docs/backup-restore.md)。
