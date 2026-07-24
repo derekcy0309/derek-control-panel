@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { Archive, CalendarClock, Check, FileLock2, Filter, Plus, Search, Share2 } from "lucide-react";
+import { Archive, CalendarClock, Check, FileLock2, Filter, List, Plus, Search, Share2, Sparkles } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { InboxProcessingMode } from "@/components/inbox/InboxProcessingMode";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
@@ -12,6 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/date";
 import { waitingAge, weightedPipelineRevenue } from "@/lib/planning";
 import type { Area, OperatingItem } from "@/lib/types";
 import { useControlData } from "@/hooks/useControlData";
+import { useInboxProcessing } from "@/hooks/useInboxProcessing";
 
 const views: Record<string, ViewConfig> = {
   inbox: { title: "快速收集箱", eyebrow: "Quick Capture", description: "先記下內容，稍後再分類。首次只需要輸入一句。", area: "personal", itemType: "inbox", addLabel: "快速記下" },
@@ -37,6 +39,11 @@ export default function WorkspacePage() { return <AuthGate><WorkspaceContent /><
 function WorkspaceContent() {
   const params = useParams<{ view: string }>();
   const config = views[params.view] ?? views.inbox;
+  if (params.view === "inbox") return <InboxWorkspace />;
+  return <GenericWorkspaceContent config={config} />;
+}
+
+function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
   const { data, loading, error, reload } = useControlData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("active");
@@ -67,6 +74,148 @@ function WorkspaceContent() {
     <section className="grid gap-3 xl:grid-cols-2">{items.length ? items.map((item) => <ItemCard key={item.id} item={item} currentUserId={data.currentUser.id} onEdit={() => setEditing(item)} onComplete={() => update(item, { status: "completed" })} onArchive={() => update(item, { archived_at: new Date().toISOString() })} />) : <div className="panel col-span-full p-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><Plus className="h-5 w-5" /></div><h2 className="mt-4 text-lg font-bold">目前沒有{config.title}項目</h2><p className="muted mt-2 text-sm">你可以新增第一項，或調整上方篩選。</p><Button className="mt-5" onClick={() => setAdding(true)}>{config.addLabel}</Button></div>}</section>
     {adding || editing ? <ItemModal config={config} item={editing} currentUserId={data.currentUser.id} onClose={() => { setAdding(false); setEditing(null); }} onSaved={() => { setAdding(false); setEditing(null); void reload(); }} /> : null}
   </div>;
+}
+
+function InboxWorkspace() {
+  const [mode, setMode] = useState<"process" | "list">("process");
+  const [page, setPage] = useState(1);
+  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<OperatingItem | null>(null);
+  const [operationError, setOperationError] = useState("");
+  const { sessionId, data, loading, error, reload } = useInboxProcessing(page);
+
+  if (loading || error || !data || !sessionId) {
+    if (error) {
+      return (
+        <section className="panel p-5" role="alert">
+          <p className="font-semibold text-amber-900">{error}</p>
+          <Button className="mt-4" variant="secondary" onClick={() => void reload()}>
+            重新嘗試
+          </Button>
+        </section>
+      );
+    }
+    return <LoadingState />;
+  }
+
+  async function update(item: OperatingItem, changes: Record<string, unknown>) {
+    setOperationError("");
+    try {
+      await controlAction("update_item", { id: item.id, changes });
+      await reload();
+    } catch (caught) {
+      setOperationError(caught instanceof Error ? caught.message : "未能更新收集箱內容。");
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(data.totalRemaining / data.pageSize));
+
+  return (
+    <div className="space-y-5">
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="eyebrow">Quick Capture</p>
+          <h1 className="page-title mt-1">快速收集箱</h1>
+          <p className="muted mt-2 max-w-3xl text-sm leading-6">
+            先記下內容，再逐項作一個決定。處理模式不會一次載入整個 backlog。
+          </p>
+        </div>
+        <Button onClick={() => setAdding(true)}>
+          <Plus className="h-5 w-5" />
+          快速記下
+        </Button>
+      </section>
+
+      <section className="panel flex flex-wrap gap-2 p-2" aria-label="收集箱檢視方式">
+        <Button
+          variant={mode === "process" ? "primary" : "ghost"}
+          aria-pressed={mode === "process"}
+          onClick={() => setMode("process")}
+        >
+          <Sparkles className="h-4 w-4" />
+          逐項處理
+        </Button>
+        <Button
+          variant={mode === "list" ? "primary" : "ghost"}
+          aria-pressed={mode === "list"}
+          onClick={() => setMode("list")}
+        >
+          <List className="h-4 w-4" />
+          查看清單（{data.totalRemaining}）
+        </Button>
+      </section>
+
+      {operationError ? (
+        <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">
+          {operationError}
+        </p>
+      ) : null}
+
+      {mode === "process" ? (
+        <InboxProcessingMode
+          bundle={data}
+          sessionId={sessionId}
+          onChanged={reload}
+        />
+      ) : (
+        <>
+          <section className="grid gap-3 xl:grid-cols-2">
+            {data.items.length ? data.items.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                currentUserId={data.currentUser.id}
+                onEdit={() => setEditing(item)}
+                onComplete={() => void update(item, { status: "completed" })}
+                onArchive={() => void update(item, { archived_at: new Date().toISOString() })}
+              />
+            )) : (
+              <div className="panel col-span-full p-8 text-center">
+                <h2 className="text-lg font-bold">目前沒有可處理的收集箱內容</h2>
+                <p className="muted mt-2 text-sm">略過的內容會在稍後重新出現。</p>
+              </div>
+            )}
+          </section>
+          {totalPages > 1 ? (
+            <nav className="flex items-center justify-between gap-3" aria-label="收集箱分頁">
+              <Button
+                variant="secondary"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                上一頁
+              </Button>
+              <p className="muted text-sm">第 {page}／{totalPages} 頁</p>
+              <Button
+                variant="secondary"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              >
+                下一頁
+              </Button>
+            </nav>
+          ) : null}
+        </>
+      )}
+
+      {adding || editing ? (
+        <ItemModal
+          config={views.inbox}
+          item={editing}
+          currentUserId={data.currentUser.id}
+          onClose={() => {
+            setAdding(false);
+            setEditing(null);
+          }}
+          onSaved={() => {
+            setAdding(false);
+            setEditing(null);
+            void reload();
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function ItemCard({ item, currentUserId, onEdit, onComplete, onArchive }: { item: OperatingItem; currentUserId: string; onEdit: () => void; onComplete: () => void; onArchive: () => void }) {

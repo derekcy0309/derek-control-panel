@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get("view") ?? "bootstrap";
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view !== "bootstrap") return jsonError("不支援的資料檢視。", 400);
 
   const { client, user } = context;
@@ -104,6 +105,8 @@ export async function POST(request: NextRequest) {
     case "capacity_checkin": return saveCapacity(context, body);
     case "save_checkpoint_draft": return saveTaskCheckpoint(context, body, "draft");
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
+    case "process_inbox_item": return processInboxItem(context, body);
+    case "undo_inbox_processing": return undoInboxProcessing(context, body);
     default: return jsonError("不支援的操作。", 400);
   }
 }
@@ -123,6 +126,161 @@ async function authenticate(request: NextRequest): Promise<RequestContext | Resp
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) return jsonError("登入已失效，請重新登入。", 401);
   return { client, user: data.user, origin: request.nextUrl.origin };
+}
+
+async function inboxProcessing(
+  { client, user }: RequestContext,
+  searchParams: URLSearchParams
+) {
+  const sessionId = uuidValue(searchParams.get("sessionId"));
+  const page = integerValue(searchParams.get("page") ?? "1", 1, 10000) ?? 1;
+  if (!sessionId) return jsonError("收集箱處理 session 不正確。", 400);
+
+  const pageSize = 20;
+  const offset = (page - 1) * pageSize;
+  const availableBefore = new Date().toISOString();
+  const queueFilter = `inbox_available_after.is.null,inbox_available_after.lte.${availableBefore}`;
+  const queue = client.from("operating_items")
+    .select("*", { count: "exact" })
+    .eq("owner_id", user.id)
+    .eq("item_type", "inbox")
+    .eq("status", "inbox")
+    .is("archived_at", null)
+    .is("inbox_processed_at", null)
+    .or(queueFilter)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(offset, offset + pageSize - 1);
+  const current = client.from("operating_items")
+    .select("*")
+    .eq("owner_id", user.id)
+    .eq("item_type", "inbox")
+    .eq("status", "inbox")
+    .is("archived_at", null)
+    .is("inbox_processed_at", null)
+    .or(queueFilter)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const processed = client.from("inbox_processing_events")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("session_id", sessionId)
+    .is("undone_at", null);
+  const lastUndoable = client.from("inbox_processing_events")
+    .select("id,inbox_item_id,action,target_type,target_id,processed_at,undone_at")
+    .eq("user_id", user.id)
+    .is("undone_at", null)
+    .gte("processed_at", new Date(Date.now() - 15 * 60_000).toISOString())
+    .order("processed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const participants = client.rpc("participant_profiles");
+
+  const [queueResult, currentResult, processedResult, undoResult, participantResult] =
+    await Promise.all([queue, current, processed, lastUndoable, participants]);
+  const firstError = [queueResult, currentResult, processedResult, undoResult, participantResult]
+    .find((result) => result.error)?.error;
+  if (firstError) return databaseError(firstError);
+
+  const totalRemaining = queueResult.count ?? 0;
+  const sessionProcessed = processedResult.count ?? 0;
+  const sessionTotal = totalRemaining + sessionProcessed;
+
+  return Response.json({
+    currentUser: {
+      id: user.id,
+      email: user.email ?? "",
+      displayName: inferDisplayName(user)
+    },
+    currentItem: currentResult.data ?? null,
+    items: queueResult.data ?? [],
+    totalRemaining,
+    sessionProcessed,
+    sessionTotal,
+    position: totalRemaining > 0 ? sessionProcessed + 1 : sessionProcessed,
+    participants: participantResult.data ?? [],
+    lastUndoable: undoResult.data ?? null,
+    page,
+    pageSize
+  }, { headers: privateHeaders() });
+}
+
+async function processInboxItem(
+  { client }: RequestContext,
+  body: Record<string, unknown>
+) {
+  const inboxItemId = uuidValue(body.inboxItemId);
+  const sessionId = uuidValue(body.sessionId);
+  const idempotencyKey = uuidValue(body.idempotencyKey);
+  const action = enumValue(body.processingAction, [
+    "do_now",
+    "create_task",
+    "add_project",
+    "add_waiting",
+    "assign",
+    "schedule",
+    "keep_note",
+    "skip"
+  ], null);
+  if (!inboxItemId || !sessionId || !idempotencyKey || !action) {
+    return jsonError("收集箱處理資料不正確。", 400);
+  }
+
+  const options = inboxProcessingOptions(body.options);
+  if (options instanceof Response) return options;
+  if (action === "do_now" && !options.nextAction) {
+    return jsonError("請輸入立即開始的下一個最小步驟。", 422);
+  }
+  if (action === "schedule" && !options.plannedDate) {
+    return jsonError("請選擇安排日期。", 422);
+  }
+  if (action === "assign" && (!options.handoffToUserId || !options.handoffNote)) {
+    return jsonError("請選擇跟進者並輸入交接 notes。", 422);
+  }
+
+  const result = await client.rpc("process_inbox_item", {
+    p_inbox_item_id: inboxItemId,
+    p_action: action,
+    p_session_id: sessionId,
+    p_idempotency_key: idempotencyKey,
+    p_options: options
+  });
+  if (result.error) return databaseError(result.error);
+  const event = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!event) return jsonError("未能讀取收集箱處理結果。", 500);
+
+  return Response.json({
+    event: {
+      id: event.event_id,
+      inbox_item_id: inboxItemId,
+      action: event.processed_action,
+      target_type: event.target_type,
+      target_id: event.target_id,
+      processed_at: event.processed_at,
+      undone_at: null
+    }
+  }, { headers: privateHeaders() });
+}
+
+async function undoInboxProcessing(
+  { client }: RequestContext,
+  body: Record<string, unknown>
+) {
+  const eventId = uuidValue(body.eventId);
+  if (!eventId) return jsonError("找不到可撤銷的收集箱處理。", 400);
+
+  const result = await client.rpc("undo_last_inbox_processing", {
+    p_event_id: eventId
+  });
+  if (result.error) return databaseError(result.error);
+  const restored = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!restored) return jsonError("未能讀取撤銷結果。", 500);
+  return Response.json({
+    eventId: restored.event_id,
+    restoredInboxItemId: restored.restored_inbox_item_id
+  }, { headers: privateHeaders() });
 }
 
 async function createTask({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -734,6 +892,56 @@ function checkpointResources(value: unknown) {
   }
   return resources;
 }
+function inboxProcessingOptions(value: unknown): Record<string, string | number | null> | Response {
+  const source = objectValue(value);
+  const textLimits: Record<string, number> = {
+    title: 500,
+    description: 10000,
+    nextAction: 5000,
+    context: 500,
+    notes: 10000,
+    handoffNote: 5000
+  };
+  const result: Record<string, string | number | null> = {};
+  for (const [key, maxLength] of Object.entries(textLimits)) {
+    const raw = stringValue(source[key]).trim();
+    if (raw.length > maxLength) return jsonError("收集箱處理內容太長，請縮短後再試。", 422);
+    result[key] = raw || null;
+  }
+
+  const area = stringValue(source.area);
+  if (area && !["work", "family", "personal"].includes(area)) {
+    return jsonError("工作範圍不正確。", 422);
+  }
+  result.area = area || null;
+
+  const energyLevel = stringValue(source.energyLevel);
+  if (energyLevel && !["low", "medium", "high"].includes(energyLevel)) {
+    return jsonError("能量需求不正確。", 422);
+  }
+  result.energyLevel = energyLevel || null;
+
+  for (const key of ["dueDate", "plannedDate"] as const) {
+    const raw = stringValue(source[key]);
+    if (raw && !dateValue(raw)) return jsonError("日期格式不正確。", 422);
+    result[key] = raw || null;
+  }
+
+  const estimatedRaw = source.estimatedMinutes;
+  if (estimatedRaw === "" || estimatedRaw === null || estimatedRaw === undefined) {
+    result.estimatedMinutes = null;
+  } else {
+    const estimated = integerValue(estimatedRaw, 0, 14400);
+    if (estimated === null) return jsonError("預計時間必須是 0 至 14400 分鐘。", 422);
+    result.estimatedMinutes = estimated;
+  }
+
+  const targetRaw = stringValue(source.handoffToUserId);
+  const target = targetRaw ? uuidValue(targetRaw) : null;
+  if (targetRaw && !target) return jsonError("交接對象不正確。", 422);
+  result.handoffToUserId = target;
+  return result;
+}
 function privateHeaders() { return { "Cache-Control": "private, no-store, max-age=0", "X-Content-Type-Options": "nosniff" }; }
 function jsonError(message: string, status: number) { return Response.json({ error: message }, { status, headers: privateHeaders() }); }
 function databaseError(error: { code?: string; message?: string }) {
@@ -747,6 +955,15 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("CHECKPOINT_CONTENT_REQUIRED")) return jsonError("請至少填寫目前進度或下一個最小步驟。", 422);
   if (error.message?.includes("CHECKPOINT_RESOURCE_INVALID")) return jsonError("相關資源必須是有效的 HTTPS 網址。", 422);
   if (error.message?.includes("CHECKPOINT_IMMUTABLE")) return jsonError("已儲存的歷史記錄不可覆寫；請新增一筆。", 409);
+  if (error.message?.includes("INBOX_PROCESSING_ACTION_INVALID") || error.message?.includes("INBOX_PROCESSING_INVALID")) return jsonError("收集箱處理資料不正確。", 422);
+  if (error.message?.includes("INBOX_ITEM_NOT_AVAILABLE")) return jsonError("這項收集箱內容已處理或暫時不可用。", 409);
+  if (error.message?.includes("INBOX_NEXT_ACTION_REQUIRED")) return jsonError("請輸入立即開始的下一個最小步驟。", 422);
+  if (error.message?.includes("INBOX_DATE_REQUIRED")) return jsonError("請選擇安排日期。", 422);
+  if (error.message?.includes("INBOX_HANDOFF_REQUIRED")) return jsonError("請選擇跟進者並輸入交接 notes。", 422);
+  if (error.message?.includes("INBOX_UNDO_NOT_AVAILABLE") || error.message?.includes("INBOX_UNDO_EXPIRED")) return jsonError("最近一次處理已超過可安全撤銷的時間。", 409);
+  if (error.message?.includes("INBOX_UNDO_NOT_LATEST")) return jsonError("只可撤銷最近一次處理。", 409);
+  if (error.message?.includes("INBOX_UNDO_TARGET_CHANGED")) return jsonError("新項目已有進度，為保障資料不會自動撤銷。", 409);
+  if (error.message?.includes("INBOX_UNDO_SOURCE_MISSING")) return jsonError("原始收集箱內容已不存在，未有改動其他資料。", 409);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

@@ -1,6 +1,11 @@
 "use client";
 
-import type { ControlData, TaskCheckpointBundle } from "@/lib/types";
+import type {
+  ControlData,
+  InboxProcessingBundle,
+  InboxProcessingEvent,
+  TaskCheckpointBundle
+} from "@/lib/types";
 
 let refreshInFlight: Promise<void> | null = null;
 let lastRefreshAt = 0;
@@ -15,6 +20,33 @@ export async function searchControlData(query: string) {
 
 export async function loadTaskCheckpoints(taskId: string): Promise<TaskCheckpointBundle> {
   return controlRequest<TaskCheckpointBundle>(`/api/control?view=task_checkpoints&taskId=${encodeURIComponent(taskId)}`, { method: "GET" });
+}
+
+export async function loadInboxProcessing(
+  sessionId: string,
+  page = 1
+): Promise<InboxProcessingBundle> {
+  const params = new URLSearchParams({
+    view: "inbox_processing",
+    sessionId,
+    page: String(page)
+  });
+  return controlRequest<InboxProcessingBundle>(`/api/control?${params.toString()}`, {
+    method: "GET"
+  });
+}
+
+export async function processInboxItem(payload: Record<string, unknown>) {
+  return controlAction<{
+    event: InboxProcessingEvent;
+  }>("process_inbox_item", payload);
+}
+
+export async function undoLastInboxProcessing(eventId: string) {
+  return controlAction<{
+    eventId: string;
+    restoredInboxItemId: string;
+  }>("undo_inbox_processing", { eventId });
 }
 
 export async function controlAction<T = Record<string, unknown>>(action: string, payload: Record<string, unknown> = {}) {

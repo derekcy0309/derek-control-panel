@@ -16,9 +16,12 @@ const checkpointMigration = readFileSync(resolve(here, "../supabase/migrations/2
 const checkpointRollback = readFileSync(resolve(here, "../supabase/migrations/20260724120731_restart_checkpoints.rollback.sql"), "utf8").toLowerCase();
 const checkpointResourceMigration = readFileSync(resolve(here, "../supabase/migrations/20260724121803_checkpoint_resource_privacy.sql"), "utf8").toLowerCase();
 const checkpointResourceRollback = readFileSync(resolve(here, "../supabase/migrations/20260724121803_checkpoint_resource_privacy.rollback.sql"), "utf8").toLowerCase();
+const inboxMigration = readFileSync(resolve(here, "../supabase/migrations/20260724150744_inbox_processing_mode.sql"), "utf8").toLowerCase();
+const inboxRollback = readFileSync(resolve(here, "../supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const taskForm = readFileSync(resolve(here, "../components/forms/TaskForm.tsx"), "utf8").toLowerCase();
 const handoffControls = readFileSync(resolve(here, "../components/items/TaskHandoffControls.tsx"), "utf8").toLowerCase();
+const inboxProcessingMode = readFileSync(resolve(here, "../components/inbox/InboxProcessingMode.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -196,4 +199,63 @@ test("saved checkpoint resources are immutable and privacy rollback preserves co
   assert.match(checkpointResourceMigration, /raise\s+exception\s+'checkpoint_immutable'/);
   assert.match(checkpointResourceRollback, /drop\s+table\s+if\s+exists\s+public\.task_checkpoint_resources/);
   assert.doesNotMatch(checkpointResourceRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|assignments|share_records)/);
+});
+
+test("Inbox processing is additive, private and explicitly exposed only to authenticated users", () => {
+  assert.match(inboxMigration, /create\s+table\s+if\s+not\s+exists\s+public\.inbox_processing_events/);
+  assert.match(inboxMigration, /alter\s+table\s+public\.inbox_processing_events\s+enable\s+row\s+level\s+security/);
+  assert.match(inboxMigration, /using\s*\(\(select\s+auth\.uid\(\)\)\s*=\s*user_id\)/);
+  assert.match(inboxMigration, /revoke\s+all\s+on\s+public\.inbox_processing_events\s+from\s+anon,\s*authenticated/);
+  assert.match(inboxMigration, /grant\s+select,\s*insert,\s*update\s+on\s+public\.inbox_processing_events\s+to\s+authenticated/);
+  assert.doesNotMatch(inboxMigration, /grant\s+[^;]*delete[^;]*inbox_processing_events/);
+  assert.doesNotMatch(inboxMigration, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items)/);
+});
+
+test("Inbox conversion is transactional and protected against duplicate submission", () => {
+  assert.match(inboxMigration, /function\s+public\.process_inbox_item/);
+  assert.match(inboxMigration, /unique\s*\(user_id,\s*idempotency_key\)/);
+  assert.match(inboxMigration, /e\.idempotency_key\s*=\s*p_idempotency_key/);
+  assert.match(inboxMigration, /for\s+update/);
+  assert.match(inboxMigration, /original_item\s+jsonb\s+not\s+null/);
+  assert.match(inboxMigration, /to_jsonb\(inbox_item\)/);
+  assert.match(inboxMigration, /perform\s+public\.start_task_handoff/);
+});
+
+test("Inbox RPCs use invoker rights, authenticate, authorize exact ownership and are not public", () => {
+  assert.match(inboxMigration, /security\s+invoker/);
+  assert.doesNotMatch(inboxMigration, /function\s+public\.(?:process_inbox_item|undo_last_inbox_processing)[\s\S]*?security\s+definer/);
+  assert.match(inboxMigration, /actor\s+uuid\s*:=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(inboxMigration, /i\.owner_id\s*=\s*actor/);
+  assert.match(inboxMigration, /revoke\s+all\s+on\s+function\s+public\.process_inbox_item[\s\S]*?from\s+public,\s*anon/);
+  assert.match(inboxMigration, /grant\s+execute\s+on\s+function\s+public\.process_inbox_item[\s\S]*?to\s+authenticated/);
+  assert.match(inboxMigration, /set\s+search_path\s*=\s*public,\s*pg_temp/);
+});
+
+test("Inbox Undo is latest-only, time-limited and refuses to erase later progress", () => {
+  assert.match(inboxMigration, /function\s+public\.undo_last_inbox_processing/);
+  assert.match(inboxMigration, /order\s+by\s+e\.processed_at\s+desc/);
+  assert.match(inboxMigration, /interval\s+'15\s+minutes'/);
+  assert.match(inboxMigration, /inbox_undo_not_latest/);
+  assert.match(inboxMigration, /inbox_undo_target_changed/);
+  assert.match(inboxMigration, /public\.task_checkpoints/);
+  assert.match(inboxMigration, /undo_last_inbox_processing[\s\S]*?original_item->'metadata'/);
+});
+
+test("Inbox API and UI process one item with all required choices and pagination", () => {
+  assert.match(controlRoute, /view\s*===\s*"inbox_processing"/);
+  assert.match(controlRoute, /case\s+"process_inbox_item"/);
+  assert.match(controlRoute, /case\s+"undo_inbox_processing"/);
+  assert.match(controlRoute, /\.range\(offset,\s*offset\s*\+\s*pagesize\s*-\s*1\)/);
+  for (const action of ["do_now", "create_task", "add_project", "add_waiting", "assign", "schedule", "keep_note", "skip"]) {
+    assert.match(inboxProcessingMode, new RegExp(`action:\\s*"${action}"`));
+  }
+  assert.match(inboxProcessingMode, /bundle\.position/);
+  assert.match(inboxProcessingMode, /idempotencykey/);
+  assert.match(inboxProcessingMode, /undo\s+最近一次處理/);
+});
+
+test("Inbox rollback removes only Inbox additions", () => {
+  assert.match(inboxRollback, /drop\s+table\s+if\s+exists\s+public\.inbox_processing_events/);
+  assert.match(inboxRollback, /drop\s+column\s+if\s+exists\s+inbox_processing_event_id/);
+  assert.doesNotMatch(inboxRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|assignments|share_records)/);
 });

@@ -165,8 +165,45 @@ export type OperatingItem = {
   metadata: Record<string, unknown>;
   last_progress_at: string | null;
   archived_at: string | null;
+  inbox_available_after?: string | null;
+  inbox_processed_at?: string | null;
+  inbox_processing_event_id?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type InboxProcessingAction =
+  | "do_now"
+  | "create_task"
+  | "add_project"
+  | "add_waiting"
+  | "assign"
+  | "schedule"
+  | "keep_note"
+  | "skip";
+
+export type InboxProcessingEvent = {
+  id: string;
+  inbox_item_id: string;
+  action: InboxProcessingAction;
+  target_type: "task" | "operating_item" | null;
+  target_id: string | null;
+  processed_at: string;
+  undone_at: string | null;
+};
+
+export type InboxProcessingBundle = {
+  currentUser: CurrentUser;
+  currentItem: OperatingItem | null;
+  items: OperatingItem[];
+  totalRemaining: number;
+  sessionProcessed: number;
+  sessionTotal: number;
+  position: number;
+  participants: Array<{ user_id: string; display_name: string }>;
+  lastUndoable: InboxProcessingEvent | null;
+  page: number;
+  pageSize: number;
 };
 
 export type ShareRecord = {
