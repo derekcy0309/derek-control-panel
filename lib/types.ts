@@ -422,6 +422,47 @@ export type TaskCheckpointBundle = {
   history: TaskCheckpoint[];
 };
 
+export type BodyDoubleSessionStatus = "waiting" | "running" | "ended" | "cancelled";
+export type BodyDoubleParticipantStatus = "invited" | "ready" | "running" | "paused" | "completed" | "left";
+
+export type BodyDoubleParticipant = {
+  user_id: string;
+  display_name: string;
+  status: BodyDoubleParticipantStatus;
+  task_id: string | null;
+  task_label: string | null;
+  share_task_title: boolean;
+  ready_at: string | null;
+  paused_at: string | null;
+  completed_at: string | null;
+  checkpoint_saved_at: string | null;
+  last_seen_at: string | null;
+  is_current_user: boolean;
+};
+
+export type BodyDoubleSession = {
+  id: string;
+  created_by_id: string;
+  invited_user_id: string;
+  duration_minutes: 15 | 20 | 25 | 45;
+  status: BodyDoubleSessionStatus;
+  started_at: string | null;
+  ended_at: string | null;
+  cancelled_at: string | null;
+  created_at: string;
+  updated_at: string;
+  participants: BodyDoubleParticipant[];
+};
+
+export type BodyDoubleTaskOption = Pick<Task, "id" | "title" | "next_action" | "definition_of_done" | "estimated_minutes" | "status">;
+
+export type BodyDoubleData = {
+  currentUser: CurrentUser;
+  participants: Array<{ user_id: string; display_name: string }>;
+  availableTasks: BodyDoubleTaskOption[];
+  session: BodyDoubleSession | null;
+};
+
 export type NotificationPreferences = {
   user_id: string;
   browser_enabled: boolean;

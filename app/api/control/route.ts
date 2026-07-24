@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
+  if (view === "body_double") return bodyDouble(context, request.nextUrl.searchParams.get("sessionId"));
   if (view !== "bootstrap") return jsonError("不支援的資料檢視。", 400);
 
   const { client, user } = context;
@@ -314,6 +315,70 @@ async function weeklyReview(
   }, { headers: privateHeaders() });
 }
 
+async function bodyDouble({ client, user }: RequestContext, requestedSessionId: string | null) {
+  const sessionId = requestedSessionId ? uuidValue(requestedSessionId) : null;
+  if (requestedSessionId && !sessionId) return jsonError("共用專注時段不正確。", 400);
+
+  const ownTasks = client.rpc("body_double_available_tasks");
+  const sessionQuery = client.from("body_double_sessions")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const selectedSession = sessionId ? sessionQuery.eq("id", sessionId).maybeSingle() : sessionQuery.in("status", ["waiting", "running"]).maybeSingle();
+  const [tasks, profiles, sessionResult] = await Promise.all([
+    ownTasks,
+    client.rpc("participant_profiles"),
+    selectedSession
+  ]);
+  const firstError = [tasks, profiles, sessionResult].find((result) => result.error)?.error;
+  if (firstError) return databaseError(firstError);
+
+  const session = sessionResult.data as Record<string, unknown> | null;
+  if (!session) {
+    return Response.json({
+      currentUser: { id: user.id, email: user.email ?? "", displayName: inferDisplayName(user) },
+      participants: (profiles.data ?? []).filter((profile: { user_id: string; display_name: string }) => profile.user_id !== user.id),
+      availableTasks: tasks.data ?? [],
+      session: null
+    }, { headers: privateHeaders() });
+  }
+
+  const sessionParticipants = await client.from("body_double_participants")
+    .select("user_id,task_id,task_label,share_task_title,status,ready_at,paused_at,completed_at,checkpoint_saved_at,last_seen_at")
+    .eq("session_id", session.id)
+    .order("created_at", { ascending: true });
+  if (sessionParticipants.error) return databaseError(sessionParticipants.error);
+  const nameById = new Map((profiles.data ?? []).map((profile: { user_id: string; display_name: string }) => [profile.user_id, profile.display_name]));
+  const visibleParticipants = (sessionParticipants.data ?? []).map((participant) => {
+    const own = participant.user_id === user.id;
+    const showTitle = own || participant.share_task_title;
+    return {
+      user_id: participant.user_id,
+      display_name: nameById.get(participant.user_id) ?? "專注夥伴",
+      status: participant.status,
+      task_id: own ? participant.task_id : null,
+      task_label: showTitle ? participant.task_label : null,
+      share_task_title: own ? participant.share_task_title : false,
+      ready_at: participant.ready_at,
+      paused_at: participant.paused_at,
+      completed_at: participant.completed_at,
+      checkpoint_saved_at: participant.checkpoint_saved_at,
+      last_seen_at: participant.last_seen_at,
+      is_current_user: own
+    };
+  });
+
+  return Response.json({
+    currentUser: { id: user.id, email: user.email ?? "", displayName: inferDisplayName(user) },
+    participants: (profiles.data ?? []).filter((profile: { user_id: string; display_name: string }) => profile.user_id !== user.id),
+    availableTasks: tasks.data ?? [],
+    session: {
+      ...session,
+      participants: visibleParticipants
+    }
+  }, { headers: privateHeaders() });
+}
+
 async function saveWeeklyReview(
   { client, user }: RequestContext,
   body: Record<string, unknown>
@@ -360,6 +425,87 @@ async function saveWeeklyReview(
     await recordActivity(client, user.id, "weekly_review", result.data.id, "weekly_review_completed", "已完成低壓力週檢視");
   }
   return Response.json({ review: result.data }, { headers: privateHeaders() });
+}
+
+async function createBodyDouble({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const partnerUserId = uuidValue(body.partnerUserId);
+  const taskId = uuidValue(body.taskId);
+  const durationMinutes = integerValue(body.durationMinutes, 15, 45);
+  if (!partnerUserId || !taskId || !durationMinutes || ![15, 20, 25, 45].includes(durationMinutes)) {
+    return jsonError("請選擇夥伴、任務和 15、20、25 或 45 分鐘。", 422);
+  }
+  const result = await client.rpc("create_body_double_session", {
+    p_partner_user_id: partnerUserId,
+    p_task_id: taskId,
+    p_duration_minutes: durationMinutes,
+    p_share_task_title: body.shareTaskTitle === true
+  });
+  if (result.error) return databaseError(result.error);
+  const sessionId = String(result.data ?? "");
+  if (!uuidValue(sessionId)) return jsonError("未能建立共用專注時段。", 500);
+  await recordActivity(client, user.id, "body_double", sessionId, "created", "建立雙人共用專注時段");
+  return Response.json({ sessionId }, { headers: privateHeaders() });
+}
+
+async function prepareBodyDouble({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  const taskId = uuidValue(body.taskId);
+  if (!sessionId || !taskId) return jsonError("共用專注任務不正確。", 422);
+  const result = await client.rpc("prepare_body_double_participant", {
+    p_session_id: sessionId,
+    p_task_id: taskId,
+    p_share_task_title: body.shareTaskTitle === true
+  });
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "body_double", sessionId, "ready", "已準備自己的專注任務");
+  return Response.json({ sessionId: result.data }, { headers: privateHeaders() });
+}
+
+async function startBodyDouble({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  if (!sessionId) return jsonError("共用專注時段不正確。", 422);
+  const result = await client.rpc("start_body_double_session", { p_session_id: sessionId });
+  if (result.error) return databaseError(result.error);
+  const startedAt = timestampValue(result.data);
+  if (!startedAt) return jsonError("未能同步開始共用專注時段。", 500);
+  await recordActivity(client, user.id, "body_double", sessionId, "started", "同步開始雙人共用專注時段");
+  return Response.json({ startedAt }, { headers: privateHeaders() });
+}
+
+async function updateBodyDoublePresence({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  const status = enumValue(body.status, ["running", "paused", "left"] as const, null);
+  if (!sessionId || !status) return jsonError("共用專注狀態不正確。", 422);
+  const result = await client.rpc("update_body_double_presence", { p_session_id: sessionId, p_status: status });
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "body_double", sessionId, status, status === "paused" ? "暫停共用專注" : status === "left" ? "離開共用專注" : "繼續共用專注");
+  return Response.json({ sessionId: result.data }, { headers: privateHeaders() });
+}
+
+async function heartbeatBodyDouble({ client }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  if (!sessionId) return jsonError("共用專注時段不正確。", 422);
+  const result = await client.rpc("heartbeat_body_double_session", { p_session_id: sessionId });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ seenAt: result.data }, { headers: privateHeaders() });
+}
+
+async function completeBodyDouble({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  if (!sessionId) return jsonError("共用專注時段不正確。", 422);
+  const result = await client.rpc("complete_body_double_participant", { p_session_id: sessionId });
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "body_double", sessionId, "completed", "已完成自己的共用專注時段並儲存 checkpoint");
+  return Response.json({ sessionId: result.data }, { headers: privateHeaders() });
+}
+
+async function cancelBodyDouble({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const sessionId = uuidValue(body.sessionId);
+  if (!sessionId) return jsonError("共用專注時段不正確。", 422);
+  const result = await client.rpc("cancel_body_double_session", { p_session_id: sessionId });
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "body_double", sessionId, "cancelled", "取消尚未開始的共用專注時段");
+  return Response.json({ sessionId: result.data }, { headers: privateHeaders() });
 }
 
 function weeklyReviewItems(rows: Array<Record<string, unknown>>) {
@@ -459,6 +605,13 @@ export async function POST(request: NextRequest) {
     case "notification_opened": return markNotificationOpened(context, body);
     case "test_notification": return enqueueTestNotification(context);
     case "save_weekly_review": return saveWeeklyReview(context, body);
+    case "create_body_double": return createBodyDouble(context, body);
+    case "prepare_body_double": return prepareBodyDouble(context, body);
+    case "start_body_double": return startBodyDouble(context, body);
+    case "body_double_presence": return updateBodyDoublePresence(context, body);
+    case "body_double_heartbeat": return heartbeatBodyDouble(context, body);
+    case "complete_body_double": return completeBodyDouble(context, body);
+    case "cancel_body_double": return cancelBodyDouble(context, body);
     default: return jsonError("不支援的操作。", 400);
   }
 }
@@ -1748,6 +1901,18 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("RECURRENCE_SEED_TASK_OWNER_INVALID") || error.message?.includes("TASK_RECURRENCE_ACCESS_DENIED")) return jsonError("重複工作必須由任務擁有者設定。", 403);
   if (error.message?.includes("RECURRENCE_OWNER_REQUIRED") || error.message?.includes("RECURRENCE_CREATOR_REQUIRED") || error.message?.includes("RECURRENCE_IDENTITY_IMMUTABLE")) return jsonError("重複工作身份資料不可更改。", 403);
   if (error.message?.includes("RECURRENCE_TEMPLATE_INVALID") || error.message?.includes("RECURRENCE_DATE_NOT_FOUND")) return jsonError("重複工作設定不正確，未有建立下一項任務。", 422);
+  if (error.message?.includes("BODY_DOUBLE_TARGET_NOT_CONNECTED")) return jsonError("這位夥伴未加入你的 Derek／Suki 信任連線。", 422);
+  if (error.message?.includes("BODY_DOUBLE_TARGET_INVALID")) return jsonError("請選擇另一位已連線的專注夥伴。", 422);
+  if (error.message?.includes("BODY_DOUBLE_DURATION_INVALID")) return jsonError("共用專注只支援 15、20、25 或 45 分鐘。", 422);
+  if (error.message?.includes("BODY_DOUBLE_TASK_FORBIDDEN")) return jsonError("這項任務不可用於共用專注，可能已完成、封存或沒有權限。", 403);
+  if (error.message?.includes("BODY_DOUBLE_ACTIVE_SESSION_EXISTS")) return jsonError("你和這位夥伴已有一個未結束的共用專注時段。", 409);
+  if (error.message?.includes("BODY_DOUBLE_SESSION_FORBIDDEN") || error.message?.includes("BODY_DOUBLE_CANCEL_FORBIDDEN")) return jsonError("你沒有權限處理這個共用專注時段。", 403);
+  if (error.message?.includes("BODY_DOUBLE_PARTICIPANTS_NOT_READY")) return jsonError("雙方先各自選好任務並按「準備好」，才可同步開始。", 409);
+  if (error.message?.includes("BODY_DOUBLE_SESSION_NOT_READY")) return jsonError("這個共用專注時段已開始、結束或取消。", 409);
+  if (error.message?.includes("BODY_DOUBLE_SESSION_NOT_RUNNING")) return jsonError("共用專注尚未開始或已結束。", 409);
+  if (error.message?.includes("BODY_DOUBLE_PRESENCE_INVALID")) return jsonError("共用專注狀態不正確。", 422);
+  if (error.message?.includes("BODY_DOUBLE_CHECKPOINT_REQUIRED")) return jsonError("請先儲存今節的 checkpoint，再完成自己的時段。", 409);
+  if (error.message?.includes("BODY_DOUBLE_PARTICIPANT_FINISHED")) return jsonError("你已完成或離開這個共用專注時段。", 409);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);

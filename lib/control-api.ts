@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  BodyDoubleData,
   ControlData,
   InboxProcessingBundle,
   InboxProcessingEvent,
@@ -47,6 +48,12 @@ export async function loadWeeklyReview(weekStart?: string) {
   const params = new URLSearchParams({ view: "weekly_review" });
   if (weekStart) params.set("weekStart", weekStart);
   return controlRequest<WeeklyReviewSummary>(`/api/control?${params.toString()}`, { method: "GET" });
+}
+
+export async function loadBodyDouble(sessionId?: string) {
+  const params = new URLSearchParams({ view: "body_double" });
+  if (sessionId) params.set("sessionId", sessionId);
+  return controlRequest<BodyDoubleData>(`/api/control?${params.toString()}`, { method: "GET" });
 }
 
 export async function saveWeeklyReview(payload: Record<string, unknown>) {

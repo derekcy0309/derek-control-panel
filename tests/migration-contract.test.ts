@@ -32,6 +32,10 @@ const recurrenceMigration = readFileSync(resolve(here, "../supabase/migrations/2
 const recurrenceRollback = readFileSync(resolve(here, "../supabase/migrations/20260724173935_recurring_task_routines.rollback.sql"), "utf8").toLowerCase();
 const recurrenceIndexesMigration = readFileSync(resolve(here, "../supabase/migrations/20260724175911_recurrence_foreign_key_indexes.sql"), "utf8").toLowerCase();
 const recurrenceIndexesRollback = readFileSync(resolve(here, "../supabase/migrations/20260724175911_recurrence_foreign_key_indexes.rollback.sql"), "utf8").toLowerCase();
+const bodyDoubleMigration = readFileSync(resolve(here, "../supabase/migrations/20260725190000_body_double_mode.sql"), "utf8").toLowerCase();
+const bodyDoubleRollback = readFileSync(resolve(here, "../supabase/migrations/20260725190000_body_double_mode.rollback.sql"), "utf8").toLowerCase();
+const bodyDoubleEligibilityMigration = readFileSync(resolve(here, "../supabase/migrations/20260725190100_body_double_checkpoint_eligibility.sql"), "utf8").toLowerCase();
+const bodyDoubleEligibilityRollback = readFileSync(resolve(here, "../supabase/migrations/20260725190100_body_double_checkpoint_eligibility.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
 const notificationSettings = readFileSync(resolve(here, "../components/NotificationSettings.tsx"), "utf8").toLowerCase();
@@ -40,6 +44,7 @@ const todayPage = readFileSync(resolve(here, "../app/page.tsx"), "utf8").toLower
 const taskForm = readFileSync(resolve(here, "../components/forms/TaskForm.tsx"), "utf8").toLowerCase();
 const handoffControls = readFileSync(resolve(here, "../components/items/TaskHandoffControls.tsx"), "utf8").toLowerCase();
 const inboxProcessingMode = readFileSync(resolve(here, "../components/inbox/InboxProcessingMode.tsx"), "utf8").toLowerCase();
+const bodyDoublePage = readFileSync(resolve(here, "../app/body-double/page.tsx"), "utf8").toLowerCase();
 
 const protectedTables = [
   "user_profiles",
@@ -446,4 +451,56 @@ test("recurrence foreign keys have additive, reversible covering indexes", () =>
     assert.match(recurrenceIndexesMigration, new RegExp(`create\\s+index\\s+if\\s+not\\s+exists\\s+${index}`));
     assert.match(recurrenceIndexesRollback, new RegExp(`drop\\s+index\\s+if\\s+exists\\s+public\\.${index}`));
   }
+});
+
+test("Body Double sessions are two-person, durable, RLS-protected and do not mutate tasks", () => {
+  for (const table of ["body_double_sessions", "body_double_participants"]) {
+    assert.match(bodyDoubleMigration, new RegExp(`create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${table}`));
+    assert.match(bodyDoubleMigration, new RegExp(`alter\\s+table\\s+public\\.${table}\\s+enable\\s+row\\s+level\\s+security`));
+  }
+  assert.match(bodyDoubleMigration, /body_double_open_pair_unique/);
+  assert.match(bodyDoubleMigration, /duration_minutes in \(15, 20, 25, 45\)/);
+  assert.match(bodyDoubleMigration, /body_double_sessions_select_participant/);
+  assert.match(bodyDoubleMigration, /body_double_participants_select_session_participant/);
+  assert.match(bodyDoubleMigration, /revoke all on public\.body_double_sessions, public\.body_double_participants from public, anon, authenticated/);
+  assert.match(bodyDoubleMigration, /grant select on public\.body_double_sessions, public\.body_double_participants to authenticated/);
+  assert.doesNotMatch(bodyDoubleMigration, /update public\.tasks/);
+  assert.doesNotMatch(bodyDoubleMigration, /insert into public\.tasks/);
+});
+
+test("Body Double RPCs authenticate, use only trusted partners, and require a saved checkpoint before finish", () => {
+  for (const functionName of ["create_body_double_session", "prepare_body_double_participant", "start_body_double_session", "update_body_double_presence", "heartbeat_body_double_session", "complete_body_double_participant"]) {
+    assert.match(bodyDoubleMigration, new RegExp(`function\\s+public\\.${functionName}`));
+  }
+  assert.match(bodyDoubleMigration, /actor uuid := \(select auth\.uid\(\)\)/);
+  assert.match(bodyDoubleMigration, /from public\.participant_profiles\(\) p where p\.user_id = p_partner_user_id/);
+  assert.match(bodyDoubleMigration, /private\.current_user_can_read\('task', p_task_id\)/);
+  assert.match(bodyDoubleMigration, /c\.task_id = selected_task_id and c\.author_id = actor and c\.state = 'saved'/);
+  assert.match(bodyDoubleMigration, /body_double_checkpoint_required/);
+  assert.match(bodyDoubleMigration, /grant execute on function public\.complete_body_double_participant/);
+});
+
+test("Body Double only offers tasks that can save the required checkpoint", () => {
+  assert.match(bodyDoubleEligibilityMigration, /function public\.body_double_available_tasks/);
+  assert.match(bodyDoubleEligibilityMigration, /private\.current_user_can_checkpoint\(t\.id\)/);
+  assert.match(bodyDoubleEligibilityMigration, /not private\.current_user_can_checkpoint\(p_task_id\)/);
+  assert.match(controlRoute, /rpc\("body_double_available_tasks"\)/);
+  assert.match(bodyDoubleEligibilityRollback, /drop function if exists public\.body_double_available_tasks/);
+  assert.match(bodyDoubleEligibilityRollback, /private\.current_user_can_read\('task', p_task_id\)/);
+});
+
+test("Body Double UI preserves privacy, reconnects safely, and uses the existing checkpoint flow", () => {
+  assert.match(controlRoute, /view === "body_double"/);
+  for (const action of ["create_body_double", "prepare_body_double", "start_body_double", "body_double_presence", "body_double_heartbeat", "complete_body_double"]) {
+    assert.match(controlRoute, new RegExp(`case "${action}"`));
+  }
+  assert.match(bodyDoublePage, /私人任務/);
+  assert.match(bodyDoublePage, /sharetasktitle/);
+  assert.match(bodyDoublePage, /body_double_heartbeat/);
+  assert.match(bodyDoublePage, /restartcheckpointpanel/);
+  assert.match(bodyDoublePage, /對方仍可繼續/);
+  assert.match(bodyDoublePage, /不是排名或監察/);
+  assert.match(bodyDoubleRollback, /drop table if exists public\.body_double_participants/);
+  assert.match(bodyDoubleRollback, /drop table if exists public\.body_double_sessions/);
+  assert.doesNotMatch(bodyDoubleRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|task_checkpoints|assignments|share_records)/);
 });

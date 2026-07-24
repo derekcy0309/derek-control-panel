@@ -27,6 +27,7 @@ const navGroups = [
     items: [
       { href: "/workspace/project", label: "項目作戰室", icon: BriefcaseBusiness },
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
+      { href: "/body-double", label: "同步專注", icon: UsersRound },
       { href: "/weekly-review", label: "每週檢視", icon: ClipboardCheck },
       { href: "/sharing", label: "交辦中心", icon: Share2 },
       { href: "/workspace/decision", label: "決策紀錄", icon: Command },
