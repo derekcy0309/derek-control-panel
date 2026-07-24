@@ -284,7 +284,25 @@ export type CapacityCheckin = {
   available_minutes: number | null;
   mode: "normal" | "gentle" | "minimum_step" | "shift";
   essential_only: boolean;
+  rest_day?: boolean;
   notes: string | null;
+};
+
+export type TodayPlanRole = "now" | "later" | "quick_win";
+
+export type PlanningMetadata = {
+  user_id: string;
+  resource_type: string;
+  resource_id: string;
+  personal_priority: number;
+  planned_date: string | null;
+  snoozed_until: string | null;
+  pinned: boolean;
+  hidden_from_today: boolean;
+  plan_role?: TodayPlanRole | null;
+  plan_source?: "manual" | "auto_plan" | null;
+  accepted_at?: string | null;
+  plan_token?: string | null;
 };
 
 export type TaskCheckpointResource = {
@@ -321,7 +339,19 @@ export type ControlData = AppData & {
   shares: ShareRecord[];
   assignments: Assignment[];
   handoffNotes: HandoffNote[];
-  planning: Array<{ user_id: string; resource_type: string; resource_id: string; personal_priority: number; planned_date: string | null; snoozed_until: string | null; pinned: boolean; hidden_from_today: boolean }>;
+  planning: PlanningMetadata[];
+  capacity: CapacityCheckin | null;
+  participants: Array<{ user_id: string; display_name: string }>;
+};
+
+export type TodayData = {
+  currentUser: CurrentUser;
+  profile: UserProfile;
+  settings: UserSettings;
+  tasks: Task[];
+  shares: ShareRecord[];
+  assignments: Assignment[];
+  planning: PlanningMetadata[];
   capacity: CapacityCheckin | null;
   participants: Array<{ user_id: string; display_name: string }>;
 };

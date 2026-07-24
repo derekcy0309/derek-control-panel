@@ -4,7 +4,8 @@
 
 ## 主要能力
 
-- Today 指揮中心：唯一首要項目、WIP、容量 check-in、快捷任務及 Focus Mode
+- Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
+- Suki Minimum Viable Day：一項核心最低任務、最多兩項簡單選項、無罪疚休息、拆細、交接及指定日再處理
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
@@ -42,6 +43,7 @@ supabase/migrations/20260724050000_reclaim_task_handoff.sql
 supabase/migrations/20260724120731_restart_checkpoints.sql
 supabase/migrations/20260724121803_checkpoint_resource_privacy.sql
 supabase/migrations/20260724150744_inbox_processing_mode.sql
+supabase/migrations/20260724154148_today_auto_plan_mvd.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -53,6 +55,7 @@ supabase/migrations/202607220001_control_panel_operating_system.rollback.sql
 supabase/migrations/20260724120731_restart_checkpoints.rollback.sql
 supabase/migrations/20260724121803_checkpoint_resource_privacy.rollback.sql
 supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql
+supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -66,7 +69,7 @@ npm test
 npm run build
 ```
 
-測試涵蓋 Today 固定規則、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
+測試涵蓋 Today scoring／容量上限／Minimum Viable Day、deadline/latest-safe-start、WIP、Restart Checkpoint、Inbox 防重複／Undo 合約、跨帳戶與分享權限、busy-only redaction、通知私隱及 migration contract。正式上線前仍需以 Derek／Suki 測試帳戶跑一次真實 RLS 與登入 E2E。
 
 ## 部署
 
@@ -75,3 +78,5 @@ Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
 
 Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback 說明見 [`docs/inbox-processing.md`](docs/inbox-processing.md)。
+
+Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 rollback 說明見 [`docs/today-auto-plan.md`](docs/today-auto-plan.md)。

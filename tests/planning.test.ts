@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { activeWipCount, calculateLatestSafeStart, classifyDeadlineRisk, isStaleTask, notificationPreview, profitTargetGap, recommendTodayTasks, validateNextAction, waitingAge, weightedPipelineRevenue } from "../lib/planning.ts";
+import { activeWipCount, calculateLatestSafeStart, classifyDeadlineRisk, isStaleTask, notificationPreview, profitTargetGap, recommendTodayTasks, suggestSmallerStep, validateNextAction, waitingAge, weightedPipelineRevenue } from "../lib/planning.ts";
 import type { Assignment, Task, UserSettings } from "../lib/types.ts";
 
 const baseTask: Task = { id: "t1", user_id: "derek", scope: "company", source_type: "deadline", title: "測試", owner: null, due_date: "2026-07-30", follow_up_date: null, status: "not_started", next_action: "開啟文件", risk: "low", notes: null, completed_at: null, deleted_at: null, archived_at: null, created_at: "2026-07-01T00:00:00Z", updated_at: "2026-07-20T00:00:00Z", owner_id: "derek", created_by_id: "derek", area: "work", visibility: "private" };
@@ -24,3 +24,73 @@ test("accepted assignment enters recipient recommendation", () => { const task =
 test("view-only shared task does not count as WIP", () => assert.equal(activeWipCount([{ ...baseTask, owner_id: "suki", user_id: "suki", status: "in_progress" }], [], "derek"), 0));
 test("accepted assignment counts as WIP", () => { const assignment = { id: "a", resource_type: "task", resource_id: "t1", assigned_by_id: "suki", assigned_to_id: "derek", status: "accepted", due_date: null, requested_priority: 3, definition_of_done: null, instructions: null, decline_reason: null, proposed_date: null, accepted_at: "", created_at: "" } satisfies Assignment; assert.equal(activeWipCount([{ ...baseTask, owner_id: "suki", user_id: "suki", status: "in_progress" }], [assignment], "derek"), 1); });
 test("notification preview never includes task content", () => assert.equal(notificationPreview("health", "diagnosis"), "你今日有一項健康行政事項"));
+test("blocked and waiting tasks never become Now", () => {
+  const result = recommendTodayTasks({
+    tasks: [
+      { ...baseTask, id: "blocked", status: "blocked", safety_impact: true },
+      { ...baseTask, id: "waiting", status: "waiting", legal_impact: true },
+      { ...baseTask, id: "ready", estimated_minutes: 20 }
+    ],
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: { id: "c", user_id: "derek", checkin_date: "2026-07-22", energy_level: "medium", available_minutes: 60, mode: "normal", essential_only: false, notes: null },
+    today: "2026-07-22"
+  });
+  assert.equal(result.now?.task.id, "ready");
+  assert.equal(result.excludedBlocked, 2);
+});
+test("auto plan stays inside capacity and reserves buffer", () => {
+  const result = recommendTodayTasks({
+    tasks: Array.from({ length: 8 }, (_, index) => ({ ...baseTask, id: `t${index}`, estimated_minutes: 20, due_date: null })),
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: { id: "c", user_id: "derek", checkin_date: "2026-07-22", energy_level: "medium", available_minutes: 60, mode: "normal", essential_only: false, notes: null },
+    today: "2026-07-22"
+  });
+  assert.ok(result.bufferMinutes >= 10);
+  assert.ok(result.estimatedTotalMinutes + result.bufferMinutes <= 60);
+  assert.equal(result.hasCapacityOverflow, true);
+});
+test("minimum day returns one core and no more than two very short extras", () => {
+  const result = recommendTodayTasks({
+    tasks: [
+      { ...baseTask, id: "core", estimated_minutes: 20, energy_level: "low" },
+      { ...baseTask, id: "quick1", estimated_minutes: 5, energy_level: "low" },
+      { ...baseTask, id: "quick2", estimated_minutes: 5, energy_level: "low" },
+      { ...baseTask, id: "large", estimated_minutes: 90, energy_level: "high" }
+    ],
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: { id: "c", user_id: "derek", checkin_date: "2026-07-22", energy_level: "low", available_minutes: 40, mode: "minimum_step", essential_only: true, notes: null },
+    minimumDay: true,
+    today: "2026-07-22"
+  });
+  assert.ok(result.now);
+  assert.equal(result.later.length, 0);
+  assert.ok(result.quickWins.length <= 2);
+  assert.ok(result.quickWins.every((item) => item.minutes <= 10));
+  assert.ok(result.estimatedTotalMinutes + result.bufferMinutes <= 40);
+});
+test("easier preference prioritizes a short start", () => {
+  const result = recommendTodayTasks({
+    tasks: [
+      { ...baseTask, id: "large", estimated_minutes: 60 },
+      { ...baseTask, id: "small", estimated_minutes: 5 }
+    ],
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: null,
+    preference: "easier",
+    today: "2026-07-22"
+  });
+  assert.equal(result.now?.task.id, "small");
+});
+test("smaller step is suggestion-only and time bounded", () => {
+  const suggestion = suggestSmallerStep({ ...baseTask, next_action: "打開報表並核對今個月所有交易" });
+  assert.equal(suggestion.minutes, 10);
+  assert.match(suggestion.text, /第一個可見動作/);
+});

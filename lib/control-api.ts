@@ -4,7 +4,8 @@ import type {
   ControlData,
   InboxProcessingBundle,
   InboxProcessingEvent,
-  TaskCheckpointBundle
+  TaskCheckpointBundle,
+  TodayData
 } from "@/lib/types";
 
 let refreshInFlight: Promise<void> | null = null;
@@ -12,6 +13,10 @@ let lastRefreshAt = 0;
 
 export async function loadControlData(): Promise<ControlData> {
   return controlRequest<ControlData>("/api/control?view=bootstrap", { method: "GET" });
+}
+
+export async function loadTodayData(): Promise<TodayData> {
+  return controlRequest<TodayData>("/api/control?view=today", { method: "GET" });
 }
 
 export async function searchControlData(query: string) {

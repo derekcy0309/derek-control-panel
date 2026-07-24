@@ -18,7 +18,10 @@ const checkpointResourceMigration = readFileSync(resolve(here, "../supabase/migr
 const checkpointResourceRollback = readFileSync(resolve(here, "../supabase/migrations/20260724121803_checkpoint_resource_privacy.rollback.sql"), "utf8").toLowerCase();
 const inboxMigration = readFileSync(resolve(here, "../supabase/migrations/20260724150744_inbox_processing_mode.sql"), "utf8").toLowerCase();
 const inboxRollback = readFileSync(resolve(here, "../supabase/migrations/20260724150744_inbox_processing_mode.rollback.sql"), "utf8").toLowerCase();
+const todayPlanMigration = readFileSync(resolve(here, "../supabase/migrations/20260724154148_today_auto_plan_mvd.sql"), "utf8").toLowerCase();
+const todayPlanRollback = readFileSync(resolve(here, "../supabase/migrations/20260724154148_today_auto_plan_mvd.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
+const todayPage = readFileSync(resolve(here, "../app/page.tsx"), "utf8").toLowerCase();
 const taskForm = readFileSync(resolve(here, "../components/forms/TaskForm.tsx"), "utf8").toLowerCase();
 const handoffControls = readFileSync(resolve(here, "../components/items/TaskHandoffControls.tsx"), "utf8").toLowerCase();
 const inboxProcessingMode = readFileSync(resolve(here, "../components/inbox/InboxProcessingMode.tsx"), "utf8").toLowerCase();
@@ -258,4 +261,57 @@ test("Inbox rollback removes only Inbox additions", () => {
   assert.match(inboxRollback, /drop\s+table\s+if\s+exists\s+public\.inbox_processing_events/);
   assert.match(inboxRollback, /drop\s+column\s+if\s+exists\s+inbox_processing_event_id/);
   assert.doesNotMatch(inboxRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|operating_items|assignments|share_records)/);
+});
+
+test("Today Auto-Plan acceptance is private, auditable and idempotent", () => {
+  assert.match(todayPlanMigration, /create\s+table\s+if\s+not\s+exists\s+public\.today_plan_acceptances/);
+  assert.match(todayPlanMigration, /alter\s+table\s+public\.today_plan_acceptances\s+enable\s+row\s+level\s+security/);
+  assert.match(todayPlanMigration, /user_id\s*=\s*\(select\s+auth\.uid\(\)\)/);
+  assert.match(todayPlanMigration, /unique\s*\(user_id,\s*idempotency_key\)/);
+  assert.match(todayPlanMigration, /on\s+conflict\s+\(user_id,\s*idempotency_key\)\s+do\s+nothing/);
+  assert.match(todayPlanMigration, /grant\s+select,\s*insert\s+on\s+public\.today_plan_acceptances\s+to\s+authenticated/);
+  assert.doesNotMatch(todayPlanMigration, /grant\s+[^;]*(?:update|delete)[^;]*today_plan_acceptances/);
+});
+
+test("Today Auto-Plan changes only personal planning metadata after confirmation", () => {
+  assert.match(todayPlanMigration, /function\s+public\.accept_today_auto_plan/);
+  assert.match(todayPlanMigration, /security\s+invoker/);
+  assert.match(todayPlanMigration, /task\.status\s+not\s+in\s+\('done',\s*'cancelled',\s*'blocked',\s*'waiting'\)/);
+  assert.match(todayPlanMigration, /insert\s+into\s+public\.user_planning_metadata/);
+  assert.doesNotMatch(todayPlanMigration, /update\s+public\.tasks/);
+  assert.doesNotMatch(todayPlanMigration, /security\s+definer/);
+  assert.match(todayPlanMigration, /revoke\s+all\s+on\s+function\s+public\.accept_today_auto_plan[\s\S]*from\s+public,\s*anon/);
+});
+
+test("Minimum Viable Day persists rest without moving or completing tasks", () => {
+  assert.match(todayPlanMigration, /add\s+column\s+if\s+not\s+exists\s+rest_day\s+boolean/);
+  assert.match(controlRoute, /rest_day:\s*boolean\(body\.restday\)/);
+  assert.match(todayPage, /今日休息/);
+  assert.match(todayPage, /今日核心責任已完成/);
+  assert.match(todayPage, /只完成第一步/);
+  assert.match(todayPage, /請.*接手/);
+  assert.match(todayPage, /延至指定日/);
+  assert.match(todayPage, /沒有自動移動任何任務/);
+});
+
+test("Today UI requires confirmation and exposes transparent replanning controls", () => {
+  assert.match(controlRoute, /view\s*===\s*"today"/);
+  assert.match(controlRoute, /function\s+todaydashboard/);
+  assert.match(controlRoute, /\.not\("status",\s*"in",\s*"\(done,cancelled,blocked,waiting\)"\)/);
+  assert.match(controlRoute, /\.limit\(200\)/);
+  assert.match(controlRoute, /case\s+"accept_today_plan"/);
+  assert.match(controlRoute, /client\.rpc\("accept_today_auto_plan"/);
+  assert.match(todayPage, /確認加入 today/);
+  assert.match(todayPage, /重新安排/);
+  assert.match(todayPage, /太難/);
+  assert.match(todayPage, /換一件/);
+  assert.match(todayPage, /拆細一點/);
+  assert.match(todayPage, /預留 buffer/);
+  assert.match(todayPage, /被阻塞任務已排除/);
+});
+
+test("Today Auto-Plan rollback preserves all core work data", () => {
+  assert.match(todayPlanRollback, /drop\s+table\s+if\s+exists\s+public\.today_plan_acceptances/);
+  assert.match(todayPlanRollback, /drop\s+column\s+if\s+exists\s+rest_day/);
+  assert.doesNotMatch(todayPlanRollback, /drop\s+table\s+(?:if\s+exists\s+)?public\.(?:tasks|assignments|user_planning_metadata|daily_capacity_checkins)/);
 });

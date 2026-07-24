@@ -13,10 +13,12 @@ export async function GET(request: NextRequest) {
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
+  if (view === "today") return todayDashboard(context);
   if (view !== "bootstrap") return jsonError("不支援的資料檢視。", 400);
 
   const { client, user } = context;
   const displayName = inferDisplayName(user);
+  const today = hkDateString();
   const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
@@ -30,7 +32,7 @@ export async function GET(request: NextRequest) {
       client.from("assignments").select("*").order("created_at", { ascending: false }),
       client.from("task_handoff_notes").select("*").order("created_at", { ascending: false }),
       client.from("user_planning_metadata").select("*").eq("user_id", user.id),
-      client.from("daily_capacity_checkins").select("*").eq("user_id", user.id).order("checkin_date", { ascending: false }).limit(1).maybeSingle(),
+      client.from("daily_capacity_checkins").select("*").eq("user_id", user.id).eq("checkin_date", today).maybeSingle(),
       client.rpc("participant_profiles")
     ]);
 
@@ -73,6 +75,119 @@ export async function GET(request: NextRequest) {
   }, { headers: privateHeaders() });
 }
 
+async function todayDashboard({ client, user }: RequestContext) {
+  const displayName = inferDisplayName(user);
+  const today = hkDateString();
+  const [profile, settings, assignments, plannedToday, capacity, participants, shares] =
+    await Promise.all([
+      client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
+      client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
+      client.from("assignments")
+        .select("*")
+        .in("status", ["pending_acceptance", "accepted", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(200),
+      client.from("user_planning_metadata")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("resource_type", "task")
+        .eq("planned_date", today)
+        .limit(20),
+      client.from("daily_capacity_checkins")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("checkin_date", today)
+        .maybeSingle(),
+      client.rpc("participant_profiles"),
+      client.from("share_records")
+        .select("*")
+        .is("revoked_at", null)
+        .order("created_at", { ascending: false })
+        .limit(200)
+    ]);
+
+  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares]
+    .find((result) => result.error)?.error;
+  if (firstError) return databaseError(firstError);
+
+  if (!profile.data) {
+    const created = await client.from("user_profiles")
+      .insert({ user_id: user.id, display_name: displayName })
+      .select("*")
+      .single();
+    if (created.error) return databaseError(created.error);
+    profile.data = created.data;
+  }
+  if (!settings.data) {
+    const gentle = displayName.toLowerCase() === "suki";
+    const created = await client.from("user_settings").insert({
+      user_id: user.id,
+      email: user.email ?? null,
+      gentle_mode: gentle,
+      dashboard_density: gentle ? "calm" : "comfortable"
+    }).select("*").single();
+    if (created.error) return databaseError(created.error);
+    settings.data = created.data;
+  }
+
+  const activeTasks = await client.from("tasks")
+    .select("*")
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .not("status", "in", "(done,cancelled,blocked,waiting)")
+    .order("critical_path", { ascending: false })
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .limit(200);
+  if (activeTasks.error) return databaseError(activeTasks.error);
+
+  const plannedIds = (plannedToday.data ?? []).map((item) => item.resource_id);
+  const plannedTasks = plannedIds.length
+    ? await client.from("tasks")
+        .select("*")
+        .in("id", plannedIds)
+        .is("deleted_at", null)
+        .is("archived_at", null)
+        .limit(20)
+    : { data: [] as Array<Record<string, unknown>>, error: null };
+  if (plannedTasks.error) return databaseError(plannedTasks.error);
+
+  const activeIds = (activeTasks.data ?? []).map((task) => task.id);
+  const activePlanning = activeIds.length
+    ? await client.from("user_planning_metadata")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("resource_type", "task")
+        .in("resource_id", activeIds)
+        .limit(200)
+    : { data: [] as Array<Record<string, unknown>>, error: null };
+  if (activePlanning.error) return databaseError(activePlanning.error);
+
+  const taskMap = new Map<string, Record<string, unknown>>();
+  for (const task of [...(activeTasks.data ?? []), ...(plannedTasks.data ?? [])]) {
+    taskMap.set(String(task.id), task);
+  }
+  const planningMap = new Map<string, Record<string, unknown>>();
+  for (const item of [...(activePlanning.data ?? []), ...(plannedToday.data ?? [])]) {
+    planningMap.set(String(item.resource_id), item);
+  }
+
+  return Response.json({
+    currentUser: {
+      id: user.id,
+      email: user.email ?? "",
+      displayName: profile.data.display_name
+    },
+    profile: profile.data,
+    settings: settings.data,
+    tasks: [...taskMap.values()],
+    shares: shares.data ?? [],
+    assignments: assignments.data ?? [],
+    planning: [...planningMap.values()],
+    capacity: capacity.data ?? null,
+    participants: participants.data ?? []
+  }, { headers: privateHeaders() });
+}
+
 export async function POST(request: NextRequest) {
   const context = await authenticate(request);
   if (context instanceof Response) return context;
@@ -103,6 +218,8 @@ export async function POST(request: NextRequest) {
     case "save_settings": return saveSettings(context, body);
     case "admin_reset_password": return adminResetPassword(context, body);
     case "capacity_checkin": return saveCapacity(context, body);
+    case "accept_today_plan": return acceptTodayPlan(context, body);
+    case "snooze_today_task": return snoozeTodayTask(context, body);
     case "save_checkpoint_draft": return saveTaskCheckpoint(context, body, "draft");
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
     case "process_inbox_item": return processInboxItem(context, body);
@@ -731,11 +848,63 @@ async function saveCapacity({ client, user }: RequestContext, body: Record<strin
     available_minutes: integerValue(body.availableMinutes, 0, 1440),
     mode: enumValue(body.mode, ["normal","gentle","minimum_step","shift"], "normal"),
     essential_only: Boolean(body.essentialOnly),
+    rest_day: Boolean(body.restDay),
     notes: nullableText(body.notes)
   };
   const result = await client.from("daily_capacity_checkins").upsert(payload, { onConflict: "user_id,checkin_date" }).select("*").single();
   if (result.error) return databaseError(result.error);
   return Response.json({ capacity: result.data }, { headers: privateHeaders() });
+}
+
+async function acceptTodayPlan({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const rawTaskIds = Array.isArray(body.taskIds) ? body.taskIds : [];
+  const rawRoles = Array.isArray(body.roles) ? body.roles : [];
+  if (rawTaskIds.length < 1 || rawTaskIds.length > 6 || rawTaskIds.length !== rawRoles.length) {
+    return jsonError("今日建議內容不正確。", 422);
+  }
+  const taskIds = rawTaskIds.map(uuidValue);
+  if (taskIds.some((id) => !id)) return jsonError("今日建議包含無效任務。", 422);
+  const roles = rawRoles.map((role) => enumValue(role, ["now", "later", "quick_win"] as const, null));
+  if (roles.some((role) => !role)) return jsonError("今日建議分類不正確。", 422);
+  const planDate = dateValue(body.planDate);
+  const idempotencyKey = uuidValue(body.idempotencyKey);
+  if (!planDate || !idempotencyKey) return jsonError("今日建議日期或確認識別碼不正確。", 422);
+
+  const result = await client.rpc("accept_today_auto_plan", {
+    p_task_ids: taskIds as string[],
+    p_plan_roles: roles as string[],
+    p_plan_date: planDate,
+    p_idempotency_key: idempotencyKey
+  });
+  if (result.error) return databaseError(result.error);
+  for (const taskId of taskIds as string[]) {
+    await recordActivity(client, user.id, "task", taskId, "today_plan_accept", "確認加入今日建議");
+  }
+  return Response.json({ acceptanceId: result.data }, { headers: privateHeaders() });
+}
+
+async function snoozeTodayTask({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  const untilDate = dateValue(body.untilDate);
+  if (!taskId || !untilDate) return jsonError("請選擇有效的任務及日期。", 422);
+  const visible = await client.from("tasks").select("id").eq("id", taskId).maybeSingle();
+  if (visible.error) return databaseError(visible.error);
+  if (!visible.data) return jsonError("找不到任務或你沒有權限。", 404);
+  const result = await client.from("user_planning_metadata").upsert({
+    user_id: user.id,
+    resource_type: "task",
+    resource_id: taskId,
+    planned_date: null,
+    snoozed_until: `${untilDate}T00:00:00+08:00`,
+    plan_role: null,
+    plan_source: null,
+    accepted_at: null,
+    plan_token: null,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "user_id,resource_type,resource_id" });
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "task", taskId, "today_plan_snooze", "延至指定日期再建議");
+  return Response.json({ ok: true }, { headers: privateHeaders() });
 }
 
 async function adminResetPassword({ client, origin }: RequestContext, body: Record<string, unknown>) {
@@ -863,6 +1032,15 @@ function inferDisplayName(user: User) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function hkDateString() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
 function stringValue(value: unknown) { return typeof value === "string" ? value : ""; }
 function nullableText(value: unknown) { const text = stringValue(value).trim(); return text ? text.slice(0, 10000) : null; }
 function requiredText(value: unknown, message: string) { const text = stringValue(value).trim(); return text ? text.slice(0, 500) : jsonError(message, 422); }
@@ -964,6 +1142,8 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("INBOX_UNDO_NOT_LATEST")) return jsonError("只可撤銷最近一次處理。", 409);
   if (error.message?.includes("INBOX_UNDO_TARGET_CHANGED")) return jsonError("新項目已有進度，為保障資料不會自動撤銷。", 409);
   if (error.message?.includes("INBOX_UNDO_SOURCE_MISSING")) return jsonError("原始收集箱內容已不存在，未有改動其他資料。", 409);
+  if (error.message?.includes("INVALID_PLAN_") || error.message?.includes("DUPLICATE_TASK") || error.message?.includes("PLAN_DATE_REQUIRED") || error.message?.includes("IDEMPOTENCY_KEY_REQUIRED")) return jsonError("今日建議內容不正確，未有加入任何任務。", 422);
+  if (error.message?.includes("TASK_NOT_ELIGIBLE")) return jsonError("其中一項任務已完成、被阻塞或權限有變，請重新安排。", 409);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("FORBIDDEN") || error.message?.includes("permission")) return jsonError("操作被權限規則拒絕。", 403);
   return jsonError("資料操作失敗，請稍後再試。", 500);
