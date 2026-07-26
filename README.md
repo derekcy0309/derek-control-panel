@@ -23,7 +23,7 @@
 - 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI
 - ChatGPT Task Analysis：系統遮罩敏感資料及寫好 Prompt；一鍵複製並開啟 ChatGPT，回覆可從剪貼簿貼回、驗證及預覽，使用者確認後才更新完成標準、Next Action 及估時
 - Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步，工作帳戶固定為 `info@wecarenursing.com.hk`
-- 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項亦提供無壓力確認
+- 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項時不寄出不必要通知
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄

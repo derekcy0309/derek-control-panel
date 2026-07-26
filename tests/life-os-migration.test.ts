@@ -17,6 +17,10 @@ const familyVisibilityHotfix = readFileSync(
   resolve(here, "../supabase/migrations/20260726122000_fix_family_visibility_record_shape.sql"),
   "utf8"
 ).toLowerCase();
+const emailDigestRecipientPreference = readFileSync(
+  resolve(here, "../supabase/migrations/20260726220808_email_digest_recipient_preference.sql"),
+  "utf8"
+).toLowerCase();
 const planRoute = readFileSync(resolve(here, "../app/api/ai/plan-day/route.ts"), "utf8");
 const taskRoute = readFileSync(resolve(here, "../app/api/ai/analyze-task/route.ts"), "utf8");
 const manualChatGPTRoute = readFileSync(
@@ -100,4 +104,13 @@ test("daily email uses an authenticated cron claim and exact three-day horizon",
   assert.match(migration, /greatest\(coalesce\(preference\.email_digest_days, 3\), 1\) - 1/);
   assert.match(cronRoute, /isAuthorizedCronRequest/);
   assert.match(cronRoute, /idempotencyKey/);
+});
+
+test("due digest follows active user preferences and skips empty emails", () => {
+  assert.match(emailDigestRecipientPreference, /where profile\.active/);
+  assert.match(emailDigestRecipientPreference, /coalesce\(preference\.email_digest_enabled, true\)/);
+  assert.match(emailDigestRecipientPreference, /where jsonb_array_length\(candidate\.items\) > 0/);
+  assert.doesNotMatch(emailDigestRecipientPreference, /derekcy0309@gmail\.com/);
+  assert.match(emailDigestRecipientPreference, /notification_dispatch_authorized/);
+  assert.match(emailDigestRecipientPreference, /revoke all on function public\.claim_due_email_digests/);
 });

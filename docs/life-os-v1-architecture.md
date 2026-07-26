@@ -102,7 +102,7 @@ calendar_target in (personal, family, work)
 
 | Calendar target | 必須登入的 Google 帳戶 |
 |---|---|
-| Personal | 該 Derek Control Panel 使用者的登入電郵；Derek 是 `derekcy0309@gmail.com`，Suki 是她自己的登入電郵 |
+| Personal | 該 Derek Control Panel 使用者目前登入的 Google 帳戶；不硬編任何人的登入電郵 |
 | Family | 使用者自己的登入 Google 帳戶，再選擇雙方有寫入權限的共享 Family Calendar |
 | Work | `info@wecarenursing.com.hk` |
 
@@ -112,14 +112,14 @@ OAuth access／refresh token 以 AES-256-GCM 加密，只存於 `private.google_
 
 ## 每日三日到期電郵
 
-Vercel Cron 每日約香港時間 08:30 呼叫受 `CRON_SECRET` 保護的 route。資料庫 security-definer claim 只會為 Derek 登入帳戶及顯示名稱為 Suki 的 active 帳戶，各自建立當天一個 delivery；其他測試／管理帳戶不會收到：
+Vercel Cron 每日約香港時間 08:30 呼叫受 `CRON_SECRET` 保護的 route。資料庫 security-definer claim 會為 active、已啟用 email digest、且有至少一項可見到期工作的帳戶各自建立當天一個 delivery；不硬編任何登入電郵：
 
 - 日期範圍是今日、明日及後日，共三個曆日
 - 包括本人 Task、已接受 assignment、本人 Operating Item 及 household family item
 - 私人資料只寄往 owner／獲授權用戶自己的登入電郵
 - sensitive Operating Item 使用泛化標題並移除 Next Action
 - 每封最多列出五十項，避免摘要本身變成壓力來源
-- 即使沒有到期事項亦寄出溫和的「三日內未有到期事項」確認
+- 沒有到期事項時不建立 delivery 或寄出電郵，避免不必要打擾
 - Resend idempotency key 防止同一 delivery 重複寄出
 
 ## 不由 AI 控制的項目
