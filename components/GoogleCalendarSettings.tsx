@@ -113,7 +113,7 @@ export function GoogleCalendarSettings({
           <p className="eyebrow flex items-center gap-2"><CalendarCheck className="h-4 w-4" />Google Calendar</p>
           <h2 className="section-title mt-1">只同步已確認行程</h2>
           <p className="muted mt-2 max-w-2xl text-sm leading-6">
-            普通 Task、AI Plan、Focus block 同暫定行程全部留喺系統；只係 Confirmed Schedule 先會同步。
+            普通 Task、內部每日計劃、Focus block 同暫定行程全部留喺系統；只係 Confirmed Schedule 先會同步。
           </p>
         </div>
         <span className="flex w-fit items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700">

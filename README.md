@@ -20,9 +20,9 @@
 - Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
 - Capacity Overload Warning：以能量、可用時間、WIP、deadline、night-shift 及未來家庭／健康承諾作溫和容量提示；只建議可延期／交接項目，所有改動仍要本人確認
 - Life OS 權限分層：個人及工作預設私人；只有已接受家庭連結的 `family + household` 項目會共同可見，未整理 Inbox 永遠先保持私人
-- AI Daily Planner：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎先做安全／期限／WIP 篩選，AI 只負責以最低 effort 排序及拆出第一步
-- AI Task Analysis：按一下取得最快完成路徑、頭十分鐘、停止條件及減少 effort 建議；使用者明確確認後才更新 Next Action／估時
-- Google Calendar 多帳戶：AI 計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步，工作帳戶固定為 `info@wecarenursing.com.hk`
+- 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI
+- ChatGPT Task Analysis：系統遮罩敏感資料及寫好 Prompt；一鍵複製並開啟 ChatGPT，回覆可從剪貼簿貼回、驗證及預覽，使用者確認後才更新完成標準、Next Action 及估時
+- Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步，工作帳戶固定為 `info@wecarenursing.com.hk`
 - 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項亦提供無壓力確認
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
@@ -127,7 +127,7 @@ Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 
 
 通知另需設定 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT` 和 `CRON_SECRET`。前者可公開，後三者只可放在 Vercel server environment；同一個 `CRON_SECRET` 的雜湊保存在 `private.notification_dispatch_config`，原值保存在 Supabase Vault。正式 Vercel route 就緒後，才可設定 Supabase Cron 每五分鐘以帶有 Bearer secret 的 HTTP request 呼叫 `/api/cron/notifications`；job 可安全重覆執行，發送工作以 dedupe key 及 claim lock 防止重複。
 
-Life OS v1 升級另需設定 AI Gateway、Google OAuth、token encryption、Resend 及 `NEXT_PUBLIC_APP_URL`。每日三日到期電郵由 `vercel.json` 在香港時間約 08:30 呼叫 `/api/cron/due-email`；Google OAuth callback 是 `/api/integrations/google-calendar/callback`。完整上線步驟、帳戶限制及驗證清單見 [`docs/life-os-v1-setup.md`](docs/life-os-v1-setup.md)。
+Life OS v1 升級另需設定 Google OAuth、token encryption、Resend 及 `NEXT_PUBLIC_APP_URL`；ChatGPT 手動分析不需要 API key 或 AI Gateway。每日三日到期電郵由 `vercel.json` 在香港時間約 08:30 呼叫 `/api/cron/due-email`；Google OAuth callback 是 `/api/integrations/google-calendar/callback`。完整上線步驟、帳戶限制及驗證清單見 [`docs/life-os-v1-setup.md`](docs/life-os-v1-setup.md)。
 
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
 

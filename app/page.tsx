@@ -369,7 +369,7 @@ function TodayCommandCenter() {
           <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
             <span>
               <span className="block text-sm font-extrabold text-slate-900">規則式安全建議</span>
-              <span className="mt-1 block text-xs text-slate-500">如唔想用 AI，可展開並沿用原有 Auto‑Plan。</span>
+              <span className="mt-1 block text-xs text-slate-500">每日安排使用免費規則引擎；需要深度拆解時，任務卡可一鍵開啟 ChatGPT。</span>
             </span>
             <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
           </summary>

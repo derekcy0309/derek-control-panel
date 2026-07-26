@@ -1,6 +1,6 @@
-import { generateText, Output } from "ai";
 import { NextRequest } from "next/server";
-import { taskAnalysisRequestSchema, taskAnalysisSchema } from "@/lib/ai/schemas";
+import { createRuleTaskAnalysis } from "@/lib/ai/manual-chatgpt";
+import { taskAnalysisRequestSchema } from "@/lib/ai/schemas";
 import { hashAIInput, redactSensitiveText } from "@/lib/ai/redact";
 import { authenticateRequest, privateJson } from "@/lib/server/request-context";
 
@@ -60,65 +60,30 @@ export async function POST(request: NextRequest) {
     area: task.data.area,
     status: task.data.status
   };
-  const model = process.env.AI_MODEL || "openai/gpt-5.4";
-  try {
-    const result = await generateText({
-      model,
-      output: Output.object({
-        schema: taskAnalysisSchema,
-        name: "derek_control_panel_task_analysis",
-        description: "A short, actionable path that reduces activation energy for one task."
-      }),
-      system: `你係香港繁體中文任務拆解助手，只提供建議，不修改資料。
-用最少步驟同最低 effort 達成任務，不製造額外行政工作。
-ADHD 模式：第一步必須係眼前可見動作，減少轉題，設定清楚 stop condition。
-Depression 模式：只保留必要步驟、語氣中性、避免責備或把休息描述成失敗。
-不得提供醫療、法律、臨床或財務結論；相關內容只可整理並加警告。
-不得推斷輸入沒有提供的個人資料。`,
-      prompt: JSON.stringify({
-        supportProfile: settings.data?.support_profile ?? "balanced",
-        task: safeTask
-      })
-    });
-    await context.client.from("ai_analysis_events").insert({
-      user_id: context.user.id,
-      source_type: "task_analysis",
-      source_id: task.data.id,
-      model,
-      prompt_version: promptVersion,
-      input_hash: hashAIInput(JSON.stringify(safeTask)),
-      output_json: result.output,
-      source: "ai"
-    });
-    return privateJson({ analysis: result.output });
-  } catch {
-    const firstStep = task.data.next_action?.trim()
-      || `先打開「${task.data.title}」需要嘅頁面或文件`;
-    const fallback = {
-      clarifiedOutcome: task.data.definition_of_done?.trim() || `完成：${task.data.title}`,
-      fastestPath: [{
-        action: firstStep,
-        minutes: Math.min(10, task.data.estimated_minutes || 10),
-        energy: task.data.energy_level || "medium"
-      }],
-      firstTenMinutes: firstStep,
-      stopCondition: "完成第一個可見動作後停一停，決定繼續或保存 Checkpoint。",
-      estimatedMinutes: task.data.estimated_minutes || 10,
-      canDelegate: false,
-      missingInformation: [],
-      effortReductionTips: ["只開需要嘅一個頁面；暫時唔整理其他 backlog。"],
-      warnings: ["AI 暫時未連接，現時顯示安全規則式建議。"]
-    };
-    await context.client.from("ai_analysis_events").insert({
-      user_id: context.user.id,
-      source_type: "task_analysis",
-      source_id: task.data.id,
-      model,
-      prompt_version: promptVersion,
-      input_hash: hashAIInput(JSON.stringify(safeTask)),
-      output_json: fallback,
-      source: "rules_fallback"
-    });
-    return privateJson({ analysis: fallback, source: "rules_fallback" });
-  }
+  const suggestionOnlyPolicy = "只提供建議，不修改資料";
+  const fallback = createRuleTaskAnalysis({
+    title: task.data.title,
+    nextAction: task.data.next_action,
+    definitionOfDone: task.data.definition_of_done,
+    estimatedMinutes: task.data.estimated_minutes,
+    energyLevel: task.data.energy_level
+  });
+  await context.client.from("ai_analysis_events").insert({
+    user_id: context.user.id,
+    source_type: "task_analysis",
+    source_id: task.data.id,
+    model: "rules-engine",
+    prompt_version: promptVersion,
+    input_hash: hashAIInput(JSON.stringify({
+      supportProfile: settings.data?.support_profile ?? "balanced",
+      task: safeTask
+    })),
+    output_json: { ...fallback, policy: suggestionOnlyPolicy },
+    source: "rules_fallback"
+  });
+  return privateJson({
+    analysis: fallback,
+    source: "rules_fallback",
+    message: "已用免費規則引擎提供即時第一步；需要深度分析可使用 ChatGPT 貼回流程。"
+  });
 }

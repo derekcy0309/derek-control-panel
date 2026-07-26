@@ -95,7 +95,7 @@ export function AIDailyPlanner({
       if (!response.ok || !body.plan) throw new Error(body.error || "未能產生今日工作計劃。");
       setPlan(body.plan);
       setMessage(body.plan.source === "rules_fallback"
-        ? "AI 暫時未連接，已用安全規則引擎完成安排。"
+        ? "已用免費安全規則引擎完成安排，不會產生 AI API 費用。"
         : "已產生內部工作計劃；仍然未寫入 Google Calendar。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "未能產生今日工作計劃。");
@@ -135,15 +135,15 @@ export function AIDailyPlanner({
     <section className="ai-planner-card overflow-hidden rounded-[1.4rem] border p-5 sm:p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-2xl">
-          <p className="eyebrow flex items-center gap-2"><Brain className="h-4 w-4" />AI Daily Planner</p>
+          <p className="eyebrow flex items-center gap-2"><Brain className="h-4 w-4" />智能每日排程</p>
           <h2 className="section-title mt-1">輸入真正可工作時間，系統幫你收窄今日</h2>
           <p className="muted mt-2 text-sm leading-6">
-            AI 只會喺安全規則篩選後嘅任務入面排序；會保留家庭緩衝、休息同恢復空間。
+            系統會按安全、期限、WIP、能量同容量自動安排；保留家庭緩衝、休息同恢復空間，全程不使用付費 AI。
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-xl bg-white/75 px-3 py-2 text-xs font-bold text-slate-600">
           <CalendarX2 className="h-4 w-4 text-indigo-600" />
-          AI 計劃不會同步 Google Calendar
+          內部計劃不會同步 Google Calendar
         </div>
       </div>
 
@@ -189,7 +189,7 @@ export function AIDailyPlanner({
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button type="button" disabled={busy || !windows.length} onClick={() => void generate()}>
-          <Sparkles className="h-5 w-5" />{busy ? "分析中…" : plan ? "重新安排今日" : "由 AI 安排今日工作"}
+          <Sparkles className="h-5 w-5" />{busy ? "安排中…" : plan ? "重新安排今日" : "自動安排今日工作"}
         </Button>
         <p className="text-xs leading-5 text-slate-500">
           {settings.support_profile === "adhd"
@@ -204,7 +204,7 @@ export function AIDailyPlanner({
         <div className="mt-5 rounded-2xl border border-indigo-100 bg-white p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="eyebrow">{plan.status === "accepted" ? "Accepted Internal Plan" : "Draft Internal Plan"}</p>
+              <p className="eyebrow">{plan.status === "accepted" ? "已接受的內部計劃" : "內部計劃預覽"}</p>
               <p className="mt-1 font-bold text-slate-900">{plan.summary}</p>
             </div>
             {plan.status === "accepted" ? <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800"><Check className="h-3.5 w-3.5" />已接受</span> : null}

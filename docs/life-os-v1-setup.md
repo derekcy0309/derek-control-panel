@@ -12,21 +12,20 @@
 
 先在 preview Supabase 執行，再用 Derek／Suki 測試帳戶完成 RLS 驗證，最後才套用 production。
 
-## 2. Vercel AI Gateway
+## 2. 零額外費用 ChatGPT 模式
 
-設定：
+不需要 Vercel AI Gateway、OpenAI API key 或 `AI_MODEL`。
 
-```text
-AI_MODEL=openai/gpt-5.4
-```
+每日工作安排由伺服器的確定規則引擎自動完成。單一 Task 的深度分析流程是：
 
-Vercel production 可使用 OIDC；本機或未啟用 OIDC 的環境需要設定：
+1. 系統按目前登入者的 RLS 權限只讀取該 Task。
+2. 系統遮罩常見姓名、地址、電話、電郵、HKID、帳戶及 reference。
+3. 使用者按一下複製完整 Prompt 並開啟 `https://chatgpt.com/`。
+4. 使用者在自己的 ChatGPT 會話貼上及執行。
+5. 使用者把回覆貼回 Task Card；系統驗證 JSON、Task ID、欄位及長度。
+6. 系統只顯示預覽；使用者明確確認後才沿用既有 `update_task` mutation。
 
-```text
-AI_GATEWAY_API_KEY=...
-```
-
-AI 不需要 Supabase service-role key。不要把 AI credential 加上 `NEXT_PUBLIC_`。
+ChatGPT 回覆不經 Vercel AI Gateway。系統不會嘗試讀取 ChatGPT cookie、模擬登入或在背景控制 ChatGPT。
 
 ## 3. Google Cloud OAuth
 
@@ -97,10 +96,11 @@ npm run build
 - Suki 看不到 Derek personal／private work Task，反向亦然。
 - 接受 household 後，雙方可看到 family Task；可更新進度但不能改 owner／visibility。
 - 未處理 family Inbox 仍只由建立者看到。
-- Suki 的 AI plan 不會讀取或暗示 Derek 私人 Task 數量／名稱。
-- AI 建議未知 Task ID 會被伺服器丟棄。
+- Suki 的每日計劃不會讀取或暗示 Derek 私人 Task 數量／名稱。
+- ChatGPT 貼回內容如帶有另一 Task ID，伺服器必須拒絕。
+- 無效、過長、非 JSON 或超出欄位限制的回覆必須拒絕。
 - Minimum Viable Day／高恢復需要只安排一項。
-- AI accepted plan 不會產生 Google event。
+- 接受每日內部計劃不會產生 Google event。
 - tentative schedule 不同步；confirmed schedule 正確新增、更新、取消及切換 Calendar。
 - Personal target 拒絕非登入電郵；Work target 拒絕非 `info@wecarenursing.com.hk`。
 - 每位用戶只收到自己的私人到期項目；家庭項目可按 household 權限出現在雙方自己的電郵。
@@ -109,4 +109,4 @@ npm run build
 
 ## 8. 發佈策略
 
-先建立 preview deployment，完成 migration、RLS、OAuth、Resend、AI fallback 和兩帳戶 E2E。確認 production environment variables 後才 promote；不要在未完成真實 RLS 測試前直接覆蓋 production。
+先建立 preview deployment，完成 migration、RLS、OAuth、Resend、ChatGPT 手動匯入和兩帳戶 E2E。確認 production environment variables 後才 promote；不要在未完成真實 RLS 測試前直接覆蓋 production。

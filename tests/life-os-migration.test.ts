@@ -19,6 +19,14 @@ const familyVisibilityHotfix = readFileSync(
 ).toLowerCase();
 const planRoute = readFileSync(resolve(here, "../app/api/ai/plan-day/route.ts"), "utf8");
 const taskRoute = readFileSync(resolve(here, "../app/api/ai/analyze-task/route.ts"), "utf8");
+const manualChatGPTRoute = readFileSync(
+  resolve(here, "../app/api/chatgpt/task-assistant/route.ts"),
+  "utf8"
+);
+const manualChatGPTPanel = readFileSync(
+  resolve(here, "../components/TaskAIAnalysisPanel.tsx"),
+  "utf8"
+);
 const cronRoute = readFileSync(resolve(here, "../app/api/cron/due-email/route.ts"), "utf8");
 const calendarSync = readFileSync(resolve(here, "../lib/integrations/google-calendar.ts"), "utf8");
 const calendarConnectRoute = readFileSync(
@@ -59,15 +67,26 @@ test("Google tokens remain private and only confirmed schedules can sync", () =>
   assert.match(calendarConnectRoute, /nextresponse\.redirect\(redirect\)/i);
 });
 
-test("AI routes are suggestion-only and accepted plans stay internal", () => {
+test("daily planner is free, ChatGPT imports are bound, and accepted plans stay internal", () => {
   assert.match(planRoute, /calendarSync: false/);
-  assert.match(planRoute, /normalizeSelections/);
+  assert.match(planRoute, /model = "rules-engine"/);
+  assert.doesNotMatch(planRoute, /generateText|Output\.object/);
   assert.match(planRoute, /maximumItems/);
   assert.match(planRoute, /accept_today_auto_plan/);
   assert.match(planRoute, /p_idempotency_key: planId/);
   assert.match(migration, /unique \(plan_id, task_id, starts_at\)/);
   assert.match(taskRoute, /只提供建議，不修改資料/);
+  assert.match(taskRoute, /model: "rules-engine"/);
+  assert.doesNotMatch(taskRoute, /generateText|Output\.object/);
   assert.doesNotMatch(taskRoute, /\.from\("tasks"\)\.update/);
+  assert.match(manualChatGPTRoute, /authenticateRequest/);
+  assert.match(manualChatGPTRoute, /redactSensitiveText/);
+  assert.match(manualChatGPTRoute, /parseManualChatGPTTaskResponse/);
+  assert.match(manualChatGPTRoute, /model: "chatgpt-manual"/);
+  assert.doesNotMatch(manualChatGPTRoute, /\.from\("tasks"\)\.update/);
+  assert.match(manualChatGPTPanel, /navigator\.clipboard/);
+  assert.match(manualChatGPTPanel, /window\.open/);
+  assert.match(manualChatGPTPanel, /controlAction\("update_task"/);
 });
 
 test("daily email uses an authenticated cron claim and exact three-day horizon", () => {

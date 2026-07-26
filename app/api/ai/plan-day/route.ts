@@ -1,15 +1,9 @@
-import { generateText, Output } from "ai";
 import { NextRequest } from "next/server";
+import { dailyPlanRequestSchema } from "@/lib/ai/schemas";
 import {
-  aiDailySelectionSchema,
-  dailyPlanRequestSchema
-} from "@/lib/ai/schemas";
-import {
-  normalizeSelections,
   packPlanIntoWindows,
   rulesFallbackSelections,
-  type PlannerCandidate,
-  type PlannerSelection
+  type PlannerCandidate
 } from "@/lib/ai/daily-planner";
 import { hashAIInput, redactSensitiveText } from "@/lib/ai/redact";
 import { recommendTodayTasks } from "@/lib/planning";
@@ -179,7 +173,7 @@ export async function POST(request: NextRequest) {
     }, 409);
   }
 
-  const model = process.env.AI_MODEL || "openai/gpt-5.4";
+  const model = "rules-engine";
   const supportProfile = settings.data.support_profile ?? "balanced";
   const maximumItems = parsed.data.mode === "minimum_step" || parsed.data.recoveryNeed === "high"
     ? 1
@@ -204,44 +198,13 @@ export async function POST(request: NextRequest) {
     candidates: safeCandidates
   });
 
-  let source: "ai" | "rules_fallback" = "ai";
-  let summary = "已按限期、風險、能量同可工作時間，保留最少而可推進嘅工作。";
-  let selections: PlannerSelection[] = rulesFallbackSelections(candidates, maximumItems);
-  try {
-    const result = await generateText({
-      model,
-      output: Output.object({
-        schema: aiDailySelectionSchema,
-        name: "derek_control_panel_daily_plan",
-        description: "A minimal, low-friction daily task order using only the supplied candidate IDs."
-      }),
-      system: `你係一個香港繁體中文生活及工作規劃助手。
-規則引擎已經完成安全、期限、WIP、權限及容量篩選；你只可在候選任務中排序。
-目標係用最短時間同最低啟動阻力，完成最有影響嘅成果。
-supportProfile=adhd：減少轉題、優先已開始工作、第一步要具體可見。
-supportProfile=depression：減少項目、語氣中性、先提供可完成的小步驟，不用內疚或責備字眼。
-不得新增候選清單以外的 taskId，不得聲稱已修改任務、行事曆或資料庫。
-不得提供醫療、法律或財務結論。`,
-      prompt: JSON.stringify({
-        supportProfile,
-        energyLevel: parsed.data.energyLevel,
-        mode: parsed.data.mode,
-        familyLoad: parsed.data.familyLoad,
-        recoveryNeed: parsed.data.recoveryNeed,
-        usableMinutes: Math.max(0, availableMinutes - parsed.data.bufferMinutes),
-        candidates: safeCandidates
-      })
-    });
-    const normalized = normalizeSelections(result.output.selections, candidates, maximumItems);
-    if (normalized.length) {
-      selections = normalized;
-      summary = result.output.summary;
-    } else {
-      source = "rules_fallback";
-    }
-  } catch {
-    source = "rules_fallback";
-  }
+  const source = "rules_fallback" as const;
+  const summary = supportProfile === "adhd"
+    ? "已按期限、風險同容量收窄選擇，優先清楚第一步並減少轉題。"
+    : supportProfile === "depression"
+      ? "已按目前能量溫和減量，只保留今日真正有容量推進的工作。"
+      : "已按期限、風險、能量同可工作時間，保留最少而可推進的工作。";
+  const selections = rulesFallbackSelections(candidates, maximumItems);
 
   const packed = packPlanIntoWindows({
     date: parsed.data.date,

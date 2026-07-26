@@ -84,7 +84,7 @@ function EventModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
           <p className="font-bold text-indigo-950">Google Calendar 只收已確認行程</p>
           <p className="mt-1 text-xs leading-5 text-indigo-800">
-            普通任務同 AI 今日計劃會繼續只留喺 Derek Control Panel，避免日曆混亂。
+            普通任務同每日內部計劃會繼續只留喺 Derek Control Panel，避免日曆混亂。
           </p>
         </div>
 
