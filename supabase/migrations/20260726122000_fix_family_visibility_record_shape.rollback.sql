@@ -1,0 +1,3 @@
+-- Guarded rollback: this hotfix changes no table or user data. Keep the
+-- cross-table-safe trigger implementation because restoring direct access to
+-- new.item_type would make task creation unavailable.

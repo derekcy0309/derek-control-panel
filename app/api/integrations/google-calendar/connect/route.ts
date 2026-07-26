@@ -17,24 +17,33 @@ export async function GET(request: NextRequest) {
   if (!target || !["personal", "family", "work"].includes(target)) {
     return privateJson({ error: "Calendar 類型不正確。" }, 422);
   }
-  const state = createGoogleOAuthState({
-    userId: context.user.id,
-    target,
-    returnTo: "/settings"
-  });
-  const redirectUri = `${context.origin}/api/integrations/google-calendar/callback`;
-  const response = NextResponse.redirect(googleAuthorizationUrl({
-    state,
-    redirectUri,
-    loginHint: expectedGoogleAccount(target, context.user.email ?? "")
-  }));
-  response.cookies.set("dcp_google_oauth", state, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/api/integrations/google-calendar",
-    maxAge: 10 * 60
-  });
-  response.headers.set("Cache-Control", "private, no-store");
-  return response;
+  try {
+    const state = createGoogleOAuthState({
+      userId: context.user.id,
+      target,
+      returnTo: "/settings"
+    });
+    const redirectUri = `${context.origin}/api/integrations/google-calendar/callback`;
+    const response = NextResponse.redirect(googleAuthorizationUrl({
+      state,
+      redirectUri,
+      loginHint: expectedGoogleAccount(target, context.user.email ?? "")
+    }));
+    response.cookies.set("dcp_google_oauth", state, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/integrations/google-calendar",
+      maxAge: 10 * 60
+    });
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  } catch {
+    const redirect = new URL("/settings", context.origin);
+    redirect.searchParams.set("calendar", "not_configured");
+    redirect.searchParams.set("reason", "Google Calendar 管理員設定尚未完成。");
+    const response = NextResponse.redirect(redirect);
+    response.headers.set("Cache-Control", "private, no-store");
+    return response;
+  }
 }

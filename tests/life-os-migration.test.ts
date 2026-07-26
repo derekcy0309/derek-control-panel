@@ -13,10 +13,18 @@ const hardening = readFileSync(
   resolve(here, "../supabase/migrations/20260726121000_life_os_boundary_hardening.sql"),
   "utf8"
 ).toLowerCase();
+const familyVisibilityHotfix = readFileSync(
+  resolve(here, "../supabase/migrations/20260726122000_fix_family_visibility_record_shape.sql"),
+  "utf8"
+).toLowerCase();
 const planRoute = readFileSync(resolve(here, "../app/api/ai/plan-day/route.ts"), "utf8");
 const taskRoute = readFileSync(resolve(here, "../app/api/ai/analyze-task/route.ts"), "utf8");
 const cronRoute = readFileSync(resolve(here, "../app/api/cron/due-email/route.ts"), "utf8");
 const calendarSync = readFileSync(resolve(here, "../lib/integrations/google-calendar.ts"), "utf8");
+const calendarConnectRoute = readFileSync(
+  resolve(here, "../app/api/integrations/google-calendar/connect/route.ts"),
+  "utf8"
+);
 
 test("private, household, and explicit-share reads remain separate in RLS", () => {
   assert.match(migration, /visibility = 'household'/);
@@ -28,6 +36,8 @@ test("private, household, and explicit-share reads remain separate in RLS", () =
   assert.match(migration, /household_already_full/);
   assert.match(hardening, /item_type = 'inbox'/);
   assert.match(hardening, /new\.visibility := 'private'/);
+  assert.match(familyVisibilityHotfix, /to_jsonb\(new\) ->> 'item_type' = 'inbox'/);
+  assert.doesNotMatch(familyVisibilityHotfix, /new\.item_type/);
 });
 
 test("household collaborators can progress family work without changing private content", () => {
@@ -45,6 +55,8 @@ test("Google tokens remain private and only confirmed schedules can sync", () =>
   assert.match(calendarSync, /item\.schedule_status !== "confirmed"/);
   assert.match(calendarSync, /onConflict: "operating_item_id"/);
   assert.match(hardening, /calendar_event_links_item_unique_idx/);
+  assert.match(calendarConnectRoute, /calendar", "not_configured"/);
+  assert.match(calendarConnectRoute, /nextresponse\.redirect\(redirect\)/i);
 });
 
 test("AI routes are suggestion-only and accepted plans stay internal", () => {

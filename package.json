@@ -2,16 +2,16 @@
   "name": "derek-control-panel",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/ai-planner.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/checkpoints.test.ts tests/weekly-review.test.ts tests/migration-contract.test.ts tests/life-os-migration.test.ts tests/backup.test.ts tests/capacity-overload.test.ts"
   },
   "dependencies": {
-    "@react-email/components": "^1.0.0",
     "@supabase/supabase-js": "^2.52.0",
     "ai": "^6.0.0",
     "clsx": "^2.1.1",

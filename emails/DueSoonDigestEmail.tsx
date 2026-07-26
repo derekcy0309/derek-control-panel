@@ -1,14 +1,3 @@
-import {
-  Body,
-  Button,
-  Container,
-  Head,
-  Heading,
-  Html,
-  Preview,
-  Section,
-  Text
-} from "@react-email/components";
 import * as React from "react";
 
 export type DueSoonEmailItem = {
@@ -32,39 +21,40 @@ export function DueSoonDigestEmail({
   appUrl: string;
 }) {
   return (
-    <Html lang="zh-HK">
-      <Head />
-      <Preview>{items.length ? `未來 ${horizonDays} 日有 ${items.length} 項事情值得預先留意` : `未來 ${horizonDays} 日暫時沒有到期事項`}</Preview>
-      <Body style={body}>
-        <Container style={container}>
-          <Text style={eyebrow}>DEREK CONTROL PANEL</Text>
-          <Heading style={heading}>{displayName}，呢封係溫和預覽</Heading>
-          <Text style={intro}>
+    <html lang="zh-HK">
+      <body style={body}>
+        <div style={preview}>
+          {items.length ? `未來 ${horizonDays} 日有 ${items.length} 項事情值得預先留意` : `未來 ${horizonDays} 日暫時沒有到期事項`}
+        </div>
+        <main style={container}>
+          <p style={eyebrow}>DEREK CONTROL PANEL</p>
+          <h1 style={heading}>{displayName}，呢封係溫和預覽</h1>
+          <p style={intro}>
             {items.length
               ? `未來 ${horizonDays} 日有 ${items.length} 項到期事項。唔需要一次過完成；先打開系統，揀一個最細下一步就夠。`
               : `未來 ${horizonDays} 日暫時沒有到期事項。今日可以按實際能量同家庭需要安排，毋須為清單製造額外壓力。`}
-          </Text>
-          <Section style={list}>
+          </p>
+          <section style={list}>
             {items.length ? items.map((item) => (
-              <Section key={`${item.kind}-${item.id}`} style={card}>
-                <Text style={meta}>{areaLabel(item.area)} · {formatDate(item.dueDate)}</Text>
-                <Text style={title}>{item.title}</Text>
-                {item.nextAction ? <Text style={next}>下一步：{item.nextAction}</Text> : null}
-              </Section>
+              <section key={`${item.kind}-${item.id}`} style={card}>
+                <p style={meta}>{areaLabel(item.area)} · {formatDate(item.dueDate)}</p>
+                <p style={title}>{item.title}</p>
+                {item.nextAction ? <p style={next}>下一步：{item.nextAction}</p> : null}
+              </section>
             )) : (
-              <Section style={emptyCard}>
-                <Text style={title}>三日內未有到期事項</Text>
-                <Text style={next}>可以保留緩衝、休息，或者只推進一個最有幫助嘅小步。</Text>
-              </Section>
+              <section style={emptyCard}>
+                <p style={title}>三日內未有到期事項</p>
+                <p style={next}>可以保留緩衝、休息，或者只推進一個最有幫助嘅小步。</p>
+              </section>
             )}
-          </Section>
-          <Button href={`${appUrl.replace(/\/$/, "")}/`} style={button}>打開今日計劃</Button>
-          <Text style={footer}>
+          </section>
+          <a href={`${appUrl.replace(/\/$/, "")}/`} style={button}>打開今日計劃</a>
+          <p style={footer}>
             呢封電郵只係預覽，唔代表你今日要做晒。私人項目只寄去項目所屬用戶嘅登入電郵。
-          </Text>
-        </Container>
-      </Body>
-    </Html>
+          </p>
+        </main>
+      </body>
+    </html>
   );
 }
 
@@ -87,6 +77,15 @@ const body: React.CSSProperties = {
   fontFamily: "Arial, 'PingFang HK', 'Microsoft JhengHei', sans-serif",
   margin: 0,
   padding: "28px 12px"
+};
+const preview: React.CSSProperties = {
+  display: "none",
+  fontSize: "1px",
+  lineHeight: "1px",
+  maxHeight: 0,
+  maxWidth: 0,
+  opacity: 0,
+  overflow: "hidden"
 };
 const container: React.CSSProperties = {
   backgroundColor: "#ffffff",

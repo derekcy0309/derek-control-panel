@@ -7,6 +7,7 @@
 ```text
 20260726120000_life_os_ai_calendar_email.sql
 20260726121000_life_os_boundary_hardening.sql
+20260726122000_fix_family_visibility_record_shape.sql
 ```
 
 先在 preview Supabase 執行，再用 Derek／Suki 測試帳戶完成 RLS 驗證，最後才套用 production。
