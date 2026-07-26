@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   env: {
-    NEXT_PUBLIC_APP_VERSION: "0.3.0",
+    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version ?? "1.0.0",
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
     NEXT_PUBLIC_COMMIT_SHA:
       process.env.VERCEL_GIT_COMMIT_SHA
