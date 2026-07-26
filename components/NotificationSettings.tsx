@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, BellOff, Clock3, Send, ShieldCheck } from "lucide-react";
+import { Bell, BellOff, Clock3, Mail, Send, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import type { NotificationDelivery, NotificationPreferences } from "@/lib/types";
@@ -30,6 +30,8 @@ type PreferencesForm = {
   todayReminderTime: string;
   shutdownReminderTime: string;
   deadlineLeadMinutes: number;
+  emailDigestEnabled: boolean;
+  emailDigestTime: string;
 };
 
 const defaultPreferences: PreferencesForm = {
@@ -47,7 +49,9 @@ const defaultPreferences: PreferencesForm = {
   timezone: "Asia/Hong_Kong",
   todayReminderTime: "09:00",
   shutdownReminderTime: "21:30",
-  deadlineLeadMinutes: 1440
+  deadlineLeadMinutes: 1440,
+  emailDigestEnabled: true,
+  emailDigestTime: "08:30"
 };
 
 const kindLabels: Record<NotificationDelivery["kind"], string> = {
@@ -103,6 +107,9 @@ export function NotificationSettings({
       todayReminderTime: preferences.today_reminder_time.slice(0, 5),
       shutdownReminderTime: preferences.shutdown_reminder_time.slice(0, 5),
       deadlineLeadMinutes: preferences.deadline_lead_minutes
+      ,
+      emailDigestEnabled: preferences.email_digest_enabled,
+      emailDigestTime: preferences.email_digest_time.slice(0, 5)
     } : { ...defaultPreferences, timezone: timezone || "Asia/Hong_Kong" });
   }, [preferences, timezone]);
 
@@ -258,6 +265,19 @@ export function NotificationSettings({
         <NotificationToggle checked={form.handoverEnabled} onChange={(value) => set("handoverEnabled", value)} title="交接狀態" />
         <NotificationToggle checked={form.focusEnabled} onChange={(value) => set("focusEnabled", value)} title="Focus Timer 完成" />
         <NotificationToggle checked={form.shutdownEnabled} onChange={(value) => set("shutdownEnabled", value)} title="每日收尾" />
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="flex items-center gap-2 font-extrabold text-slate-900"><Mail className="h-4 w-4 text-indigo-700" />每日未來三日到期電郵</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">寄去各自登入電郵；私人事項唔會寄俾另一位用戶。內容用溫和預覽，不會暗示要一次做晒。</p>
+          </div>
+          <NotificationToggle checked={form.emailDigestEnabled} onChange={(value) => set("emailDigestEnabled", value)} title="啟用每日電郵" />
+        </div>
+        <p className="mt-3 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-indigo-900">
+          每日約香港時間 08:30 發出；實際到達時間可能因寄件服務稍有偏差。
+        </p>
       </div>
 
       <div className="mt-5 grid gap-4 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">

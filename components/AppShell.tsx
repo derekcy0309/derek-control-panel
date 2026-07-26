@@ -71,7 +71,7 @@ const navGroups = [
 const mobileNav = [
   { href: "/", label: "今日", icon: Sparkles },
   { href: "/workspace/inbox", label: "收集箱", icon: Inbox },
-  { href: "/calendar", label: "日曆", icon: CalendarDays },
+  { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
   { href: "/tasks", label: "任務", icon: CheckSquare2 }
 ] as const;
 

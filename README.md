@@ -19,6 +19,11 @@
 - Offline Write Queue：離線安全保留純文字 Inbox、checkpoint 與 Focus 暫停／完成；恢復連線後按帳戶同步、衝突不覆蓋、登出即清除本機待同步資料
 - Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
 - Capacity Overload Warning：以能量、可用時間、WIP、deadline、night-shift 及未來家庭／健康承諾作溫和容量提示；只建議可延期／交接項目，所有改動仍要本人確認
+- Life OS 權限分層：個人及工作預設私人；只有已接受家庭連結的 `family + household` 項目會共同可見，未整理 Inbox 永遠先保持私人
+- AI Daily Planner：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎先做安全／期限／WIP 篩選，AI 只負責以最低 effort 排序及拆出第一步
+- AI Task Analysis：按一下取得最快完成路徑、頭十分鐘、停止條件及減少 effort 建議；使用者明確確認後才更新 Next Action／估時
+- Google Calendar 多帳戶：AI 計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步，工作帳戶固定為 `info@wecarenursing.com.hk`
+- 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項亦提供無壓力確認
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -70,6 +75,8 @@ supabase/migrations/20260725220000_time_estimation_learning.sql
 supabase/migrations/20260725230000_focus_session_history.sql
 supabase/migrations/20260725235900_offline_write_queue.sql
 supabase/migrations/20260726003000_backup_restore.sql
+supabase/migrations/20260726120000_life_os_ai_calendar_email.sql
+supabase/migrations/20260726121000_life_os_boundary_hardening.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -97,6 +104,8 @@ supabase/migrations/20260725220000_time_estimation_learning.rollback.sql
 supabase/migrations/20260725230000_focus_session_history.rollback.sql
 supabase/migrations/20260725235900_offline_write_queue.rollback.sql
 supabase/migrations/20260726003000_backup_restore.rollback.sql
+supabase/migrations/20260726120000_life_os_ai_calendar_email.rollback.sql
+supabase/migrations/20260726121000_life_os_boundary_hardening.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -117,6 +126,8 @@ npm run build
 Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 public Supabase environment variables。部署網址必須加入 Supabase Auth URL Configuration。Service worker 不 cache API、Dashboard、任務或其他私人頁面資料。Settings 的 About 區會顯示 app version、build time、Git commit SHA 及 environment，正式部署必須對應一個已推送 commit。
 
 通知另需設定 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT` 和 `CRON_SECRET`。前者可公開，後三者只可放在 Vercel server environment；同一個 `CRON_SECRET` 的雜湊保存在 `private.notification_dispatch_config`，原值保存在 Supabase Vault。正式 Vercel route 就緒後，才可設定 Supabase Cron 每五分鐘以帶有 Bearer secret 的 HTTP request 呼叫 `/api/cron/notifications`；job 可安全重覆執行，發送工作以 dedupe key 及 claim lock 防止重複。
+
+Life OS v1 升級另需設定 AI Gateway、Google OAuth、token encryption、Resend 及 `NEXT_PUBLIC_APP_URL`。每日三日到期電郵由 `vercel.json` 在香港時間約 08:30 呼叫 `/api/cron/due-email`；Google OAuth callback 是 `/api/integrations/google-calendar/callback`。完整上線步驟、帳戶限制及驗證清單見 [`docs/life-os-v1-setup.md`](docs/life-os-v1-setup.md)。
 
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
 
@@ -147,3 +158,5 @@ Offline Write Queue 的帳戶分區、本機私隱、衝突、冪等同步及 ro
 Backup／Restore 的匯出範圍、預覽、只新增 transaction、RLS 及 rollback 說明見 [`docs/backup-restore.md`](docs/backup-restore.md)。
 
 Capacity Overload Warning 的計算資料、buffer、低影響候選、確認邊界及私隱說明見 [`docs/capacity-overload-warning.md`](docs/capacity-overload-warning.md)。
+
+私人／家庭／工作權限、AI 內部計劃、Google Calendar 同步邊界及每日電郵資料流見 [`docs/life-os-v1-architecture.md`](docs/life-os-v1-architecture.md)。

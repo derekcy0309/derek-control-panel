@@ -132,6 +132,7 @@ export function TaskForm({
         }
       : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset }
   );
+  const [handoffOpen, setHandoffOpen] = useState(Boolean(form.handoff_to_user_id));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
@@ -372,17 +373,28 @@ export function TaskForm({
         />
       </label>
       {!initialTask ? (
-        <fieldset className="rounded-2xl border-2 border-indigo-300 bg-indigo-50/70 p-4 shadow-sm">
-          <legend className="px-2 text-sm font-extrabold uppercase tracking-wide text-indigo-700">
-            必須選擇
-          </legend>
+        <details
+          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+          open={handoffOpen}
+          onToggle={(event) => setHandoffOpen(event.currentTarget.open)}
+        >
+          <summary className="cursor-pointer list-none font-extrabold text-slate-900">
+            <span className="inline-flex items-center gap-2">
+              <ArrowRightLeft className="h-4 w-4 text-indigo-600" />
+              建立後由誰跟進（可選）
+            </span>
+            <span className="mt-1 block text-xs font-medium leading-5 text-slate-600">
+              預設由你自己跟進；只有真正要交接先需要打開。
+            </span>
+          </summary>
+          <div className="mt-4">
           <div className="flex items-start gap-3">
             <span className="rounded-xl bg-indigo-600 p-2 text-white" aria-hidden="true">
               <ArrowRightLeft className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-lg font-extrabold text-slate-900">建立後由誰跟進？</p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">新增前直接揀「我」或「Suki」，之後仍可在任務卡隨時轉交。</p>
+              <p className="text-lg font-extrabold text-slate-900">由誰跟進？</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">保持「我」就唔會分享；選另一位先會正式交接。</p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
                   !form.handoff_to_user_id ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"
@@ -448,7 +460,8 @@ export function TaskForm({
               ) : null}
             </div>
           </div>
-        </fieldset>
+          </div>
+        </details>
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
@@ -473,7 +486,12 @@ export function TaskForm({
       </div>
       <TimeEstimateHint sourceType={form.source_type} context={form.context} energyLevel={form.energy_level} estimatedMinutes={form.estimated_minutes} onUse={(minutes) => update("estimated_minutes", String(minutes))} />
       {!compact ? (
-        <>
+        <details className="rounded-2xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer font-extrabold text-slate-900">
+            更多選項
+            <span className="ml-2 text-xs font-medium text-slate-500">風險、備註、完成定義、工期同關鍵路徑</span>
+          </summary>
+          <div className="mt-4 grid gap-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <label>
               <span className="label">負責人</span>
@@ -523,7 +541,8 @@ export function TaskForm({
               </span>
             </span>
           </label>
-        </>
+          </div>
+        </details>
       ) : null}
       {error ? <p className="rounded-lg bg-red-50 p-3 text-base font-semibold text-red-700">{error}</p> : null}
       <div className="flex flex-wrap gap-3">

@@ -12,6 +12,8 @@
   --muted: #667085;
   --accent: #4f46e5;
   --accent-soft: #eef2ff;
+  --shadow-soft: 0 14px 38px rgba(38, 51, 77, 0.07);
+  --shadow-float: 0 22px 60px rgba(38, 51, 77, 0.12);
 }
 
 :root[data-theme="dark"] {
@@ -23,6 +25,8 @@
   --ink: #f3f4f6;
   --muted: #a6adbb;
   --accent-soft: #25264a;
+  --shadow-soft: 0 14px 38px rgba(0, 0, 0, 0.2);
+  --shadow-float: 0 22px 60px rgba(0, 0, 0, 0.3);
 }
 
 :root[data-accent="teal"] { --accent: #0f766e; --accent-soft: #e6fffb; }
@@ -32,7 +36,11 @@
 html { min-width: 320px; scroll-behavior: smooth; }
 body {
   margin: 0;
-  background: var(--page);
+  background-color: var(--page);
+  background-image:
+    radial-gradient(circle at 12% 2%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 26rem),
+    radial-gradient(circle at 92% 18%, rgba(45, 212, 191, 0.055), transparent 24rem);
+  background-attachment: fixed;
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang HK", "Noto Sans TC", sans-serif;
   text-rendering: optimizeLegibility;
@@ -59,7 +67,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     min-width: 0;
     border-color: var(--border);
     background: var(--surface);
-    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.03);
+    box-shadow: var(--shadow-soft);
   }
   .panel-soft { background: color-mix(in srgb, var(--surface) 90%, transparent); }
   .eyebrow { @apply text-xs font-bold uppercase tracking-[0.14em]; color: var(--accent); }
@@ -70,7 +78,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .bg-mist { background: var(--page) !important; }
 .text-ink { color: var(--ink) !important; }
-.app-frame { background: var(--page); color: var(--ink); }
+.app-frame { background: transparent; color: var(--ink); }
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
@@ -78,7 +86,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   width: 17.5rem;
   flex-direction: column;
   border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
   backdrop-filter: blur(18px);
 }
 .brand-block { padding: 1.35rem 1.25rem 1rem; display: flex; align-items: center; gap: .75rem; }
@@ -103,14 +111,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .topbar {
   position: sticky; top: 0; z-index: 30; display: flex; min-height: 64px; align-items: center; justify-content: space-between;
   gap: 1rem; border-bottom: 1px solid var(--border); padding: .65rem 1rem;
-  background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(18px);
+  background: color-mix(in srgb, var(--surface) 84%, transparent); backdrop-filter: blur(20px);
 }
 .icon-button { display: grid; min-height: 44px; min-width: 44px; place-items: center; border-radius: .75rem; color: var(--muted); }
 .icon-button:hover { background: var(--surface-subtle); color: var(--ink); }
 .mobile-nav {
   position: fixed; inset: auto 0 0; z-index: 45; display: grid; grid-template-columns: repeat(5, 1fr);
   min-height: calc(64px + env(safe-area-inset-bottom)); padding: .35rem .35rem env(safe-area-inset-bottom);
-  border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(22px);
 }
 .mobile-nav-item {
   display: flex; min-height: 54px; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: .18rem;
@@ -124,6 +132,36 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .sheet-handle { width: 2.5rem; height: .28rem; margin: .55rem auto .65rem; border-radius: 999px; background: var(--border); }
 @keyframes sheet-in { from { transform: translateY(16px); opacity: .5; } }
+
+.ai-planner-card {
+  position: relative;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 70%, var(--surface)), var(--surface) 58%);
+  box-shadow: var(--shadow-float);
+}
+.ai-planner-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 9rem;
+  height: 3px;
+  border-radius: 0 0 999px;
+  background: linear-gradient(90deg, var(--accent), #2dd4bf);
+}
+
+@media (hover: hover) {
+  .panel,
+  .panel-soft {
+    transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  }
+  .panel:hover,
+  .panel-soft:hover {
+    border-color: color-mix(in srgb, var(--accent) 18%, var(--border));
+    box-shadow: var(--shadow-float);
+    transform: translateY(-1px);
+  }
+}
 
 :root[data-theme="dark"] .bg-white,
 :root[data-theme="dark"] .panel,

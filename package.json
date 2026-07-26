@@ -1,6 +1,6 @@
 {
   "name": "derek-control-panel",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,16 +8,20 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit --incremental false",
-    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/checkpoints.test.ts tests/weekly-review.test.ts tests/migration-contract.test.ts tests/backup.test.ts tests/capacity-overload.test.ts"
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/ai-planner.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/checkpoints.test.ts tests/weekly-review.test.ts tests/migration-contract.test.ts tests/life-os-migration.test.ts tests/backup.test.ts tests/capacity-overload.test.ts"
   },
   "dependencies": {
+    "@react-email/components": "^1.0.0",
     "@supabase/supabase-js": "^2.52.0",
+    "ai": "^6.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.468.0",
-    "next": "^15.0.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "next": "15.5.21",
+    "react": "19.1.2",
+    "react-dom": "19.1.2",
+    "resend": "^6.0.0",
+    "zod": "^4.1.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
@@ -27,9 +31,14 @@
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
-    "eslint-config-next": "^15.0.4",
-    "postcss": "^8.4.49",
+    "eslint-config-next": "15.5.21",
+    "postcss": "8.5.18",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "postcss": "8.5.18",
+    "sharp": "0.35.0"
   }
 }

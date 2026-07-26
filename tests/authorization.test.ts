@@ -5,6 +5,41 @@ import { allowedTaskUpdateFields, canDeleteResource, canReadResource, canReshare
 const base = { userId: "derek", ownerId: "suki", now: "2026-07-22T00:00:00Z" };
 test("Derek cannot read Suki private task", () => assert.equal(canReadResource(base), false));
 test("same household does not imply access", () => assert.equal(canReadResource({ ...base, householdId: "h" } as typeof base), false));
+test("accepted household membership reads only explicitly household-visible family work", () => {
+  const membership = { householdId: "h", status: "accepted" as const };
+  assert.equal(canReadResource({
+    ...base,
+    area: "family",
+    visibility: "household",
+    householdId: "h",
+    householdMembership: membership
+  }), true);
+  assert.equal(canReadResource({
+    ...base,
+    area: "personal",
+    visibility: "household",
+    householdId: "h",
+    householdMembership: membership
+  }), false);
+  assert.equal(canReadResource({
+    ...base,
+    area: "family",
+    visibility: "private",
+    householdId: "h",
+    householdMembership: membership
+  }), false);
+});
+test("accepted household member can update progress but cannot edit task content", () => {
+  const householdContext = {
+    ...base,
+    area: "family" as const,
+    visibility: "household" as const,
+    householdId: "h",
+    householdMembership: { householdId: "h", status: "accepted" as const }
+  };
+  assert.equal(canUpdateTaskFields(householdContext, ["status", "progress"]), true);
+  assert.equal(canUpdateTaskFields(householdContext, ["title"]), false);
+});
 test("active view share can read", () => assert.equal(canReadResource({ ...base, share: { sharedWithUserId: "derek", permission: "view" } }), true));
 test("revoked share immediately fails", () => assert.equal(canReadResource({ ...base, share: { sharedWithUserId: "derek", permission: "view", revokedAt: "2026-07-21" } }), false));
 test("expired share fails", () => assert.equal(canReadResource({ ...base, share: { sharedWithUserId: "derek", permission: "view", expiresAt: "2026-07-20" } }), false));

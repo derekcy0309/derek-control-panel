@@ -61,6 +61,7 @@ export type Task = {
   progress?: number;
   project_id?: string | null;
   recurrence_rule_id?: string | null;
+  household_id?: string | null;
 };
 
 export type Transaction = {
@@ -130,11 +131,16 @@ export type UserSettings = {
   focus_minutes?: number;
   monthly_profit_target?: number;
   pinned_pages?: string[];
+  support_profile?: SupportProfile;
+  planning_buffer_percent?: number;
+  default_family_load?: LoadLevel;
 };
 
 export type Area = "work" | "family" | "personal";
-export type Visibility = "private" | "shared" | "assigned" | "joint";
+export type Visibility = "private" | "household" | "shared" | "assigned" | "joint";
 export type EnergyLevel = "low" | "medium" | "high";
+export type LoadLevel = "low" | "medium" | "high";
+export type SupportProfile = "adhd" | "depression" | "balanced";
 export type SharePermission = "view" | "comment" | "update_status" | "edit" | "co_owner";
 export type ShareType = "reference" | "assignment" | "joint";
 
@@ -198,6 +204,12 @@ export type OperatingItem = {
   inbox_processing_event_id?: string | null;
   created_at: string;
   updated_at: string;
+  household_id?: string | null;
+  schedule_start_at?: string | null;
+  schedule_end_at?: string | null;
+  schedule_timezone?: string;
+  schedule_status?: "tentative" | "confirmed" | "cancelled" | null;
+  calendar_target?: CalendarTarget;
 };
 
 export type InboxProcessingAction =
@@ -402,7 +414,72 @@ export type CapacityCheckin = {
   mode: "normal" | "gentle" | "minimum_step" | "shift";
   essential_only: boolean;
   rest_day?: boolean;
+  work_windows?: WorkWindow[];
+  family_load?: LoadLevel;
+  recovery_need?: LoadLevel;
+  buffer_minutes?: number;
   notes: string | null;
+};
+
+export type WorkWindow = {
+  start: string;
+  end: string;
+};
+
+export type CalendarTarget = "none" | "personal" | "family" | "work";
+
+export type HouseholdMember = {
+  userId: string;
+  displayName: string;
+  status: "invited" | "accepted" | "declined";
+  role: "owner" | "member";
+};
+
+export type HouseholdContext = {
+  householdId: string;
+  status: "invited" | "accepted";
+  members: HouseholdMember[];
+};
+
+export type GoogleCalendarConnection = {
+  id: string;
+  target: Exclude<CalendarTarget, "none">;
+  account_email: string;
+  calendar_id: string;
+  calendar_name: string;
+  status: "connected" | "attention" | "disconnected";
+  last_error: string | null;
+  last_synced_at: string | null;
+};
+
+export type AIDailyPlanItem = {
+  id: string;
+  task_id: string;
+  starts_at: string;
+  ends_at: string;
+  sequence: number;
+  role: TodayPlanRole;
+  reason: string;
+  first_step: string;
+  effort_tip: string | null;
+  status: "pending" | "in_progress" | "paused" | "completed" | "returned";
+};
+
+export type AIDailyPlan = {
+  id: string;
+  plan_date: string;
+  status: "draft" | "accepted" | "superseded";
+  energy_level: EnergyLevel;
+  mode: CapacityCheckin["mode"];
+  work_windows: WorkWindow[];
+  buffer_minutes: number;
+  support_profile: SupportProfile;
+  model: string;
+  prompt_version: string;
+  summary: string | null;
+  source: "ai" | "rules_fallback";
+  accepted_at: string | null;
+  items: AIDailyPlanItem[];
 };
 
 export type TodayPlanRole = "now" | "later" | "quick_win";
@@ -551,6 +628,9 @@ export type NotificationPreferences = {
   today_reminder_time: string;
   shutdown_reminder_time: string;
   deadline_lead_minutes: number;
+  email_digest_enabled: boolean;
+  email_digest_days: number;
+  email_digest_time: string;
   private_on_lock_screen: boolean;
   created_at: string;
   updated_at: string;
@@ -601,6 +681,8 @@ export type ControlData = AppData & {
   notificationPreferences: NotificationPreferences | null;
   notificationDeliveries: NotificationDelivery[];
   activePushSubscriptionCount: number;
+  household: HouseholdContext | null;
+  calendarConnections: GoogleCalendarConnection[];
 };
 
 export type TodayData = {

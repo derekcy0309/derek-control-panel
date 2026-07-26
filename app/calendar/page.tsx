@@ -24,4 +24,135 @@ function CalendarContent() {
   </div>;
 }
 
-function EventModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) { const [title, setTitle] = useState(""); const [date, setDate] = useState(""); const [area, setArea] = useState("family"); const [privacy, setPrivacy] = useState("private"); const [saving, setSaving] = useState(false); async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); await controlAction("create_item", { itemType: "event", title, dueDate: date, area, sensitive: privacy === "private", metadata: { calendarPrivacy: privacy === "busy" ? "busy" : "full" } }); setSaving(false); onSaved(); } return <Modal title="新增日程" onClose={onClose}><form className="grid gap-4" onSubmit={save}><label><span className="label">日程名稱</span><input className="field mt-2" value={title} onChange={(event) => setTitle(event.target.value)} required /></label><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">日期</span><input className="field mt-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} required /></label><label><span className="label">範圍</span><select className="field mt-2" value={area} onChange={(event) => setArea(event.target.value)}><option value="work">工作</option><option value="family">家庭</option><option value="personal">個人</option></select></label></div><label><span className="label">日曆私隱</span><select className="field mt-2" value={privacy} onChange={(event) => setPrivacy(event.target.value)}><option value="private">私人</option><option value="full">分享時顯示完整內容</option><option value="busy">分享時只顯示忙碌</option></select></label><div className="flex gap-2"><Button type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存"}</Button><Button type="button" variant="secondary" onClick={onClose}>取消</Button></div></form></Modal>; }
+function EventModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
+  const [area, setArea] = useState<"work" | "family" | "personal">("family");
+  const [privacy, setPrivacy] = useState("full");
+  const [confirmed, setConfirmed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedWithSyncWarning, setSavedWithSyncWarning] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage("");
+    const scheduleStartAt = new Date(`${date}T${startTime}:00+08:00`);
+    const scheduleEndAt = new Date(`${date}T${endTime}:00+08:00`);
+    if (confirmed && scheduleEndAt <= scheduleStartAt) {
+      setMessage("結束時間必須遲過開始時間。");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const result = await controlAction<{
+        calendarSync?: { synced: boolean; error?: string } | null;
+      }>("create_item", {
+        itemType: "event",
+        title,
+        dueDate: date,
+        area,
+        sensitive: privacy === "private",
+        scheduleStartAt: confirmed ? scheduleStartAt.toISOString() : null,
+        scheduleEndAt: confirmed ? scheduleEndAt.toISOString() : null,
+        scheduleTimezone: "Asia/Hong_Kong",
+        scheduleStatus: confirmed ? "confirmed" : null,
+        calendarTarget: confirmed ? area : "none",
+        metadata: {
+          calendarPrivacy: privacy === "busy" ? "busy" : "full"
+        }
+      });
+      if (confirmed && !result.calendarSync?.synced) {
+        setSavedWithSyncWarning(true);
+        setMessage(`行程已安全儲存，但 Google Calendar 未同步：${result.calendarSync?.error || "請先到設定連接相應帳戶。"}`);
+      } else {
+        onSaved();
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "未能儲存日程。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title="新增日程" onClose={onClose}>
+      <form className="grid gap-4" onSubmit={save}>
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+          <p className="font-bold text-indigo-950">Google Calendar 只收已確認行程</p>
+          <p className="mt-1 text-xs leading-5 text-indigo-800">
+            普通任務同 AI 今日計劃會繼續只留喺 Derek Control Panel，避免日曆混亂。
+          </p>
+        </div>
+
+        <label>
+          <span className="label">日程名稱</span>
+          <input className="field mt-2" value={title} onChange={(event) => setTitle(event.target.value)} required />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>
+            <span className="label">日期</span>
+            <input className="field mt-2" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+          </label>
+          <label>
+            <span className="label">範圍</span>
+            <select className="field mt-2" value={area} onChange={(event) => setArea(event.target.value as typeof area)}>
+              <option value="work">工作 → info@wecarenursing.com.hk</option>
+              <option value="family">家庭 → 家庭 Calendar</option>
+              <option value="personal">個人 → 個人登入電郵</option>
+            </select>
+          </label>
+        </div>
+
+        <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <input className="mt-1 h-5 w-5 accent-indigo-600" type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>
+            <span className="block font-bold text-slate-900">呢個時間已確認</span>
+            <span className="mt-1 block text-xs leading-5 text-slate-600">
+              開啟後才會同步到相應 Google Calendar；取消確認會移除已同步事件。
+            </span>
+          </span>
+        </label>
+
+        {confirmed ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <span className="label">開始</span>
+              <input className="field mt-2" type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} required />
+            </label>
+            <label>
+              <span className="label">結束</span>
+              <input className="field mt-2" type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} required />
+            </label>
+          </div>
+        ) : null}
+
+        <label>
+          <span className="label">顯示方式</span>
+          <select className="field mt-2" value={privacy} onChange={(event) => setPrivacy(event.target.value)}>
+            <option value="private">Google Calendar 隱藏名稱</option>
+            <option value="full">按範圍權限顯示完整名稱</option>
+            <option value="busy">家庭成員只見「忙碌」</option>
+          </select>
+          <span className="mt-1 block text-xs leading-5 text-slate-500">
+            家庭範圍仍按家庭共享規則處理；呢個設定只控制名稱顯示，唔會把私人／工作 Task 分享出去。
+          </span>
+        </label>
+
+        {message ? <p className="text-sm font-semibold text-rose-700" role="alert">{message}</p> : null}
+        <div className="flex gap-2">
+          {savedWithSyncWarning ? (
+            <Button type="button" onClick={onSaved}>完成</Button>
+          ) : (
+            <Button type="submit" disabled={saving}>{saving ? "儲存中…" : confirmed ? "確認並同步" : "儲存為未確認"}</Button>
+          )}
+          <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}

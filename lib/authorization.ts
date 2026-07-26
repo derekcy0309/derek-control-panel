@@ -2,6 +2,10 @@ export type Permission = "view" | "comment" | "update_status" | "edit" | "co_own
 export type AccessContext = {
   userId: string;
   ownerId: string;
+  area?: "personal" | "family" | "work";
+  visibility?: "private" | "household" | "shared" | "assigned" | "joint";
+  householdId?: string | null;
+  householdMembership?: { householdId: string; status: "invited" | "accepted" | "declined" } | null;
   share?: { sharedWithUserId: string; permission: Permission; revokedAt?: string | null; expiresAt?: string | null } | null;
   assignment?: { assignedToId: string; status: string } | null;
   joint?: { userId: string; acceptedAt?: string | null; removedAt?: string | null } | null;
@@ -10,6 +14,13 @@ export type AccessContext = {
 
 export function canReadResource(context: AccessContext) {
   if (context.userId === context.ownerId) return true;
+  if (
+    context.area === "family"
+    && context.visibility === "household"
+    && context.householdId
+    && context.householdMembership?.householdId === context.householdId
+    && context.householdMembership.status === "accepted"
+  ) return true;
   const now = context.now ?? new Date().toISOString();
   const share = context.share;
   if (share?.sharedWithUserId === context.userId && !share.revokedAt && (!share.expiresAt || share.expiresAt > now)) return true;
@@ -23,7 +34,15 @@ export function canReshareResource(context: AccessContext) { return context.user
 export function allowedTaskUpdateFields(context: AccessContext) {
   if (context.userId === context.ownerId) return ownerTaskFields;
   if (!canReadResource(context)) return [];
-  const permission = context.share?.permission ?? (context.assignment?.assignedToId === context.userId ? "update_status" : context.joint?.acceptedAt ? "co_owner" : "view");
+  const householdPermission = context.area === "family"
+    && context.visibility === "household"
+    && context.householdId
+    && context.householdMembership?.householdId === context.householdId
+    && context.householdMembership.status === "accepted"
+    ? "update_status"
+    : null;
+  const permission = context.share?.permission
+    ?? (context.assignment?.assignedToId === context.userId ? "update_status" : context.joint?.acceptedAt ? "co_owner" : householdPermission ?? "view");
   if (permission === "co_owner") return coOwnerTaskFields;
   if (permission === "edit") return editorTaskFields;
   if (permission === "update_status") return statusTaskFields;

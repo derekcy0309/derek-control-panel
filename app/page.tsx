@@ -7,6 +7,7 @@ import {
   BatteryLow,
   CalendarClock,
   Check,
+  ChevronDown,
   Clock3,
   Coffee,
   Plus,
@@ -19,6 +20,7 @@ import {
   Zap
 } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { AIDailyPlanner } from "@/components/AIDailyPlanner";
 import { CapacityOverloadPanel } from "@/components/CapacityOverloadPanel";
 import { FocusMode } from "@/components/FocusMode";
 import { LoadingState } from "@/components/LoadingState";
@@ -338,6 +340,14 @@ function TodayCommandCenter() {
       ) : null}
       {actionError ? <InlineAlert message={actionError} /> : null}
 
+      <AIDailyPlanner
+        date={today}
+        capacity={currentData.capacity}
+        settings={currentData.settings}
+        tasks={currentData.tasks}
+        onAccepted={reload}
+      />
+
       {minimumDay && acceptedCoreCompleted ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
           <div className="flex items-start gap-3">
@@ -355,14 +365,25 @@ function TodayCommandCenter() {
       ) : null}
 
       {showPreview ? (
-        <PlanPreviewSummary
-          plan={recommendation}
-          minimumDay={minimumDay}
-          busy={busy}
-          onAccept={() => void acceptPlan()}
-          onReplan={requestReplan}
-          onEasier={requestEasierPlan}
-        />
+        <details className="panel group overflow-hidden">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+            <span>
+              <span className="block text-sm font-extrabold text-slate-900">規則式安全建議</span>
+              <span className="mt-1 block text-xs text-slate-500">如唔想用 AI，可展開並沿用原有 Auto‑Plan。</span>
+            </span>
+            <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-slate-100 p-4">
+            <PlanPreviewSummary
+              plan={recommendation}
+              minimumDay={minimumDay}
+              busy={busy}
+              onAccept={() => void acceptPlan()}
+              onReplan={requestReplan}
+              onEasier={requestEasierPlan}
+            />
+          </div>
+        </details>
       ) : (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <div>

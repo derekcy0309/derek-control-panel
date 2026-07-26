@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CalendarClock, FilePenLine, Link2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
+import { TaskAIAnalysisPanel } from "@/components/TaskAIAnalysisPanel";
 import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { RiskBadge, ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
@@ -90,6 +91,9 @@ export function TaskCard({
         notes={handoffNotes}
         onChanged={onChanged}
       />
+      {!["done", "cancelled"].includes(task.status) ? (
+        <TaskAIAnalysisPanel task={task} currentUserId={currentUserId} onChanged={onChanged} />
+      ) : null}
       <TaskDependencyPanel
         task={task}
         dependencies={incomingDependencies}

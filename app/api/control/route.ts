@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
+import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions] =
+  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -54,10 +55,15 @@ export async function GET(request: NextRequest) {
         .select("id")
         .eq("user_id", user.id)
         .is("revoked_at", null)
-        .limit(20)
+        .limit(20),
+      client.rpc("household_context"),
+      client.from("google_calendar_connections")
+        .select("id,target,account_email,calendar_id,calendar_name,status,last_error,last_synced_at")
+        .eq("user_id", user.id)
+        .order("target")
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions]
+  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -67,12 +73,14 @@ export async function GET(request: NextRequest) {
     profile.data = created.data;
   }
   if (!settings.data) {
-    const gentle = displayName.toLowerCase() === "suki";
+    const supportProfile = defaultSupportProfile(user, displayName);
+    const gentle = supportProfile === "depression";
     const created = await client.from("user_settings").insert({
       user_id: user.id,
       email: user.email ?? null,
       gentle_mode: gentle,
-      dashboard_density: gentle ? "calm" : "comfortable"
+      dashboard_density: gentle ? "calm" : "comfortable",
+      support_profile: supportProfile
     }).select("*").single();
     if (created.error) return databaseError(created.error);
     settings.data = created.data;
@@ -98,7 +106,9 @@ export async function GET(request: NextRequest) {
     taskRecurrenceRules: taskRecurrenceRules.data ?? [],
     notificationPreferences: notificationPreferences.data ?? null,
     notificationDeliveries: notificationDeliveries.data ?? [],
-    activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0
+    activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0,
+    household: household.data ?? null,
+    calendarConnections: calendarConnections.data ?? []
   }, { headers: privateHeaders() });
 }
 
@@ -137,7 +147,7 @@ async function todayDashboard({ client, user }: RequestContext) {
       weekEnd
         ? client.from("operating_items")
             .select("id,item_type,area,due_date,status")
-            .eq("owner_id", user.id)
+            .or(`owner_id.eq.${user.id},area.eq.family`)
             .is("archived_at", null)
             .gte("due_date", today)
             .lte("due_date", weekEnd)
@@ -166,12 +176,14 @@ async function todayDashboard({ client, user }: RequestContext) {
     profile.data = created.data;
   }
   if (!settings.data) {
-    const gentle = displayName.toLowerCase() === "suki";
+    const supportProfile = defaultSupportProfile(user, displayName);
+    const gentle = supportProfile === "depression";
     const created = await client.from("user_settings").insert({
       user_id: user.id,
       email: user.email ?? null,
       gentle_mode: gentle,
-      dashboard_density: gentle ? "calm" : "comfortable"
+      dashboard_density: gentle ? "calm" : "comfortable",
+      support_profile: supportProfile
     }).select("*").single();
     if (created.error) return databaseError(created.error);
     settings.data = created.data;
@@ -839,13 +851,17 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const status = enumValue(body.status, ["not_started", "in_progress", "waiting", "done", "blocked", "cancelled"], "not_started");
   const nextAction = nullableText(body.nextAction);
   if (status === "in_progress" && !nextAction) return jsonError("開始任務前必須設定清晰的下一步。", 422);
+  const area = enumValue(body.area, ["work", "family", "personal"] as const, "personal");
+  const access = await defaultResourceAccess(client, user.id, area);
+  if (access instanceof Response) return access;
   const payload = {
     user_id: user.id,
     owner_id: user.id,
     created_by_id: user.id,
-    visibility: "private",
-    scope: enumValue(body.area, ["work", "family", "personal"], "personal") === "work" ? "company" : "home",
-    area: enumValue(body.area, ["work", "family", "personal"], "personal"),
+    visibility: access.visibility,
+    household_id: access.householdId,
+    scope: area === "work" ? "company" : "home",
+    area,
     source_type: enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up"], "follow_up"),
     title,
     description: nullableText(body.description),
@@ -1143,41 +1159,105 @@ async function saveBalance({ client, user }: RequestContext, body: Record<string
 async function createOperatingItem({ client, user }: RequestContext, body: Record<string, unknown>) {
   const title = requiredText(body.title, "請輸入項目名稱。");
   if (title instanceof Response) return title;
+  const itemType = enumValue(body.itemType, itemTypes, "note");
+  const area = enumValue(body.area, ["work","family","personal"] as const, "personal");
+  const access = await defaultResourceAccess(client, user.id, area);
+  if (access instanceof Response) return access;
+  const scheduleStartAt = timestampValue(body.scheduleStartAt);
+  const scheduleEndAt = timestampValue(body.scheduleEndAt);
+  const scheduleStatus = enumValue(body.scheduleStatus, ["tentative","confirmed","cancelled"], null);
+  const expectedTarget = area === "work" ? "work" : area === "family" ? "family" : "personal";
+  const requestedTarget = enumValue(body.calendarTarget, ["none","personal","family","work"], scheduleStatus ? expectedTarget : "none");
+  if (itemType === "event" && scheduleStatus) {
+    if (!scheduleStartAt || !scheduleEndAt || new Date(scheduleEndAt) <= new Date(scheduleStartAt)) {
+      return jsonError("行程開始及結束時間不正確。", 422);
+    }
+    if (scheduleStatus === "confirmed" && requestedTarget !== expectedTarget) {
+      return jsonError("已確認行程必須同步到同一範圍的 Calendar。", 422);
+    }
+  }
   const payload = {
-    item_type: enumValue(body.itemType, itemTypes, "note"),
+    item_type: itemType,
     title,
     description: nullableText(body.description),
     status: enumValue(body.status, ["inbox","active","waiting","blocked","review","completed","cancelled"], "active"),
-    area: enumValue(body.area, ["work","family","personal"], "personal"),
+    area,
     owner_id: user.id,
     created_by_id: user.id,
-    visibility: "private",
+    visibility: access.visibility,
+    household_id: access.householdId,
     due_date: dateValue(body.dueDate),
     next_action: nullableText(body.nextAction),
     sensitive: Boolean(body.sensitive),
     metadata: objectValue(body.metadata),
-    last_progress_at: new Date().toISOString()
+    last_progress_at: new Date().toISOString(),
+    schedule_start_at: itemType === "event" ? scheduleStartAt : null,
+    schedule_end_at: itemType === "event" ? scheduleEndAt : null,
+    schedule_timezone: "Asia/Hong_Kong",
+    schedule_status: itemType === "event" ? scheduleStatus : null,
+    calendar_target: itemType === "event" ? requestedTarget : "none"
   };
   const result = await client.from("operating_items").insert(payload).select("*").single();
   if (result.error) return databaseError(result.error);
   await recordActivity(client, user.id, "operating_item", result.data.id, "create", "建立項目");
-  return Response.json({ item: result.data }, { status: 201, headers: privateHeaders() });
+  let calendarSync: { synced: boolean; error?: string } = { synced: false };
+  if (itemType === "event" && scheduleStatus) {
+    try {
+      const synced = await syncConfirmedSchedule(client, user.id, result.data);
+      calendarSync = { synced: synced.synced };
+    } catch (error) {
+      calendarSync = { synced: false, error: error instanceof Error ? error.message : "未能同步 Calendar。" };
+    }
+  }
+  return Response.json({ item: result.data, calendarSync }, { status: 201, headers: privateHeaders() });
 }
 
 async function updateOperatingItem({ client, user }: RequestContext, body: Record<string, unknown>) {
   const id = uuidValue(body.id);
   if (!id) return jsonError("項目識別碼不正確。", 400);
-  const existing = await client.from("operating_items").select("owner_id").eq("id", id).maybeSingle();
+  const existing = await client.from("operating_items").select("*").eq("id", id).maybeSingle();
   if (existing.error) return databaseError(existing.error);
   if (!existing.data) return jsonError("找不到項目或你沒有權限。", 404);
   const owner = existing.data.owner_id === user.id;
   const changes = objectValue(body.changes);
-  const payload = pick(changes, owner ? ["title","description","status","due_date","next_action","metadata","archived_at","last_progress_at"] : ["status","last_progress_at"]);
+  const payload = pick(changes, owner ? ["title","description","status","due_date","next_action","metadata","archived_at","last_progress_at","schedule_start_at","schedule_end_at","schedule_timezone","schedule_status","calendar_target"] : ["status","last_progress_at"]);
+  const scheduleTouched = owner && existing.data.item_type === "event" && (
+    "schedule_status" in payload
+    || "schedule_start_at" in payload
+    || "schedule_end_at" in payload
+    || "calendar_target" in payload
+  );
+  if (scheduleTouched) {
+    const nextScheduleStatus = "schedule_status" in payload ? payload.schedule_status : existing.data.schedule_status;
+    const nextScheduleStart = "schedule_start_at" in payload ? payload.schedule_start_at : existing.data.schedule_start_at;
+    const nextScheduleEnd = "schedule_end_at" in payload ? payload.schedule_end_at : existing.data.schedule_end_at;
+    const nextCalendarTarget = "calendar_target" in payload ? payload.calendar_target : existing.data.calendar_target;
+    const expectedTarget = existing.data.area === "work" ? "work" : existing.data.area === "family" ? "family" : "personal";
+    if (nextScheduleStatus) {
+      if (!nextScheduleStart || !nextScheduleEnd || new Date(String(nextScheduleEnd)) <= new Date(String(nextScheduleStart))) {
+        return jsonError("行程開始及結束時間不正確。", 422);
+      }
+      if (nextScheduleStatus === "confirmed" && nextCalendarTarget !== expectedTarget) {
+        return jsonError("已確認行程必須同步到同一範圍的 Calendar。", 422);
+      }
+    } else if (nextScheduleStart || nextScheduleEnd || nextCalendarTarget !== "none") {
+      return jsonError("未設定行程狀態時不可保留同步時間或 Calendar 目標。", 422);
+    }
+  }
   payload.last_progress_at = new Date().toISOString();
   const result = await client.from("operating_items").update(payload).eq("id", id).select("*").single();
   if (result.error) return databaseError(result.error);
   await recordActivity(client, user.id, "operating_item", id, payload.status === "completed" ? "complete" : "update", "更新項目");
-  return Response.json({ item: result.data }, { headers: privateHeaders() });
+  let calendarSync: { synced: boolean; error?: string } = { synced: false };
+  if (scheduleTouched) {
+    try {
+      const synced = await syncConfirmedSchedule(client, user.id, result.data);
+      calendarSync = { synced: synced.synced };
+    } catch (error) {
+      calendarSync = { synced: false, error: error instanceof Error ? error.message : "未能同步 Calendar。" };
+    }
+  }
+  return Response.json({ item: result.data, calendarSync }, { headers: privateHeaders() });
 }
 
 async function shareResource({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -1422,7 +1502,7 @@ async function revokeShare({ client, user }: RequestContext, body: Record<string
 
 async function saveSettings({ client, user }: RequestContext, body: Record<string, unknown>) {
   const settings = objectValue(body.settings);
-  const payload = pick(settings, ["theme","language","accent_colour","gentle_mode","low_capacity_mode","dashboard_density","wip_limit","quiet_hours_start","quiet_hours_end","notification_mode","default_area","focus_minutes","monthly_profit_target","pinned_pages"]);
+  const payload = pick(settings, ["theme","language","accent_colour","gentle_mode","low_capacity_mode","dashboard_density","wip_limit","quiet_hours_start","quiet_hours_end","notification_mode","default_area","focus_minutes","monthly_profit_target","pinned_pages","support_profile","planning_buffer_percent","default_family_load"]);
   const result = await client.from("user_settings").update(payload).eq("user_id", user.id).select("*").single();
   if (result.error) return databaseError(result.error);
   const displayName = stringValue(body.displayName).trim();
@@ -1444,8 +1524,9 @@ async function saveNotificationPreferences(
   } catch {
     return jsonError("通知時區不正確。", 422);
   }
-  const timeFields = ["quietHoursStart", "quietHoursEnd", "todayReminderTime", "shutdownReminderTime"] as const;
+  const timeFields = ["quietHoursStart", "quietHoursEnd", "todayReminderTime", "shutdownReminderTime", "emailDigestTime"] as const;
   for (const field of timeFields) {
+    if (field === "emailDigestTime" && source[field] === undefined) continue;
     if (!timeValue(source[field])) return jsonError("通知時間格式不正確。", 422);
   }
   const deadlineLeadMinutes = integerValue(source.deadlineLeadMinutes, 0, 10080);
@@ -1468,6 +1549,9 @@ async function saveNotificationPreferences(
     today_reminder_time: timeValue(source.todayReminderTime),
     shutdown_reminder_time: timeValue(source.shutdownReminderTime),
     deadline_lead_minutes: deadlineLeadMinutes,
+    email_digest_enabled: source.emailDigestEnabled === undefined ? true : Boolean(source.emailDigestEnabled),
+    email_digest_days: 3,
+    email_digest_time: "08:30",
     private_on_lock_screen: true,
     updated_at: new Date().toISOString()
   };
@@ -2030,6 +2114,20 @@ async function recordActivity(client: SupabaseClient, actorId: string, resourceT
   await client.from("activity_logs").insert({ resource_type: resourceType, resource_id: resourceId, actor_id: actorId, action, summary });
 }
 
+async function defaultResourceAccess(client: SupabaseClient, userId: string, area: "work" | "family" | "personal") {
+  if (area !== "family") return { visibility: "private", householdId: null };
+  const membership = await client.from("household_members")
+    .select("household_id")
+    .eq("user_id", userId)
+    .eq("status", "accepted")
+    .limit(1)
+    .maybeSingle();
+  if (membership.error) return databaseError(membership.error);
+  return membership.data
+    ? { visibility: "household", householdId: membership.data.household_id }
+    : { visibility: "private", householdId: null };
+}
+
 const itemTypes = [
   "inbox","project","waiting","decision","client","sop","family_member","school","event","important_date","pet","household","shopping",
   "personal_admin","health","vehicle","document","note","goal","routine","finance"
@@ -2039,6 +2137,18 @@ function inferDisplayName(user: User) {
   const metadata = user.user_metadata ?? {};
   const value = stringValue(metadata.display_name) || stringValue(metadata.full_name) || stringValue(metadata.name) || user.email?.split("@")[0] || "User";
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function defaultSupportProfile(user: User, displayName: string) {
+  if (user.email?.toLowerCase() === "derekcy0309@gmail.com") return "adhd";
+  if (
+    displayName.toLowerCase() === "suki"
+    || (
+      process.env.SUKI_LOGIN_EMAIL
+      && user.email?.toLowerCase() === process.env.SUKI_LOGIN_EMAIL.toLowerCase()
+    )
+  ) return "depression";
+  return "balanced";
 }
 
 function hkDateString() {
@@ -2145,7 +2255,12 @@ function timestampValue(value: unknown) { const text = stringValue(value).trim()
 function integerValue(value: unknown, min: number, max: number) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : null; }
 function uuidValue(value: unknown) { const text = stringValue(value); return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : null; }
 function objectValue(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
-function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: T[number] | null): T[number] | null { const text = stringValue(value); return allowed.includes(text) ? text as T[number] : fallback; }
+function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: T[number]): T[number];
+function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: null): T[number] | null;
+function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: T[number] | null): T[number] | null {
+  const text = stringValue(value);
+  return allowed.includes(text) ? text as T[number] : fallback;
+}
 function pick(source: Record<string, unknown>, keys: readonly string[]) { return Object.fromEntries(Object.entries(source).filter(([key]) => keys.includes(key))); }
 function safeUrl(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; try { const url = new URL(text); return url.protocol === "https:" ? text.slice(0, 2000) : null; } catch { return null; } }
 function isHttpsUrl(value: string, maxLength: number) { if (!value || value.length > maxLength) return false; try { return new URL(value).protocol === "https:"; } catch { return false; } }
