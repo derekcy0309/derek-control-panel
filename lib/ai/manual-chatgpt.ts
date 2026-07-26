@@ -1,4 +1,5 @@
 import { taskAnalysisSchema, type TaskAnalysis } from "./schemas.ts";
+import { redactSensitiveText } from "./redact.ts";
 
 export const chatGPTWebUrl = "https://chatgpt.com/";
 export const manualChatGPTPromptVersion = "manual-chatgpt-task-v1";
@@ -21,6 +22,25 @@ export type ManualTaskPromptInput = {
     status: string;
   };
 };
+
+/**
+ * The manual ChatGPT handoff is intentionally user-controlled, but every
+ * free-text field still passes through the same local redaction layer before
+ * it can be copied out of the app. Keep this in one helper so newly added
+ * fields cannot accidentally bypass the privacy boundary.
+ */
+export function redactManualTaskForChatGPT(task: ManualTaskPromptInput["task"]): ManualTaskPromptInput["task"] {
+  return {
+    ...task,
+    title: redactSensitiveText(task.title),
+    description: redactSensitiveText(task.description),
+    nextAction: redactSensitiveText(task.nextAction),
+    definitionOfDone: redactSensitiveText(task.definitionOfDone),
+    context: task.context ? redactSensitiveText(task.context) : null,
+    risk: task.risk ? redactSensitiveText(task.risk) : null,
+    area: task.area ? redactSensitiveText(task.area) : null
+  };
+}
 
 export function buildManualChatGPTTaskPrompt(input: ManualTaskPromptInput) {
   const supportInstruction = input.supportProfile === "adhd"

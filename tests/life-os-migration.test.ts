@@ -23,6 +23,7 @@ const manualChatGPTRoute = readFileSync(
   resolve(here, "../app/api/chatgpt/task-assistant/route.ts"),
   "utf8"
 );
+const manualChatGPT = readFileSync(resolve(here, "../lib/ai/manual-chatgpt.ts"), "utf8");
 const manualChatGPTPanel = readFileSync(
   resolve(here, "../components/TaskAIAnalysisPanel.tsx"),
   "utf8"
@@ -80,7 +81,8 @@ test("daily planner is free, ChatGPT imports are bound, and accepted plans stay 
   assert.doesNotMatch(taskRoute, /generateText|Output\.object/);
   assert.doesNotMatch(taskRoute, /\.from\("tasks"\)\.update/);
   assert.match(manualChatGPTRoute, /authenticateRequest/);
-  assert.match(manualChatGPTRoute, /redactSensitiveText/);
+  assert.match(manualChatGPTRoute, /redactManualTaskForChatGPT/);
+  assert.match(manualChatGPT, /redactSensitiveText/);
   assert.match(manualChatGPTRoute, /parseManualChatGPTTaskResponse/);
   assert.match(manualChatGPTRoute, /model: "chatgpt-manual"/);
   assert.doesNotMatch(manualChatGPTRoute, /\.from\("tasks"\)\.update/);

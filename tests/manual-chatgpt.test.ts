@@ -4,7 +4,8 @@ import {
   buildManualChatGPTTaskPrompt,
   createRuleTaskAnalysis,
   maximumChatGPTResponseLength,
-  parseManualChatGPTTaskResponse
+  parseManualChatGPTTaskResponse,
+  redactManualTaskForChatGPT
 } from "../lib/ai/manual-chatgpt.ts";
 
 const taskId = "00000000-0000-4000-8000-000000000001";
@@ -48,6 +49,30 @@ test("manual ChatGPT prompt binds one redacted task to a strict paste-back shape
   assert.match(prompt, /只輸出一個 JSON object/);
   assert.match(prompt, /"analysis"/);
   assert.doesNotMatch(prompt, /API key|Vercel AI Gateway/);
+});
+
+test("manual ChatGPT redacts every free-text task field before copy-out", () => {
+  const safeTask = redactManualTaskForChatGPT({
+    title: "name: Suki",
+    description: "請聯絡 derek_msc@hotmail.com",
+    nextAction: "致電 9123 4567",
+    definitionOfDone: "完成 address: 1 Privacy Road",
+    estimatedMinutes: 20,
+    energyLevel: "low",
+    context: "address: Flat 9, Private House",
+    dueDate: "2026-07-30",
+    risk: "客戶 email: client@example.com",
+    area: "name: Derek",
+    status: "not_started"
+  });
+
+  assert.equal(safeTask.title, "[NAME]");
+  assert.equal(safeTask.description, "請聯絡 [EMAIL]");
+  assert.equal(safeTask.nextAction, "致電 [PHONE]");
+  assert.equal(safeTask.definitionOfDone, "完成 [ADDRESS]");
+  assert.equal(safeTask.context, "[ADDRESS]");
+  assert.equal(safeTask.risk, "客戶 email: [EMAIL]");
+  assert.equal(safeTask.area, "[NAME]");
 });
 
 test("manual ChatGPT paste-back accepts exact JSON and fenced JSON", () => {

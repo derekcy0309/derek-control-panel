@@ -5,9 +5,10 @@ import {
   createRuleTaskAnalysis,
   manualChatGPTPromptVersion,
   maximumChatGPTResponseLength,
-  parseManualChatGPTTaskResponse
+  parseManualChatGPTTaskResponse,
+  redactManualTaskForChatGPT
 } from "@/lib/ai/manual-chatgpt";
-import { hashAIInput, redactSensitiveText } from "@/lib/ai/redact";
+import { hashAIInput } from "@/lib/ai/redact";
 import { taskAnalysisRequestSchema } from "@/lib/ai/schemas";
 import { authenticateRequest, privateJson } from "@/lib/server/request-context";
 import type { EnergyLevel, SupportProfile } from "@/lib/types";
@@ -40,11 +41,11 @@ export async function POST(request: NextRequest) {
   if (!task.data) return privateJson({ error: "找不到任務或你沒有權限。" }, 404);
 
   const supportProfile = normalizeSupportProfile(settings.data?.support_profile);
-  const safeTask = {
-    title: redactSensitiveText(task.data.title),
-    description: redactSensitiveText(task.data.description ?? ""),
-    nextAction: redactSensitiveText(task.data.next_action ?? ""),
-    definitionOfDone: redactSensitiveText(task.data.definition_of_done ?? ""),
+  const safeTask = redactManualTaskForChatGPT({
+    title: task.data.title,
+    description: task.data.description ?? "",
+    nextAction: task.data.next_action ?? "",
+    definitionOfDone: task.data.definition_of_done ?? "",
     estimatedMinutes: task.data.estimated_minutes,
     energyLevel: normalizeEnergy(task.data.energy_level),
     context: task.data.context,
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
     risk: task.data.risk,
     area: task.data.area,
     status: task.data.status
-  };
+  });
 
   if (action === "prepare") {
     return privateJson({
