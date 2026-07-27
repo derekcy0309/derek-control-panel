@@ -77,6 +77,7 @@ supabase/migrations/20260725235900_offline_write_queue.sql
 supabase/migrations/20260726003000_backup_restore.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.sql
+supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -106,6 +107,7 @@ supabase/migrations/20260725235900_offline_write_queue.rollback.sql
 supabase/migrations/20260726003000_backup_restore.rollback.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.rollback.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.rollback.sql
+supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。

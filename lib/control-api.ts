@@ -113,6 +113,14 @@ export async function controlAction<T = Record<string, unknown>>(action: string,
   });
 }
 
+export async function invitePortalUser(payload: { email: string; displayName: string }) {
+  return controlRequest<{ userId: string }>("/api/admin/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function controlRequest<T>(url: string, init: RequestInit): Promise<T> {
   await ensureFreshSession();
   const response = await fetch(url, {

@@ -26,6 +26,8 @@ import { FocusMode } from "@/components/FocusMode";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
+import { ReminderPanel } from "@/components/ReminderPanel";
+import { TodayTaskManager } from "@/components/TodayTaskManager";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { assessCapacityOverload } from "@/lib/capacity-overload";
@@ -297,6 +299,8 @@ function TodayCommandCenter() {
           </Button>
           {actionError ? <InlineAlert message={actionError} /> : null}
         </section>
+        <ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} />
+        <TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} />
         {capacityOpen ? (
           <CapacityModal
             current={currentData.capacity}
@@ -339,6 +343,9 @@ function TodayCommandCenter() {
         </p>
       ) : null}
       {actionError ? <InlineAlert message={actionError} /> : null}
+
+      <ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} />
+      <TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} />
 
       <AIDailyPlanner
         date={today}

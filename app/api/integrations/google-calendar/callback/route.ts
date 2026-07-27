@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
     const redirectUri = `${context.origin}/api/integrations/google-calendar/callback`;
     const tokens = await exchangeGoogleCode(code, redirectUri);
     const accountEmail = await googleAccountEmail(tokens.access_token);
-    const expectedEmail = expectedGoogleAccount(state.target, context.user.email ?? "");
+    const profile = await context.client.from("user_profiles").select("personal_calendar_email").eq("user_id", context.user.id).maybeSingle();
+    const expectedEmail = expectedGoogleAccount(state.target, context.user.email ?? "", profile.data?.personal_calendar_email);
     if (accountEmail !== expectedEmail) {
       redirect.searchParams.set("calendar", "wrong_account");
       redirect.searchParams.set("expected", expectedEmail);

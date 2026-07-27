@@ -103,7 +103,7 @@ function EventModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
             <select className="field mt-2" value={area} onChange={(event) => setArea(event.target.value as typeof area)}>
               <option value="work">工作 → info@wecarenursing.com.hk</option>
               <option value="family">家庭 → 家庭 Calendar</option>
-              <option value="personal">個人 → 個人登入電郵</option>
+              <option value="personal">個人 → 已設定個人 Calendar</option>
             </select>
           </label>
         </div>

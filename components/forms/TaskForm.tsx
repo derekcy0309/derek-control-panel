@@ -40,6 +40,7 @@ type TaskFormState = {
   recurrence_night_shift_on_days: string;
   recurrence_night_shift_off_days: string;
   recurrence_cycle_anchor_date: string;
+  notice_user_ids: string[];
 };
 
 const defaultState: TaskFormState = {
@@ -73,12 +74,14 @@ const defaultState: TaskFormState = {
   recurrence_night_shift_pattern: false,
   recurrence_night_shift_on_days: "4",
   recurrence_night_shift_off_days: "2",
-  recurrence_cycle_anchor_date: ""
+  recurrence_cycle_anchor_date: "",
+  notice_user_ids: []
 };
 
 export function TaskForm({
   userId,
   initialTask,
+  initialNoticeUserIds = [],
   preset,
   participants = [],
   projects = [],
@@ -88,6 +91,7 @@ export function TaskForm({
 }: {
   userId: string;
   initialTask?: Task | null;
+  initialNoticeUserIds?: string[];
   preset?: Partial<TaskFormState>;
   participants?: Array<{ user_id: string; display_name: string }>;
   projects?: OperatingItem[];
@@ -128,7 +132,8 @@ export function TaskForm({
           recurrence_night_shift_pattern: false,
           recurrence_night_shift_on_days: "4",
           recurrence_night_shift_off_days: "2",
-          recurrence_cycle_anchor_date: ""
+          recurrence_cycle_anchor_date: "",
+          notice_user_ids: initialNoticeUserIds
         }
       : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset }
   );
@@ -149,6 +154,15 @@ export function TaskForm({
       recurrence_weekdays: current.recurrence_weekdays.includes(day)
         ? current.recurrence_weekdays.filter((value) => value !== day)
         : [...current.recurrence_weekdays, day].sort((left, right) => left - right)
+    }));
+  }
+
+  function toggleNoticeRecipient(userId: string) {
+    setForm((current) => ({
+      ...current,
+      notice_user_ids: current.notice_user_ids.includes(userId)
+        ? current.notice_user_ids.filter((id) => id !== userId)
+        : [...current.notice_user_ids, userId]
     }));
   }
 
@@ -216,11 +230,12 @@ export function TaskForm({
       criticalPath: form.critical_path,
       projectId: form.project_id || null,
       handoffToUserId: form.handoff_to_user_id || null,
-      handoffNote: form.handoff_note.trim() || null
+      handoffNote: form.handoff_note.trim() || null,
+      noticeUserIds: form.notice_user_ids
     };
     try {
       if (initialTask) {
-        await controlAction("update_task", { id: initialTask.id, changes: {
+        await controlAction("update_task", { id: initialTask.id, noticeUserIds: payload.noticeUserIds, changes: {
           title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
           estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel, context: payload.context,
@@ -280,6 +295,27 @@ export function TaskForm({
           </select>
         </label>
       </div>
+      {otherParticipants.length ? (
+        <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <legend className="px-1 font-extrabold text-slate-900">俾邊個知道呢項任務？</legend>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            只會讓你勾選的人看到任務及收到私隱安全通知；未勾選就不會因這個設定分享。
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {otherParticipants.map((participant) => (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 font-semibold text-slate-800" key={participant.user_id}>
+                <input
+                  className="h-5 w-5 accent-indigo-600"
+                  type="checkbox"
+                  checked={form.notice_user_ids.includes(participant.user_id)}
+                  onChange={() => toggleNoticeRecipient(participant.user_id)}
+                />
+                通知 {participant.display_name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       <label>
         <span className="label">任務標題</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} required />

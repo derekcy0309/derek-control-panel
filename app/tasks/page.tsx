@@ -118,7 +118,7 @@ function TasksContent() {
 
       {editingTask ? (
         <Modal title="修改任務" onClose={() => setEditingTask(null)}>
-          <TaskForm userId={data.currentUser.id} participants={data.participants} projects={data.operatingItems.filter((item) => item.item_type === "project")} initialTask={editingTask} onSaved={() => finish(reload, () => setEditingTask(null))} onCancel={() => setEditingTask(null)} />
+          <TaskForm userId={data.currentUser.id} participants={data.participants} projects={data.operatingItems.filter((item) => item.item_type === "project")} initialTask={editingTask} initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)} onSaved={() => finish(reload, () => setEditingTask(null))} onCancel={() => setEditingTask(null)} />
         </Modal>
       ) : null}
     </div>

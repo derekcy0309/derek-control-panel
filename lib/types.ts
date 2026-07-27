@@ -178,6 +178,7 @@ export type UserProfile = {
   active: boolean;
   is_admin: boolean;
   must_change_password: boolean;
+  personal_calendar_email: string | null;
 };
 
 export type CurrentUser = { id: string; email: string; displayName: string };
@@ -632,6 +633,8 @@ export type NotificationPreferences = {
   email_digest_days: number;
   email_digest_time: string;
   private_on_lock_screen: boolean;
+  reminder_enabled: boolean;
+  task_notice_enabled: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -647,7 +650,31 @@ export type NotificationKind =
   | "handover_completed"
   | "focus_complete"
   | "daily_shutdown"
+  | "task_notice"
+  | "reminder"
   | "test";
+
+export type TaskNoticeRecipient = {
+  task_id: string;
+  owner_id: string;
+  recipient_id: string;
+  share_record_id: string | null;
+  owns_share: boolean;
+  created_at: string;
+};
+
+export type Reminder = {
+  id: string;
+  owner_id: string;
+  title: string;
+  notes: string | null;
+  starts_at: string;
+  remind_at: string;
+  timezone: string;
+  created_at: string;
+  updated_at: string;
+  recipient_user_ids: string[];
+};
 
 export type NotificationDelivery = {
   id: string;
@@ -683,6 +710,7 @@ export type ControlData = AppData & {
   activePushSubscriptionCount: number;
   household: HouseholdContext | null;
   calendarConnections: GoogleCalendarConnection[];
+  taskNoticeRecipients: TaskNoticeRecipient[];
 };
 
 export type TodayData = {
@@ -690,6 +718,7 @@ export type TodayData = {
   profile: UserProfile;
   settings: UserSettings;
   tasks: Task[];
+  taskCatalog: Task[];
   shares: ShareRecord[];
   assignments: Assignment[];
   planning: PlanningMetadata[];
@@ -698,6 +727,7 @@ export type TodayData = {
   taskDependencies: TaskDependency[];
   capacityCommitments: Array<Pick<OperatingItem, "id" | "item_type" | "area" | "due_date" | "status">>;
   weeklyAvailableMinutes: number | null;
+  reminders: Reminder[];
 };
 
 export type AppData = {
