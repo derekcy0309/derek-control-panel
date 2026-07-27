@@ -9,7 +9,7 @@ type Target = "personal" | "family" | "work";
 type CalendarOption = { id: string; summary: string; primary?: boolean };
 
 const targetConfig: Array<{ target: Target; title: string; description: string }> = [
-  { target: "personal", title: "個人 Calendar", description: "私人已確認行程；帳戶必須係你嘅登入電郵。" },
+  { target: "personal", title: "個人 Calendar", description: "私人已確認行程；Derek 使用 derekcy0309@gmail.com。" },
   { target: "family", title: "家庭 Calendar", description: "家庭已確認行程；可以揀同帳戶內嘅共享家庭 Calendar。" },
   { target: "work", title: "工作 Calendar", description: "工作已確認行程；固定使用 info@wecarenursing.com.hk。" }
 ];

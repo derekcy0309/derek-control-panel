@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections] =
+  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -60,10 +60,11 @@ export async function GET(request: NextRequest) {
       client.from("google_calendar_connections")
         .select("id,target,account_email,calendar_id,calendar_name,status,last_error,last_synced_at")
         .eq("user_id", user.id)
-        .order("target")
+        .order("target"),
+      client.from("task_notice_recipients").select("*")
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections]
+  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -108,7 +109,8 @@ export async function GET(request: NextRequest) {
     notificationDeliveries: notificationDeliveries.data ?? [],
     activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0,
     household: household.data ?? null,
-    calendarConnections: calendarConnections.data ?? []
+    calendarConnections: calendarConnections.data ?? [],
+    taskNoticeRecipients: taskNoticeRecipients.data ?? []
   }, { headers: privateHeaders() });
 }
 
@@ -118,7 +120,7 @@ async function todayDashboard({ client, user }: RequestContext) {
   const weekStart = weekStartForDate(today);
   const weekEnd = weekStart ? addCalendarDays(weekStart, 6) : null;
   const capacityReviewWeek = weekStart ? addCalendarDays(weekStart, -7) : null;
-  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview] =
+  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -160,10 +162,16 @@ async function todayDashboard({ client, user }: RequestContext) {
             .eq("user_id", user.id)
             .eq("week_start", capacityReviewWeek)
             .maybeSingle()
-        : Promise.resolve({ data: null as Record<string, unknown> | null, error: null })
+        : Promise.resolve({ data: null as Record<string, unknown> | null, error: null }),
+      client.from("reminders")
+        .select("*")
+        .gte("starts_at", new Date(Date.now() - 86_400_000).toISOString())
+        .order("starts_at", { ascending: true })
+        .limit(100),
+      client.from("reminder_recipients").select("*")
     ]);
 
-  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview]
+  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -198,6 +206,14 @@ async function todayDashboard({ client, user }: RequestContext) {
     .order("due_date", { ascending: true, nullsFirst: false })
     .limit(200);
   if (activeTasks.error) return databaseError(activeTasks.error);
+  const taskCatalog = await client.from("tasks")
+    .select("*")
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .not("status", "in", "(done,cancelled)")
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .limit(500);
+  if (taskCatalog.error) return databaseError(taskCatalog.error);
 
   const plannedIds = (plannedToday.data ?? []).map((item) => item.resource_id);
   const plannedTasks = plannedIds.length
@@ -252,6 +268,7 @@ async function todayDashboard({ client, user }: RequestContext) {
     profile: profile.data,
     settings: settings.data,
     tasks: [...taskMap.values()],
+    taskCatalog: taskCatalog.data ?? [],
     shares: shares.data ?? [],
     assignments: assignments.data ?? [],
     planning: [...planningMap.values()],
@@ -259,7 +276,13 @@ async function todayDashboard({ client, user }: RequestContext) {
     participants: participants.data ?? [],
     taskDependencies: dependencies.data ?? [],
     capacityCommitments: capacityCommitments.data ?? [],
-    weeklyAvailableMinutes: weeklyReview.data?.next_week_available_minutes ?? null
+    weeklyAvailableMinutes: weeklyReview.data?.next_week_available_minutes ?? null,
+    reminders: (reminders.data ?? []).map((reminder) => ({
+      ...reminder,
+      recipient_user_ids: (reminderRecipients.data ?? [])
+        .filter((recipient) => recipient.reminder_id === reminder.id)
+        .map((recipient) => recipient.recipient_id)
+    }))
   }, { headers: privateHeaders() });
 }
 
@@ -606,6 +629,9 @@ export async function POST(request: NextRequest) {
   switch (action) {
     case "create_task": return createTask(context, body);
     case "update_task": return updateTask(context, body);
+    case "set_today_task": return setTodayTask(context, body);
+    case "save_reminder": return saveReminder(context, body);
+    case "delete_reminder": return deleteReminder(context, body);
     case "create_task_dependency": return createTaskDependency(context, body);
     case "remove_task_dependency": return removeTaskDependency(context, body);
     case "save_project_milestone": return saveProjectMilestone(context, body);
@@ -887,6 +913,11 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   };
   const result = await client.from("tasks").insert(payload).select("*").single();
   if (result.error) return databaseError(result.error);
+  const noticeError = await syncTaskNoticeRecipients(client, result.data.id, body.noticeUserIds);
+  if (noticeError) {
+    await client.from("tasks").delete().eq("id", result.data.id);
+    return noticeError;
+  }
   let assignmentId: string | null = null;
   if (handoffTarget && handoffNote) {
     const handoff = await client.rpc("start_task_handoff", {
@@ -936,6 +967,8 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   const result = await client.from("tasks").update(payload).eq("id", id).select("*").maybeSingle();
   if (result.error) return databaseError(result.error);
   if (!result.data) return jsonError("更新被拒絕。", 403);
+  const noticeError = await syncTaskNoticeRecipients(client, id, body.noticeUserIds);
+  if (noticeError) return noticeError;
   await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
   return Response.json({ task: result.data }, { headers: privateHeaders() });
 }
@@ -1704,6 +1737,68 @@ async function snoozeTodayTask({ client, user }: RequestContext, body: Record<st
   return Response.json({ ok: true }, { headers: privateHeaders() });
 }
 
+async function setTodayTask({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const task = await client.from("tasks")
+    .select("id,status")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (!task.data) return jsonError("找不到任務或你沒有權限。", 404);
+  if (["done", "cancelled"].includes(task.data.status)) return jsonError("已完成或取消的任務不能加入 Today。", 422);
+  const included = Boolean(body.included);
+  const result = await client.from("user_planning_metadata").upsert({
+    user_id: user.id,
+    resource_type: "task",
+    resource_id: taskId,
+    planned_date: included ? hkDateString() : null,
+    plan_role: included ? "later" : null,
+    plan_source: included ? "manual" : null,
+    accepted_at: included ? new Date().toISOString() : null,
+    plan_token: null,
+    hidden_from_today: false,
+    snoozed_until: null,
+    updated_at: new Date().toISOString()
+  }, { onConflict: "user_id,resource_type,resource_id" });
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "task", taskId, included ? "today_manual_add" : "today_manual_remove", included ? "手動加入 Today" : "手動移出 Today");
+  return Response.json({ ok: true }, { headers: privateHeaders() });
+}
+
+async function saveReminder({ client }: RequestContext, body: Record<string, unknown>) {
+  const title = requiredText(body.title, "請輸入提醒／活動名稱。");
+  if (title instanceof Response) return title;
+  const startsAt = timestampValue(body.startsAt);
+  const remindAt = timestampValue(body.remindAt);
+  if (!startsAt || !remindAt || new Date(remindAt) > new Date(startsAt)) {
+    return jsonError("請選擇有效的活動及提醒時間；提醒時間不可遲過活動。", 422);
+  }
+  const recipients = uuidArray(body.recipientUserIds);
+  if (recipients instanceof Response) return recipients;
+  const result = await client.rpc("save_reminder", {
+    p_id: body.id ? uuidValue(body.id) : null,
+    p_title: title,
+    p_notes: nullableText(body.notes),
+    p_starts_at: startsAt,
+    p_remind_at: remindAt,
+    p_recipient_ids: recipients
+  });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ id: result.data }, { headers: privateHeaders() });
+}
+
+async function deleteReminder({ client }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("提醒識別碼不正確。", 400);
+  const result = await client.rpc("delete_reminder", { p_id: id });
+  if (result.error) return databaseError(result.error);
+  if (!result.data) return jsonError("找不到提醒或你不是擁有者。", 404);
+  return Response.json({ ok: true }, { headers: privateHeaders() });
+}
+
 async function adminResetPassword({ client, origin }: RequestContext, body: Record<string, unknown>) {
   const email = stringValue(body.email).trim().toLowerCase();
   if (!email || !/^\S+@\S+\.\S+$/.test(email)) return jsonError("請輸入完整電郵地址。", 422);
@@ -2254,6 +2349,22 @@ function timeValue(value: unknown) { const text = stringValue(value); return /^(
 function timestampValue(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; const date = new Date(text); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
 function integerValue(value: unknown, min: number, max: number) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : null; }
 function uuidValue(value: unknown) { const text = stringValue(value); return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text) ? text : null; }
+function uuidArray(value: unknown): string[] | Response {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > 20) return jsonError("通知對象格式不正確；最多可選 20 人。", 422);
+  const ids = [...new Set(value.map(uuidValue))];
+  return ids.some((id) => !id) ? jsonError("通知對象識別碼不正確。", 422) : ids as string[];
+}
+async function syncTaskNoticeRecipients(client: SupabaseClient, taskId: string, value: unknown) {
+  if (value === undefined) return null;
+  const recipients = uuidArray(value);
+  if (recipients instanceof Response) return recipients;
+  const result = await client.rpc("set_task_notice_recipients", {
+    p_task_id: taskId,
+    p_recipient_ids: recipients
+  });
+  return result.error ? databaseError(result.error) : null;
+}
 function objectValue(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: T[number]): T[number];
 function enumValue<T extends readonly string[]>(value: unknown, allowed: T, fallback: null): T[number] | null;

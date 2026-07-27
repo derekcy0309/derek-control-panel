@@ -65,6 +65,8 @@ const kindLabels: Record<NotificationDelivery["kind"], string> = {
   handover_completed: "交接步驟完成",
   focus_complete: "Focus 完成",
   daily_shutdown: "每日收尾",
+  task_notice: "任務通知",
+  reminder: "活動提醒",
   test: "通知測試"
 };
 

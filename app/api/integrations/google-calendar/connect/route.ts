@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     return privateJson({ error: "Calendar 類型不正確。" }, 422);
   }
   try {
+    const profile = await context.client.from("user_profiles").select("personal_calendar_email").eq("user_id", context.user.id).maybeSingle();
     const state = createGoogleOAuthState({
       userId: context.user.id,
       target,
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(googleAuthorizationUrl({
       state,
       redirectUri,
-      loginHint: expectedGoogleAccount(target, context.user.email ?? "")
+      loginHint: expectedGoogleAccount(target, context.user.email ?? "", profile.data?.personal_calendar_email)
     }));
     response.cookies.set("dcp_google_oauth", state, {
       httpOnly: true,
