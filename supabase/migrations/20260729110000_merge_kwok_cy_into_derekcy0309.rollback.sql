@@ -1,0 +1,9 @@
+-- The requested deletion of kwok_cy@wecarenursing.com.hk is irreversible:
+-- Supabase Auth does not support recreating a deleted identity, password hash or
+-- session through a SQL rollback. Application data has been reassigned to
+-- derekcy0309@gmail.com and no tables/columns were dropped by the merge.
+--
+-- To recover the old login, restore a database backup taken before this migration
+-- and recreate the Auth user through Supabase Auth with a new password. Do not
+-- run data-reassignment SQL automatically: it could overwrite newer work created
+-- by derekcy0309 after the merge.
