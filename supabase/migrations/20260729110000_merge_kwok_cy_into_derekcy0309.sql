@@ -52,6 +52,27 @@ begin
       updated_at = now()
   where user_id = target_user;
 
+  -- This one-off administrator migration changes only account references. The
+  -- normal user-facing update guards correctly reject changes to ownership, so
+  -- pause user triggers on the affected application tables while retaining all
+  -- foreign-key triggers and constraints. The transaction restores them below;
+  -- any exception rolls back the trigger state as well as the data change.
+  for relation in
+    select distinct n.nspname, c.relname
+    from pg_constraint con
+    join pg_class c on c.oid = con.conrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where con.contype = 'f'
+      and con.confrelid = 'auth.users'::regclass
+      and n.nspname in ('public', 'private')
+      and not (
+        n.nspname = 'public'
+        and c.relname in ('user_profiles', 'user_settings')
+      )
+  loop
+    execute format('alter table %I.%I disable trigger user', relation.nspname, relation.relname);
+  end loop;
+
   -- Move every application-owned foreign key to the target. user_profiles and
   -- user_settings each have a one-row target record already, so they are left
   -- for the Auth-user cascade after their equivalent target data is retained.
@@ -126,6 +147,22 @@ begin
      or exists (select 1 from storage.objects where owner_id = source_user::text) then
     raise exception 'ACCOUNT_MERGE_STORAGE_REFERENCE_REMAINS';
   end if;
+
+  for relation in
+    select distinct n.nspname, c.relname
+    from pg_constraint con
+    join pg_class c on c.oid = con.conrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where con.contype = 'f'
+      and con.confrelid = 'auth.users'::regclass
+      and n.nspname in ('public', 'private')
+      and not (
+        n.nspname = 'public'
+        and c.relname in ('user_profiles', 'user_settings')
+      )
+  loop
+    execute format('alter table %I.%I enable trigger user', relation.nspname, relation.relname);
+  end loop;
 
   insert into public.activity_logs (resource_type, resource_id, actor_id, action, summary)
   values (

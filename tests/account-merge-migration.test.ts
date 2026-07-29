@@ -25,6 +25,8 @@ test("account merge resolves real accounts by email and never creates an account
 test("account merge moves references before deleting the legacy Auth account", () => {
   assert.match(migration, /confrelid = 'auth\.users'::regclass/);
   assert.match(migration, /update storage\.objects/);
+  assert.match(migration, /disable trigger user/);
+  assert.match(migration, /enable trigger user/);
   assert.match(migration, /account_merge_reference_remains/);
   assert.match(migration, /delete from auth\.sessions/);
   assert.match(migration, /delete from auth\.users/);
