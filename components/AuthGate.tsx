@@ -28,7 +28,15 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
             body: JSON.stringify({ action: "adopt", accessToken: linkSession.data.session.access_token, refreshToken: linkSession.data.session.refresh_token })
           });
-          if (adopted.ok) await supabase?.auth.signOut({ scope: "local" });
+          if (adopted.ok) {
+            // Do not call Supabase signOut here.  A local sign-out also invalidates the
+            // refresh token remotely, which logs the user out immediately after a
+            // magic/recovery link has successfully created our HttpOnly-cookie session.
+            // A full navigation clears this non-persistent browser client session and
+            // removes the one-time link fragment without ending the adopted session.
+            window.location.replace(window.location.pathname);
+            return;
+          }
           if (window.location.hash || window.location.search.includes("code=")) window.history.replaceState({}, "", window.location.pathname);
         }
         const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
