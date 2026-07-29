@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
   }
   try {
     const profile = await context.client.from("user_profiles").select("personal_calendar_email").eq("user_id", context.user.id).maybeSingle();
+    if (profile.error) throw new Error(profile.error.message);
     const state = createGoogleOAuthState({
       userId: context.user.id,
       target,

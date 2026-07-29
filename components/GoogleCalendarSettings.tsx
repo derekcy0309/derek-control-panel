@@ -9,8 +9,8 @@ type Target = "personal" | "family" | "work";
 type CalendarOption = { id: string; summary: string; primary?: boolean };
 
 const targetConfig: Array<{ target: Target; title: string; description: string }> = [
-  { target: "personal", title: "個人 Calendar", description: "私人已確認行程；Derek 使用 derekcy0309@gmail.com。" },
-  { target: "family", title: "家庭 Calendar", description: "家庭已確認行程；可以揀同帳戶內嘅共享家庭 Calendar。" },
+  { target: "personal", title: "個人 Calendar", description: "私人已確認行程；只可使用畫面顯示的指定 Google 帳戶。" },
+  { target: "family", title: "家庭 Calendar", description: "家庭已確認行程；只可使用指定帳戶內有寫入權限的共享家庭 Calendar。" },
   { target: "work", title: "工作 Calendar", description: "工作已確認行程；固定使用 info@wecarenursing.com.hk。" }
 ];
 
@@ -130,7 +130,7 @@ export function GoogleCalendarSettings({
                 <div><h3 className="font-extrabold text-slate-900">{config.title}</h3><p className="mt-1 text-xs leading-5 text-slate-600">{config.description}</p></div>
                 <span className={`h-2.5 w-2.5 rounded-full ${connection?.status === "connected" ? "bg-emerald-500" : "bg-slate-300"}`} aria-hidden="true" />
               </div>
-              <p className="mt-3 truncate text-xs font-semibold text-slate-500">{connection?.account_email || expectedAccounts[config.target] || "登入電郵"}</p>
+              <p className="mt-3 truncate text-xs font-semibold text-slate-500">指定帳戶：{connection?.account_email || expectedAccounts[config.target] || "登入電郵"}</p>
               {connection ? (
                 <>
                   <p className="mt-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-800">{connection.calendar_name}</p>

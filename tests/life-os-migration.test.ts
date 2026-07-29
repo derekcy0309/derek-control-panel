@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { expectedGoogleAccount } from "../lib/integrations/google-calendar.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migration = readFileSync(
@@ -104,6 +105,14 @@ test("daily email uses an authenticated cron claim and exact three-day horizon",
   assert.match(migration, /greatest\(coalesce\(preference\.email_digest_days, 3\), 1\) - 1/);
   assert.match(cronRoute, /isAuthorizedCronRequest/);
   assert.match(cronRoute, /idempotencyKey/);
+});
+
+test("Calendar personal and family targets use the approved Derek and Suki Google accounts", () => {
+  assert.equal(expectedGoogleAccount("personal", "kwok_cy@wecarenursing.com.hk", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
+  assert.equal(expectedGoogleAccount("family", "derek_msc@hotmail.com", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
+  assert.equal(expectedGoogleAccount("personal", "love29suki@gmail.com", "love29suki@gmail.com"), "love29suki@gmail.com");
+  assert.equal(expectedGoogleAccount("family", "new-user@example.com"), "new-user@example.com");
+  assert.equal(expectedGoogleAccount("work", "love29suki@gmail.com"), "info@wecarenursing.com.hk");
 });
 
 test("due digest follows active user preferences and skips empty emails", () => {

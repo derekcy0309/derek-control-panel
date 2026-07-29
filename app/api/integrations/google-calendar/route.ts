@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     .order("target");
   if (connections.error) return privateJson({ error: connections.error.message }, 500);
   const profile = await context.client.from("user_profiles").select("personal_calendar_email").eq("user_id", context.user.id).maybeSingle();
+  if (profile.error) return privateJson({ error: profile.error.message }, 500);
   const personalCalendarEmail = profile.data?.personal_calendar_email;
 
   const target = request.nextUrl.searchParams.get("calendars") as ConnectedCalendarTarget | null;

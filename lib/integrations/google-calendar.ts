@@ -45,12 +45,15 @@ const oauthScopes = [
   "https://www.googleapis.com/auth/calendar.freebusy"
 ];
 
-export function expectedGoogleAccount(target: ConnectedCalendarTarget, loginEmail: string, personalCalendarEmail?: string | null) {
+export function expectedGoogleAccount(
+  target: ConnectedCalendarTarget,
+  loginEmail: string,
+  configuredCalendarEmail?: string | null
+) {
   if (target === "work") {
     return (process.env.WORK_GOOGLE_ACCOUNT_EMAIL || "info@wecarenursing.com.hk").toLowerCase();
   }
-  if (target === "personal" && personalCalendarEmail) return personalCalendarEmail.toLowerCase();
-  return loginEmail.toLowerCase();
+  return configuredCalendarEmail?.trim().toLowerCase() || loginEmail.trim().toLowerCase();
 }
 
 export function createGoogleOAuthState(input: {

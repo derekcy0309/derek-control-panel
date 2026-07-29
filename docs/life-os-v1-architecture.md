@@ -102,8 +102,9 @@ calendar_target in (personal, family, work)
 
 | Calendar target | 必須登入的 Google 帳戶 |
 |---|---|
-| Personal | 該 Derek Control Panel 使用者目前登入的 Google 帳戶；不硬編任何人的登入電郵 |
-| Family | 使用者自己的登入 Google 帳戶，再選擇雙方有寫入權限的共享 Family Calendar |
+| Personal（Derek） | `derekcy0309@gmail.com` |
+| Family（Derek） | `derekcy0309@gmail.com` |
+| Personal／Family（Suki） | `love29suki@gmail.com` |
 | Work | `info@wecarenursing.com.hk` |
 
 普通 Task、每日內部計劃、Focus Session、Quick Win 及 tentative schedule 均不會同步。取消確認會刪除已同步 Google event。改 Calendar target 時，系統先刪除舊事件，再建立一個新事件；資料庫每個 schedule 只容許一個 event link。

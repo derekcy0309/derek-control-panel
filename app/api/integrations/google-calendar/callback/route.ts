@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
     const tokens = await exchangeGoogleCode(code, redirectUri);
     const accountEmail = await googleAccountEmail(tokens.access_token);
     const profile = await context.client.from("user_profiles").select("personal_calendar_email").eq("user_id", context.user.id).maybeSingle();
+    if (profile.error) throw new Error(profile.error.message);
     const expectedEmail = expectedGoogleAccount(state.target, context.user.email ?? "", profile.data?.personal_calendar_email);
     if (accountEmail !== expectedEmail) {
       redirect.searchParams.set("calendar", "wrong_account");
