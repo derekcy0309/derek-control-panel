@@ -517,6 +517,7 @@ export function FocusMode({
               <p className="mt-2 leading-7 text-white/75">{task.definition_of_done}</p>
             </>
           ) : null}
+          {task.recurrence_rule_id ? <p className="mt-5 rounded-xl bg-indigo-300/10 p-3 text-sm font-semibold leading-6 text-indigo-100">這是持續處理的恆常工作；「今次已完成」只會記錄目前一次，並不代表結案。</p> : null}
         </section>
         {message ? <p className="mt-4 rounded-xl bg-amber-400/15 p-3 text-sm font-semibold text-amber-100" role="status">{message}</p> : null}
         {pendingHistoryFinish ? (
@@ -533,7 +534,7 @@ export function FocusMode({
           <Button variant="secondary" onClick={() => { setEditorOpen(true); setExitRequested(false); }} disabled={busy}>
             <FilePenLine className="h-5 w-5" />記錄進度
           </Button>
-          <Button variant="success" onClick={() => void complete()} disabled={busy}><Check className="h-5 w-5" />完成</Button>
+          <Button variant="success" onClick={() => void complete()} disabled={busy}><Check className="h-5 w-5" />{task.recurrence_rule_id ? "今次已完成" : "完成任務"}</Button>
         </div>
         <details className="mt-7 rounded-2xl border border-white/10 p-4">
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-bold text-white/65">遇到阻礙</summary>

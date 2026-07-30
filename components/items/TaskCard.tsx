@@ -49,6 +49,7 @@ export function TaskCard({
   const recurrenceRule = task.recurrence_rule_id
     ? taskRecurrenceRules.find((rule) => rule.id === task.recurrence_rule_id) ?? null
     : null;
+  const isOngoingRecurrence = Boolean(recurrenceRule?.is_active);
   async function updateTask(values: Partial<Task>) {
     await controlAction("update_task", { id: task.id, changes: values });
     onChanged();
@@ -72,6 +73,7 @@ export function TaskCard({
             <ScopeBadge scope={task.scope} />
             <StatusBadge status={task.status} />
             <RiskBadge risk={task.risk} />
+            {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
           </div>
           <h3 className="mt-3 text-xl font-bold text-ink">{task.title}</h3>
           <p className="mt-2 text-base font-semibold text-slate-600">{sourceTypeLabels[task.source_type]}</p>
@@ -122,7 +124,7 @@ export function TaskCard({
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {!activeHandoff ? <Button variant="success" onClick={completeTask}>完全完成任務</Button> : null}
+        {!activeHandoff ? <Button variant="success" onClick={completeTask}>{isOngoingRecurrence ? "今次已完成" : "完成任務"}</Button> : null}
         <Button variant="secondary" onClick={() => delay(1)}>
           延後 1 日
         </Button>
@@ -191,7 +193,7 @@ function TaskRecurrencePanel({
         </span>
       </div>
       <p className="mt-2 text-xs leading-5 text-slate-600">
-        {recurrenceRule.is_active ? "完成目前任務後才會建立下一項，不會預先堆積未來任務。" : "規則已暫停；完成目前任務不會再建立下一項。"}
+        {recurrenceRule.is_active ? "這是一項持續處理的恆常工作。「今次已完成」只記錄這一次，並會按設定建立下一項提醒，不代表結案。" : "規則已暫停；完成目前任務不會再建立下一項。"}
         {recurrenceRule.last_generated_for ? ` 最近一次安排：${formatDate(recurrenceRule.last_generated_for)}。` : ""}
       </p>
       {ownerCanManage ? (

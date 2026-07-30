@@ -249,7 +249,7 @@ function TodayCommandCenter() {
     try {
       await controlAction("update_task", { id: task.id, changes: { status: "done" } });
       await reload();
-      setActionMessage(minimumDay ? "今日核心責任已完成。" : "任務已完成。");
+      setActionMessage(minimumDay ? "今日核心責任已完成。" : task.recurrence_rule_id ? "已記錄今次完成；這項恆常工作會按設定繼續提示。" : "任務已完成。");
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "未能完成任務。");
     }
@@ -742,6 +742,11 @@ function PrimaryTask({
         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
           {assigned ? "已接受指派" : "由你跟進"}
         </span>
+        {task.recurrence_rule_id ? (
+          <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">
+            恆常工作
+          </span>
+        ) : null}
         {preview ? (
           <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">
             尚未加入 Today
@@ -792,7 +797,7 @@ function PrimaryTask({
             </Button>
             <Button variant="success" onClick={onComplete}>
               <Check className="h-5 w-5" />
-              完成
+              {task.recurrence_rule_id ? "今次已完成" : "完成任務"}
             </Button>
             {!minimumDay ? (
               <Button variant="secondary" onClick={onPostpone}>
