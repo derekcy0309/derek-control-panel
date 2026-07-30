@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, FilePenLine } from "lucide-react";
+import { Copy, FilePenLine, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatCurrency, formatDate, nextMonthDate } from "@/lib/date";
@@ -12,11 +12,15 @@ export function TransactionCard({
   transaction,
   onChanged,
   onEdit,
+  onRestore,
+  archived = false,
   highlight = false
 }: {
   transaction: Transaction;
   onChanged: () => void;
   onEdit?: (transaction: Transaction) => void;
+  onRestore?: (transaction: Transaction) => Promise<void>;
+  archived?: boolean;
   highlight?: boolean;
 }) {
   async function updateTransaction(values: Partial<Transaction>) {
@@ -73,8 +77,19 @@ export function TransactionCard({
         <p>實際日期：{formatDate(transaction.actual_date)}</p>
         <p>分類：{transaction.category || "未設定"}</p>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {isIncome ? (
+      {archived ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-600">這項記錄已封存，不會計入目前的收入、支出或付款提醒。</p>
+          {onRestore ? (
+            <Button variant="secondary" onClick={() => void onRestore(transaction)}>
+              <RotateCcw className="h-5 w-5" />
+              還原到現金流
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {isIncome ? (
           <>
             <Button variant="success" onClick={() => updateTransaction({ status: "received", actual_date: new Date().toISOString().slice(0, 10) })}>
               已收到
@@ -89,7 +104,7 @@ export function TransactionCard({
               取消
             </Button>
           </>
-        ) : (
+          ) : (
           <>
             <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: new Date().toISOString().slice(0, 10) })}>
               已付款
@@ -104,15 +119,16 @@ export function TransactionCard({
               取消
             </Button>
           </>
-        )}
-        <Button variant="secondary" onClick={copyToNextMonth}>
-          <Copy className="h-5 w-5" />
-          複製到下月
-        </Button>
-        <Button variant="ghost" onClick={() => updateTransaction({ archived_at: new Date().toISOString() })}>
-          封存
-        </Button>
-      </div>
+          )}
+          <Button variant="secondary" onClick={copyToNextMonth}>
+            <Copy className="h-5 w-5" />
+            複製到下月
+          </Button>
+          <Button variant="ghost" onClick={() => updateTransaction({ archived_at: new Date().toISOString() })}>
+            封存
+          </Button>
+        </div>
+      )}
     </article>
   );
 }

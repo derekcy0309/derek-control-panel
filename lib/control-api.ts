@@ -10,6 +10,7 @@ import type {
   TaskCheckpointBundle,
   TaskResourceBundle,
   TimeEstimateSuggestion,
+  Transaction,
   TodayData,
   WeeklyReview,
   WeeklyReviewSummary
@@ -24,6 +25,13 @@ export async function loadControlData(): Promise<ControlData> {
 
 export async function loadTodayData(): Promise<TodayData> {
   return controlRequest<TodayData>("/api/control?view=today", { method: "GET" });
+}
+
+export async function loadArchivedTransactions(page = 1) {
+  return controlRequest<{ transactions: Transaction[]; page: number; hasMore: boolean }>(
+    `/api/control?view=archived_transactions&page=${encodeURIComponent(String(page))}`,
+    { method: "GET" }
+  );
 }
 
 export async function searchControlData(query: string) {

@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
   if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
   if (view === "focus_sessions") return focusSessions(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "archived_transactions") return archivedTransactions(context, request.nextUrl.searchParams);
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
@@ -111,6 +112,27 @@ export async function GET(request: NextRequest) {
     household: household.data ?? null,
     calendarConnections: calendarConnections.data ?? [],
     taskNoticeRecipients: taskNoticeRecipients.data ?? []
+  }, { headers: privateHeaders() });
+}
+
+async function archivedTransactions({ client, user }: RequestContext, searchParams: URLSearchParams) {
+  const page = integerValue(searchParams.get("page") ?? "1", 1, 10000) ?? 1;
+  const pageSize = 50;
+  const offset = (page - 1) * pageSize;
+  const result = await client.from("transactions")
+    .select("*", { count: "exact" })
+    .eq("user_id", user.id)
+    .not("archived_at", "is", null)
+    .order("archived_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(offset, offset + pageSize - 1);
+  if (result.error) return databaseError(result.error);
+
+  const transactions = result.data ?? [];
+  return Response.json({
+    transactions,
+    page,
+    hasMore: offset + transactions.length < (result.count ?? 0)
   }, { headers: privateHeaders() });
 }
 
@@ -1145,16 +1167,26 @@ async function saveTransaction({ client, user }: RequestContext, body: Record<st
   const status = type === "income"
     ? enumValue(body.status, ["expected","received","delayed","problem","cancelled"], "expected")
     : enumValue(body.status, ["unpaid","paid","problem","skipped","cancelled"], "unpaid");
-  const payload = {
+  const payload: Record<string, unknown> = {
     user_id: user.id, scope: enumValue(body.scope, ["home","company"], "home"), type, item,
     category: nullableText(body.category), amount, expected_date: dateValue(body.expected_date), actual_date: dateValue(body.actual_date),
     frequency: enumValue(body.frequency, ["monthly","one_time","irregular"], "one_time"), status,
     payment_method: nullableText(body.payment_method), owner: nullableText(body.owner), proof_url: safeUrl(body.proof_url), notes: nullableText(body.notes)
   };
+  let archiveAction: "archive" | "restore" | null = null;
+  if (Object.prototype.hasOwnProperty.call(body, "archived_at")) {
+    const archivedAt = body.archived_at === null ? null : timestampValue(body.archived_at);
+    if (body.archived_at !== null && !archivedAt) return jsonError("封存時間格式不正確。", 422);
+    payload.archived_at = archivedAt;
+    archiveAction = archivedAt ? "archive" : "restore";
+  }
   const result = id
     ? await client.from("transactions").update(payload).eq("id", id).select("*").single()
     : await client.from("transactions").insert(payload).select("*").single();
   if (result.error) return databaseError(result.error);
+  if (archiveAction && result.data) {
+    await recordActivity(client, user.id, "transaction", result.data.id, archiveAction, archiveAction === "archive" ? "封存現金流項目" : "還原現金流項目");
+  }
   return Response.json({ transaction: result.data }, { status: id ? 200 : 201, headers: privateHeaders() });
 }
 
