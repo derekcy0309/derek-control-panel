@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expectedGoogleAccount } from "../lib/integrations/google-calendar.ts";
+import { googleAccountHint } from "../lib/integrations/google-calendar.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migration = readFileSync(
@@ -37,6 +37,14 @@ const cronRoute = readFileSync(resolve(here, "../app/api/cron/due-email/route.ts
 const calendarSync = readFileSync(resolve(here, "../lib/integrations/google-calendar.ts"), "utf8");
 const calendarConnectRoute = readFileSync(
   resolve(here, "../app/api/integrations/google-calendar/connect/route.ts"),
+  "utf8"
+);
+const calendarCallbackRoute = readFileSync(
+  resolve(here, "../app/api/integrations/google-calendar/callback/route.ts"),
+  "utf8"
+);
+const calendarSettings = readFileSync(
+  resolve(here, "../components/GoogleCalendarSettings.tsx"),
   "utf8"
 );
 
@@ -107,12 +115,17 @@ test("daily email uses an authenticated cron claim and exact three-day horizon",
   assert.match(cronRoute, /idempotencyKey/);
 });
 
-test("Calendar personal and family targets use the approved Derek and Suki Google accounts", () => {
-  assert.equal(expectedGoogleAccount("personal", "kwok_cy@wecarenursing.com.hk", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
-  assert.equal(expectedGoogleAccount("family", "derek_msc@hotmail.com", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
-  assert.equal(expectedGoogleAccount("personal", "love29suki@gmail.com", "love29suki@gmail.com"), "love29suki@gmail.com");
-  assert.equal(expectedGoogleAccount("family", "new-user@example.com"), "new-user@example.com");
-  assert.equal(expectedGoogleAccount("work", "love29suki@gmail.com"), "info@wecarenursing.com.hk");
+test("Calendar account hints provide defaults without restricting the user's Google choice", () => {
+  assert.equal(googleAccountHint("personal", "kwok_cy@wecarenursing.com.hk", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
+  assert.equal(googleAccountHint("family", "derek_msc@hotmail.com", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
+  assert.equal(googleAccountHint("personal", "love29suki@gmail.com", "love29suki@gmail.com"), "love29suki@gmail.com");
+  assert.equal(googleAccountHint("family", "new-user@example.com"), "new-user@example.com");
+  assert.equal(googleAccountHint("work", "love29suki@gmail.com"), "info@wecarenursing.com.hk");
+  assert.match(calendarSync, /select_account consent/);
+  assert.doesNotMatch(calendarSync, /expectedgoogleaccount/);
+  assert.match(calendarCallbackRoute, /googleAccountEmail/);
+  assert.doesNotMatch(calendarCallbackRoute, /accountEmail\s*!==/);
+  assert.match(calendarSettings, /更換帳戶/);
 });
 
 test("due digest follows active user preferences and skips empty emails", () => {

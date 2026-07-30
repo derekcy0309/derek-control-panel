@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createGoogleOAuthState,
-  expectedGoogleAccount,
+  googleAccountHint,
   googleAuthorizationUrl,
   type ConnectedCalendarTarget
 } from "@/lib/integrations/google-calendar";
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     const response = NextResponse.redirect(googleAuthorizationUrl({
       state,
       redirectUri,
-      loginHint: expectedGoogleAccount(target, context.user.email ?? "", profile.data?.personal_calendar_email)
+      loginHint: googleAccountHint(target, context.user.email ?? "", profile.data?.personal_calendar_email)
     }));
     response.cookies.set("dcp_google_oauth", state, {
       httpOnly: true,

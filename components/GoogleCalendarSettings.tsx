@@ -9,9 +9,9 @@ type Target = "personal" | "family" | "work";
 type CalendarOption = { id: string; summary: string; primary?: boolean };
 
 const targetConfig: Array<{ target: Target; title: string; description: string }> = [
-  { target: "personal", title: "個人 Calendar", description: "私人已確認行程；只可使用畫面顯示的指定 Google 帳戶。" },
-  { target: "family", title: "家庭 Calendar", description: "家庭已確認行程；只可使用指定帳戶內有寫入權限的共享家庭 Calendar。" },
-  { target: "work", title: "工作 Calendar", description: "工作已確認行程；固定使用 info@wecarenursing.com.hk。" }
+  { target: "personal", title: "個人 Calendar", description: "個人已確認行程；連接時自行選擇 Google 帳戶及有寫入權限的 Calendar。" },
+  { target: "family", title: "家庭 Calendar", description: "家庭已確認行程；可選任何你有寫入權限的 Google 帳戶與共享 Calendar。" },
+  { target: "work", title: "工作 Calendar", description: "工作已確認行程；預設建議 info@wecarenursing.com.hk，亦可自行改選其他帳戶。" }
 ];
 
 export function GoogleCalendarSettings({
@@ -20,7 +20,7 @@ export function GoogleCalendarSettings({
   initialConnections: GoogleCalendarConnection[];
 }) {
   const [connections, setConnections] = useState(initialConnections);
-  const [expectedAccounts, setExpectedAccounts] = useState<Record<Target, string>>({
+  const [accountHints, setAccountHints] = useState<Record<Target, string>>({
     personal: "",
     family: "",
     work: "info@wecarenursing.com.hk"
@@ -36,8 +36,6 @@ export function GoogleCalendarSettings({
     if (!result) return;
     if (result === "connected") {
       setMessage("Google Calendar 已連接；請確認下面選中嘅目標 Calendar。");
-    } else if (result === "wrong_account") {
-      setMessage(`Google 帳戶不正確。呢個連接需要使用 ${params.get("expected") || "指定帳戶"}。`);
     } else if (result === "invalid_state") {
       setMessage("Google 授權驗證已失效，請重新連接。");
     } else {
@@ -52,11 +50,11 @@ export function GoogleCalendarSettings({
     void fetch("/api/integrations/google-calendar", { credentials: "same-origin", cache: "no-store" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({})) as {
-          expectedAccounts?: Record<Target, string>;
+          accountHints?: Record<Target, string>;
           connections?: GoogleCalendarConnection[];
         };
         if (!active || !response.ok) return;
-        if (body.expectedAccounts) setExpectedAccounts(body.expectedAccounts);
+        if (body.accountHints) setAccountHints(body.accountHints);
         if (body.connections) setConnections(body.connections);
       });
     return () => { active = false; };
@@ -130,12 +128,13 @@ export function GoogleCalendarSettings({
                 <div><h3 className="font-extrabold text-slate-900">{config.title}</h3><p className="mt-1 text-xs leading-5 text-slate-600">{config.description}</p></div>
                 <span className={`h-2.5 w-2.5 rounded-full ${connection?.status === "connected" ? "bg-emerald-500" : "bg-slate-300"}`} aria-hidden="true" />
               </div>
-              <p className="mt-3 truncate text-xs font-semibold text-slate-500">指定帳戶：{connection?.account_email || expectedAccounts[config.target] || "登入電郵"}</p>
+              <p className="mt-3 truncate text-xs font-semibold text-slate-500">{connection ? `已連接帳戶：${connection.account_email}` : `連接提示：${accountHints[config.target] || "自行選擇"}`}</p>
               {connection ? (
                 <>
                   <p className="mt-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-800">{connection.calendar_name}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button type="button" variant="secondary" disabled={busyTarget === config.target} onClick={() => void loadCalendars(config.target)}><RefreshCw className="h-4 w-4" />選擇 Calendar</Button>
+                    <a className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700" href={`/api/integrations/google-calendar/connect?target=${config.target}`}><Link2 className="h-4 w-4" />更換帳戶</a>
                     <Button type="button" variant="ghost" disabled={busyTarget === config.target} onClick={() => void action(config.target, "disconnect")}><Unplug className="h-4 w-4" />解除</Button>
                   </div>
                   {options?.length ? (
@@ -149,7 +148,7 @@ export function GoogleCalendarSettings({
                 </>
               ) : (
                 <a className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white" href={`/api/integrations/google-calendar/connect?target=${config.target}`}>
-                  <Link2 className="h-4 w-4" />連接 Google
+                  <Link2 className="h-4 w-4" />連接並選擇帳戶
                 </a>
               )}
             </article>

@@ -45,7 +45,7 @@ const oauthScopes = [
   "https://www.googleapis.com/auth/calendar.freebusy"
 ];
 
-export function expectedGoogleAccount(
+export function googleAccountHint(
   target: ConnectedCalendarTarget,
   loginEmail: string,
   configuredCalendarEmail?: string | null
@@ -95,7 +95,7 @@ export function verifyGoogleOAuthState(value: string) {
 export function googleAuthorizationUrl(input: {
   state: string;
   redirectUri: string;
-  loginHint: string;
+  loginHint?: string;
 }) {
   const config = googleConfig();
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -103,11 +103,14 @@ export function googleAuthorizationUrl(input: {
   url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  // Always let the person select the Google account. A hint is only a helpful
+  // default (not an authorization rule), so work can start with the company
+  // account and later be moved to another account without changing code.
+  url.searchParams.set("prompt", "select_account consent");
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("scope", oauthScopes.join(" "));
   url.searchParams.set("state", input.state);
-  url.searchParams.set("login_hint", input.loginHint);
+  if (input.loginHint) url.searchParams.set("login_hint", input.loginHint);
   return url.toString();
 }
 
