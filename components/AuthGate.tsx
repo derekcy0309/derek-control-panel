@@ -20,9 +20,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    async function checkSession() {
+    let refreshInFlight = false;
+    async function renewSession({ initial = false, adoptBrowserSession = false }: { initial?: boolean; adoptBrowserSession?: boolean } = {}) {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
       try {
-        const linkSession = await supabase?.auth.getSession();
+        const linkSession = adoptBrowserSession ? await supabase?.auth.getSession() : null;
         if (linkSession?.data.session) {
           const adopted = await fetch("/api/auth", {
             method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
@@ -40,13 +43,31 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           if (window.location.hash || window.location.search.includes("code=")) window.history.replaceState({}, "", window.location.pathname);
         }
         const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
-        if (active) setAuthenticated(response.ok);
+        if (response.ok && active) setAuthenticated(true);
+        // A temporary network error must not throw the user back to the login
+        // screen.  A missing/revoked refresh token is handled on the next full
+        // sign-in check, without silently clearing any local work.
+        if (!response.ok && initial && active) setAuthenticated(false);
+      } catch {
+        // Keep an existing authenticated screen in place while offline.
       } finally {
-        if (active) setLoading(false);
+        refreshInFlight = false;
+        if (initial && active) setLoading(false);
       }
     }
-    void checkSession();
-    return () => { active = false; };
+    void renewSession({ initial: true, adoptBrowserSession: true });
+    const keepAlive = window.setInterval(() => { void renewSession(); }, 20 * 60 * 1000);
+    const renewWhenReturning = () => {
+      if (document.visibilityState === "visible") void renewSession();
+    };
+    window.addEventListener("focus", renewWhenReturning);
+    document.addEventListener("visibilitychange", renewWhenReturning);
+    return () => {
+      active = false;
+      window.clearInterval(keepAlive);
+      window.removeEventListener("focus", renewWhenReturning);
+      document.removeEventListener("visibilitychange", renewWhenReturning);
+    };
   }, []);
 
   async function sendLoginCode(event: React.FormEvent<HTMLFormElement>) {
@@ -76,10 +97,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ action: "adopt", accessToken: verified.data.session.access_token, refreshToken: verified.data.session.refresh_token })
     });
-    await supabase.auth.signOut({ scope: "local" });
     setSubmitting(false);
     if (!adopted.ok) { setMessage("驗證成功，但未能建立安全登入 session。請再試一次。"); return; }
-    setAuthenticated(true);
+    // Reload from the HttpOnly-cookie session.  Calling the Supabase client
+    // signOut here can invalidate the refresh token that was just adopted.
+    window.location.replace(window.location.pathname);
   }
 
   async function signInWithPassword(event: React.FormEvent<HTMLFormElement>) {
