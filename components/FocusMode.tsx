@@ -228,20 +228,21 @@ export function FocusMode({
   }
 
   async function complete() {
+    if (busy) return;
     setRunning(false);
-    await cancelFocusReminder();
     setBusy(true);
-    const saved = await checkpoint.saveCheckpoint({
-      completedSummary: checkpoint.form.completedSummary || "已完成目前專注步驟",
-      currentPosition: checkpoint.form.currentPosition || "已到達這一步的完成標準"
-    });
-    if (!saved) {
-      setBusy(false);
-      setEditorOpen(true);
-      setMessage("Checkpoint 尚未儲存，所以任務未被標記完成。請重試。");
-      return;
-    }
+    setMessage("正在安全儲存專注 notes，然後完成任務…");
     try {
+      await cancelFocusReminder();
+      const saved = await checkpoint.saveCheckpointWithFallbacks({
+        completedSummary: "已完成目前專注步驟",
+        currentPosition: "已到達這一步的完成標準"
+      });
+      if (!saved) {
+        setEditorOpen(true);
+        setMessage("未能安全儲存專注 notes，所以任務尚未標記完成。請查看上方儲存提示後重試。");
+        return;
+      }
       if (isOffline()) {
         await queueFocusFinish(currentUserId, {
           taskId: task.id,
@@ -253,10 +254,10 @@ export function FocusMode({
           blockReason: null
         });
         setMessage("任務完成和專注紀錄已保留在本機；恢復連線後才會正式同步。\n");
-        setBusy(false);
         onClose();
         return;
       }
+      setMessage("專注 notes 已儲存，正在完成任務…");
       await controlAction("update_task", {
         id: task.id,
         changes: {
@@ -269,13 +270,13 @@ export function FocusMode({
         setPendingHistoryFinish({ status: "completed", checkpointId: saved.id });
         setMessage(`${historyIssue} 請重新儲存這筆專注紀錄。`);
         onChanged();
-        setBusy(false);
         return;
       }
       onChanged();
       onClose();
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : "Checkpoint 已儲存，但未能更新任務狀態。");
+    } finally {
       setBusy(false);
     }
   }

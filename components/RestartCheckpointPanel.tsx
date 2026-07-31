@@ -105,7 +105,7 @@ export function RestartCheckpointPanel({
       </section>
 
       {editorOpen ? (
-        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.06] p-5" aria-labelledby="checkpoint-editor-title">
+        <section className="mt-6 rounded-2xl border border-white/10 bg-white/[.06] p-5" aria-labelledby="checkpoint-editor-title" aria-busy={busy}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold uppercase tracking-[.14em] text-indigo-300">Leave a clear trail</p>
@@ -128,7 +128,7 @@ export function RestartCheckpointPanel({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
-            <Button onClick={onSave} disabled={busy || saveState === "saving"}><Save className="h-5 w-5" />{exitRequested ? "儲存並離開" : "儲存 checkpoint"}</Button>
+            <Button onClick={onSave} disabled={busy || saveState === "saving"}><Save className="h-5 w-5" />{busy || saveState === "saving" ? "正在安全儲存…" : exitRequested ? "儲存並離開" : "儲存 checkpoint"}</Button>
             {exitRequested ? <Button variant="secondary" onClick={onCancelExit} disabled={busy}><Undo2 className="h-5 w-5" />先留在這裡</Button> : null}
           </div>
         </section>

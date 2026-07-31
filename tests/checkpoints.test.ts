@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   checkpointFormFromRecord,
+  checkpointWithFallbacks,
   emptyCheckpointForm,
   hasCheckpointContent,
   parseCheckpointResources
@@ -50,4 +51,14 @@ test("draft records restore all editable fields", () => {
   assert.equal(form.nextMinimumStep, "核對第三頁");
   assert.equal(form.resourceLinksText, "表格 | https://example.com/sheet");
   assert.equal(form.blockedReason, "等回覆");
+});
+
+test("completion fallbacks never replace typed checkpoint notes", () => {
+  const form = checkpointWithFallbacks(
+    { ...emptyCheckpointForm(), completedSummary: "已打電話確認", currentPosition: "等對方回覆" },
+    { completedSummary: "已完成目前專注步驟", currentPosition: "已到達這一步的完成標準" }
+  );
+  assert.equal(form.completedSummary, "已打電話確認");
+  assert.equal(form.currentPosition, "等對方回覆");
+  assert.equal(form.nextMinimumStep, "");
 });

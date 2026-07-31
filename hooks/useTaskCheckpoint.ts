@@ -5,6 +5,7 @@ import {
   checkpointFormFromRecord,
   checkpointFormKey,
   checkpointPayload,
+  checkpointWithFallbacks,
   emptyCheckpointForm,
   hasCheckpointContent,
   type CheckpointForm
@@ -191,6 +192,15 @@ export function useTaskCheckpoint(taskId: string, userId?: string) {
     return persist(snapshot, "saved", revision);
   }, [persist]);
 
+  const saveCheckpointWithFallbacks = useCallback((fallbacks: Partial<CheckpointForm> = {}) => {
+    if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    const snapshot = checkpointWithFallbacks(formRef.current, fallbacks);
+    formRef.current = snapshot;
+    setForm(snapshot);
+    const revision = ++saveRevisionRef.current;
+    return persist(snapshot, "saved", revision);
+  }, [persist]);
+
   return {
     ...bundle,
     form,
@@ -201,6 +211,7 @@ export function useTaskCheckpoint(taskId: string, userId?: string) {
     updateField,
     flushDraft,
     saveCheckpoint,
+    saveCheckpointWithFallbacks,
     retryLoad: load
   };
 }

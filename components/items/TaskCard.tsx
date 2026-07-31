@@ -5,6 +5,7 @@ import { CalendarClock, FilePenLine, Link2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
 import { TaskAIAnalysisPanel } from "@/components/TaskAIAnalysisPanel";
+import { TaskCheckpointNotesPanel } from "@/components/TaskCheckpointNotesPanel";
 import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { RiskBadge, ScopeBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
@@ -39,6 +40,8 @@ export function TaskCard({
   operatingItems?: Array<Pick<OperatingItem, "id" | "title" | "item_type">>;
   prominent?: boolean;
 }) {
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
   const activeHandoff = assignments.some((item) =>
     item.resource_type === "task"
     && item.resource_id === task.id
@@ -51,8 +54,19 @@ export function TaskCard({
     : null;
   const isOngoingRecurrence = Boolean(recurrenceRule?.is_active);
   async function updateTask(values: Partial<Task>) {
-    await controlAction("update_task", { id: task.id, changes: values });
-    onChanged();
+    if (actionBusy) return false;
+    setActionBusy(true);
+    setActionError("");
+    try {
+      await controlAction("update_task", { id: task.id, changes: values });
+      onChanged();
+      return true;
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "未能更新任務，請再試一次。");
+      return false;
+    } finally {
+      setActionBusy(false);
+    }
   }
 
   async function completeTask() {
@@ -111,6 +125,7 @@ export function TaskCard({
         onChanged={onChanged}
       />
       <TaskResourcePack taskId={task.id} currentUserId={currentUserId} availableItems={operatingItems} editable />
+      <TaskCheckpointNotesPanel taskId={task.id} participants={participants} />
       <div className="mt-4 grid gap-3 text-base text-slate-700 sm:grid-cols-2">
         <p className="flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-indigo-600" />
@@ -124,29 +139,30 @@ export function TaskCard({
         </p>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {!activeHandoff ? <Button variant="success" onClick={completeTask}>{isOngoingRecurrence ? "今次已完成" : "完成任務"}</Button> : null}
-        <Button variant="secondary" onClick={() => delay(1)}>
+        {!activeHandoff ? <Button variant="success" onClick={() => void completeTask()} disabled={actionBusy}>{actionBusy ? "正在交差…" : isOngoingRecurrence ? "今次已完成" : "完成任務"}</Button> : null}
+        <Button variant="secondary" onClick={() => void delay(1)} disabled={actionBusy}>
           延後 1 日
         </Button>
-        <Button variant="secondary" onClick={() => delay(3)}>
+        <Button variant="secondary" onClick={() => void delay(3)} disabled={actionBusy}>
           延後 3 日
         </Button>
-        <Button variant="secondary" onClick={() => delay(7)}>
+        <Button variant="secondary" onClick={() => void delay(7)} disabled={actionBusy}>
           延後 7 日
         </Button>
-        <Button variant="secondary" onClick={() => delay()}>
+        <Button variant="secondary" onClick={() => void delay()} disabled={actionBusy}>
           自訂日期
         </Button>
-        <Button variant="danger" onClick={() => updateTask({ status: "blocked" })}>
+        <Button variant="danger" onClick={() => void updateTask({ status: "blocked" })} disabled={actionBusy}>
           有問題
         </Button>
-        <Button variant="ghost" onClick={() => updateTask({ status: "cancelled" })}>
+        <Button variant="ghost" onClick={() => void updateTask({ status: "cancelled" })} disabled={actionBusy}>
           取消
         </Button>
-        <Button variant="danger" onClick={() => window.confirm("任務會移到保留區，30 日後才永久刪除。確定？") && updateTask({ deleted_at: new Date().toISOString() })}>
+        <Button variant="danger" onClick={() => { if (window.confirm("任務會移到保留區，30 日後才永久刪除。確定？")) void updateTask({ deleted_at: new Date().toISOString() }); }} disabled={actionBusy}>
           刪除
         </Button>
       </div>
+      {actionError ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">未能交差／更新任務：{actionError}</p> : null}
     </article>
   );
 }
