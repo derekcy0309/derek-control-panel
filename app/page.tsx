@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { assessCapacityOverload } from "@/lib/capacity-overload";
 import { formatDate } from "@/lib/date";
+import { currentAndNextTodayTask, remainingTodayTasks } from "@/lib/today-sequence";
 import {
   activeWipCount,
   classifyDeadlineRisk,
@@ -134,14 +135,24 @@ function TodayCommandCenter() {
     item.plan_role === "now"
     && currentData.tasks.some((task) => task.id === item.resource_id && task.status === "done")
   );
-  const displayedNow = showPreview
-    ? recommendation.now?.task ?? null
-    : acceptedPlan.now?.status === "done"
-      ? null
-      : acceptedPlan.now;
-  const displayedLater = showPreview ? recommendation.later.map((item) => item.task) : acceptedPlan.later;
-  const displayedQuickWins = showPreview ? recommendation.quickWins.map((item) => item.task) : acceptedPlan.quickWins;
-  const displayedNowItem = showPreview ? recommendation.now : displayedNow
+  const plannedSequence = showPreview
+    ? [recommendation.now?.task, ...recommendation.later.map((item) => item.task), ...recommendation.quickWins.map((item) => item.task)].filter((task): task is Task => Boolean(task))
+    : [acceptedPlan.now, ...acceptedPlan.later, ...acceptedPlan.quickWins].filter((task): task is Task => Boolean(task));
+  const sequencePosition = currentAndNextTodayTask(plannedSequence);
+  const acceptedNowCompleted = !showPreview && acceptedPlan.now?.status === "done";
+  const displayedNow = minimumDay && acceptedCoreCompleted && !showPreview ? null : sequencePosition.current;
+  const nextUp = displayedNow ? sequencePosition.next : null;
+  const displayedLater = remainingTodayTasks(
+    showPreview ? recommendation.later.map((item) => item.task) : acceptedPlan.later,
+    displayedNow?.id,
+    nextUp?.id
+  );
+  const displayedQuickWins = remainingTodayTasks(
+    showPreview ? recommendation.quickWins.map((item) => item.task) : acceptedPlan.quickWins,
+    displayedNow?.id,
+    nextUp?.id
+  );
+  const displayedNowItem = displayedNow
     ? recommendation.all.find((item) => item.task.id === displayedNow.id) ?? fallbackPlanItem(displayedNow)
     : null;
   const acceptedAssignments = new Set(
@@ -244,14 +255,25 @@ function TodayCommandCenter() {
     }
   }
 
-  async function complete(task: Task) {
+  async function complete(task: Task, followingTask: Task | null) {
+    if (busy) return;
+    setBusy(true);
     setActionError("");
     try {
       await controlAction("update_task", { id: task.id, changes: { status: "done" } });
       await reload();
-      setActionMessage(minimumDay ? "今日核心責任已完成。" : task.recurrence_rule_id ? "已記錄今次完成；這項恆常工作會按設定繼續提示。" : "任務已完成。");
+      const completedMessage = minimumDay
+        ? "今日核心責任已完成。"
+        : task.recurrence_rule_id
+          ? "已記錄今次完成；這項恆常工作會按設定繼續提示。"
+          : `「${task.title}」已完成。`;
+      setActionMessage(followingTask && !minimumDay
+        ? `${completedMessage} 下一個做：${followingTask.title} — ${followingTask.next_action || "先打開任務，完成第一個可見動作"}`
+        : completedMessage);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "未能完成任務。");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -344,17 +366,6 @@ function TodayCommandCenter() {
       ) : null}
       {actionError ? <InlineAlert message={actionError} /> : null}
 
-      <ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} />
-      <TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} />
-
-      <AIDailyPlanner
-        date={today}
-        capacity={currentData.capacity}
-        settings={currentData.settings}
-        tasks={currentData.tasks}
-        onAccepted={reload}
-      />
-
       {minimumDay && acceptedCoreCompleted ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
           <div className="flex items-start gap-3">
@@ -372,25 +383,14 @@ function TodayCommandCenter() {
       ) : null}
 
       {showPreview ? (
-        <details className="panel group overflow-hidden">
-          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
-            <span>
-              <span className="block text-sm font-extrabold text-slate-900">規則式安全建議</span>
-              <span className="mt-1 block text-xs text-slate-500">每日安排使用免費規則引擎；需要深度拆解時，任務卡可一鍵開啟 ChatGPT。</span>
-            </span>
-            <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
-          </summary>
-          <div className="border-t border-slate-100 p-4">
-            <PlanPreviewSummary
-              plan={recommendation}
-              minimumDay={minimumDay}
-              busy={busy}
-              onAccept={() => void acceptPlan()}
-              onReplan={requestReplan}
-              onEasier={requestEasierPlan}
-            />
-          </div>
-        </details>
+        <PlanPreviewSummary
+          plan={recommendation}
+          minimumDay={minimumDay}
+          busy={busy}
+          onAccept={() => void acceptPlan()}
+          onReplan={requestReplan}
+          onEasier={requestEasierPlan}
+        />
       ) : (
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
           <div>
@@ -404,15 +404,6 @@ function TodayCommandCenter() {
         </section>
       )}
 
-      {overloadAssessment ? (
-        <CapacityOverloadPanel
-          assessment={overloadAssessment}
-          handoffTargetName={handoffTarget?.display_name}
-          onPostpone={setPostponeTask}
-          onHandoff={setHandoffTask}
-        />
-      ) : null}
-
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(18rem,.7fr)]">
         <div className="relative overflow-hidden rounded-2xl border border-indigo-200 bg-white p-5 sm:p-7">
           <div className="pointer-events-none absolute right-[-3rem] top-[-5rem] h-56 w-56 rounded-full bg-indigo-100/70 blur-2xl" />
@@ -420,7 +411,7 @@ function TodayCommandCenter() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-bold text-indigo-700">
                 <Sparkles className="h-4 w-4" />
-                {showPreview ? "建議：現在做" : minimumDay ? "今日核心最低任務" : "現在做"}
+                {showPreview ? "建議：現在做" : minimumDay ? "今日核心最低任務" : acceptedNowCompleted ? "下一個做" : "現在做"}
               </div>
               {displayedNowItem ? (
                 <RiskPill risk={displayedNowItem.risk} gentle={minimumDay} />
@@ -442,8 +433,11 @@ function TodayCommandCenter() {
                 assigned={acceptedAssignments.has(displayedNow.id)}
                 preview={showPreview}
                 minimumDay={minimumDay}
+                nextUp={nextUp}
+                continuing={Boolean(acceptedNowCompleted)}
+                busy={busy}
                 onFocus={() => openFocus(displayedNow)}
-                onComplete={() => void complete(displayedNow)}
+                onComplete={() => void complete(displayedNow, nextUp)}
                 onPostpone={() => setPostponeTask(displayedNow)}
                 onSplit={() => setSplitTask(displayedNow)}
                 onSwitch={switchNowTask}
@@ -526,6 +520,35 @@ function TodayCommandCenter() {
           onFocus={openFocus}
         />
       </section>
+
+      <details className="panel group overflow-hidden">
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+          <span>
+            <span className="block text-sm font-extrabold text-slate-900">今日工具與完整安排</span>
+            <span className="mt-1 block text-xs text-slate-500">調整容量、查看提醒、管理 Today 清單或重新規劃時才打開。</span>
+          </span>
+          <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
+        </summary>
+        <div className="space-y-5 border-t border-slate-100 p-4 sm:p-5">
+          {overloadAssessment ? (
+            <CapacityOverloadPanel
+              assessment={overloadAssessment}
+              handoffTargetName={handoffTarget?.display_name}
+              onPostpone={setPostponeTask}
+              onHandoff={setHandoffTask}
+            />
+          ) : null}
+          <AIDailyPlanner
+            date={today}
+            capacity={currentData.capacity}
+            settings={currentData.settings}
+            tasks={currentData.tasks}
+            onAccepted={reload}
+          />
+          <TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} />
+          <ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} />
+        </div>
+      </details>
 
       {minimumDay && pending.length ? (
         <p className="rounded-xl bg-slate-50 p-4 text-center text-sm text-slate-600">
@@ -716,6 +739,9 @@ function PrimaryTask({
   assigned,
   preview,
   minimumDay,
+  nextUp,
+  continuing,
+  busy,
   onFocus,
   onComplete,
   onPostpone,
@@ -726,6 +752,9 @@ function PrimaryTask({
   assigned: boolean;
   preview: boolean;
   minimumDay: boolean;
+  nextUp: Task | null;
+  continuing: boolean;
+  busy: boolean;
   onFocus: () => void;
   onComplete: () => void;
   onPostpone: () => void;
@@ -756,6 +785,7 @@ function PrimaryTask({
       <h2 className="mt-4 text-2xl font-bold leading-tight tracking-tight sm:text-4xl">
         {task.title}
       </h2>
+      {continuing ? <p className="mt-2 text-sm font-semibold text-indigo-700">上一項已完成，現在只需處理這一項。</p> : null}
       <div className="mt-5 rounded-xl bg-slate-50 p-4">
         <p className="text-xs font-bold uppercase tracking-[.12em] text-slate-500">
           {minimumDay ? "最低完成標準" : "下一步"}
@@ -791,16 +821,16 @@ function PrimaryTask({
           </>
         ) : (
           <>
-            <Button onClick={onFocus}>
+            <Button disabled={busy} onClick={onFocus}>
               <ArrowRight className="h-5 w-5" />
               從這一步開始
             </Button>
-            <Button variant="success" onClick={onComplete}>
+            <Button variant="success" disabled={busy} onClick={onComplete}>
               <Check className="h-5 w-5" />
-              {task.recurrence_rule_id ? "今次已完成" : "完成任務"}
+              {busy ? "更新中…" : task.recurrence_rule_id ? "今次已完成" : "完成任務"}
             </Button>
             {!minimumDay ? (
-              <Button variant="secondary" onClick={onPostpone}>
+              <Button variant="secondary" disabled={busy} onClick={onPostpone}>
                 <TimerReset className="h-5 w-5" />
                 延至指定日
               </Button>
@@ -808,6 +838,13 @@ function PrimaryTask({
           </>
         )}
       </div>
+      {nextUp ? (
+        <aside className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/70 p-4" aria-label="下一項工作">
+          <p className="text-xs font-bold uppercase tracking-[.12em] text-indigo-700">{preview ? "確認後，完成這項再做" : "完成這項後，下一個做"}</p>
+          <h3 className="mt-2 text-lg font-extrabold text-slate-900">{nextUp.title}</h3>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">下一步：{nextUp.next_action || "先打開任務，完成第一個可見動作"}</p>
+        </aside>
+      ) : null}
     </div>
   );
 }
