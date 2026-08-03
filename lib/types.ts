@@ -179,9 +179,23 @@ export type UserProfile = {
   is_admin: boolean;
   must_change_password: boolean;
   personal_calendar_email: string | null;
+  last_seen_at: string | null;
 };
 
 export type CurrentUser = { id: string; email: string; displayName: string };
+
+export type AdminAccountUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  active: boolean;
+  isAdmin: boolean;
+  mustChangePassword: boolean;
+  createdAt: string;
+  emailConfirmedAt: string | null;
+  lastSignInAt: string | null;
+  lastSeenAt: string | null;
+};
 
 export type OperatingItem = {
   id: string;

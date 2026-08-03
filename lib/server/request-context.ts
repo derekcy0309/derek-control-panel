@@ -32,6 +32,14 @@ export async function authenticateRequest(
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) return privateJson({ error: "登入已失效，請重新登入。" }, 401);
 
+  // This is intentionally best-effort: account activity must never prevent a
+  // valid user from using the app if a migration is temporarily unavailable.
+  try {
+    await client.rpc("touch_current_user_last_seen");
+  } catch {
+    // Best-effort only; a failed activity write must not prevent app use.
+  }
+
   return { client, user: data.user, token, origin: request.nextUrl.origin };
 }
 

@@ -726,6 +726,13 @@ async function authenticate(request: NextRequest): Promise<RequestContext | Resp
   });
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) return jsonError("登入已失效，請重新登入。", 401);
+  // Last-use tracking is throttled in the database and never blocks a valid
+  // task request when an older deployment has not applied the migration yet.
+  try {
+    await client.rpc("touch_current_user_last_seen");
+  } catch {
+    // Best-effort only; a failed activity write must not prevent app use.
+  }
   return { client, user: data.user, origin: request.nextUrl.origin };
 }
 

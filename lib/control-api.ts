@@ -2,6 +2,7 @@
 
 import type {
   BodyDoubleData,
+  AdminAccountUser,
   ControlData,
   FocusSession,
   InboxCaptureFile,
@@ -21,6 +22,10 @@ let lastRefreshAt = 0;
 
 export async function loadControlData(): Promise<ControlData> {
   return controlRequest<ControlData>("/api/control?view=bootstrap", { method: "GET" });
+}
+
+export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser[]; truncated: boolean }> {
+  return controlRequest<{ users: AdminAccountUser[]; truncated: boolean }>("/api/admin/users", { method: "GET" });
 }
 
 export async function loadTodayData(): Promise<TodayData> {

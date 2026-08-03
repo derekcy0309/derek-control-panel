@@ -6,14 +6,17 @@ import { useEffect, useState } from "react";
 import {
   Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  PlusCircle, Settings, Share2, Sparkles, UsersRound, X
+  PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 
-const navGroups = [
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type NavGroupData = { label: string; items: NavItem[] };
+
+const navGroups: NavGroupData[] = [
   {
     label: "主要",
     items: [
@@ -66,7 +69,12 @@ const navGroups = [
       { href: "/settings", label: "設定", icon: Settings }
     ]
   }
-] as const;
+];
+
+const adminNavGroup: NavGroupData = {
+  label: "管理員",
+  items: [{ href: "/admin/accounts", label: "帳戶活動", icon: ShieldCheck }]
+};
 
 const mobileNav = [
   { href: "/", label: "今日", icon: Sparkles },
@@ -81,6 +89,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -91,6 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setDisplayName(data.currentUser.displayName);
         setCurrentUserId(data.currentUser.id);
         setMustChangePassword(Boolean(data.profile.must_change_password));
+        setIsAdmin(Boolean(data.profile.is_admin && data.profile.active));
         if (data.settings) {
         const theme = data.settings.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.settings.theme;
         document.documentElement.dataset.theme = theme || "light";
@@ -120,6 +130,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Brand displayName={displayName} />
         <div className="sidebar-scroll">
           {navGroups.map((group) => <NavGroup key={group.label} group={group} pathname={pathname} />)}
+          {isAdmin ? <NavGroup group={adminNavGroup} pathname={pathname} /> : null}
         </div>
         <button className="sidebar-signout" onClick={signOut}>登出</button>
       </aside>
@@ -154,6 +165,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="max-h-[70vh] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {navGroups.slice(1).map((group) => <NavGroup key={group.label} group={group} pathname={pathname} mobile />)}
+              {isAdmin ? <NavGroup group={adminNavGroup} pathname={pathname} mobile /> : null}
               <button className="mt-3 min-h-11 w-full rounded-xl px-3 text-left font-semibold text-slate-600 hover:bg-slate-100" onClick={signOut}>登出</button>
             </div>
           </section>
@@ -198,7 +210,7 @@ function Brand({ displayName, compact = false }: { displayName: string; compact?
   );
 }
 
-function NavGroup({ group, pathname, mobile = false }: { group: (typeof navGroups)[number]; pathname: string; mobile?: boolean }) {
+function NavGroup({ group, pathname, mobile = false }: { group: NavGroupData; pathname: string; mobile?: boolean }) {
   const [open, setOpen] = useState(true);
   return (
     <section className={mobile ? "mb-4" : "nav-group"}>
@@ -210,7 +222,7 @@ function NavGroup({ group, pathname, mobile = false }: { group: (typeof navGroup
   );
 }
 
-function NavLink({ item, active }: { item: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }; active: boolean }) {
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
   return <Link href={item.href} className={clsx("sidebar-link", active && "is-active")}><Icon className="h-[1.1rem] w-[1.1rem]" /><span>{item.label}</span></Link>;
 }

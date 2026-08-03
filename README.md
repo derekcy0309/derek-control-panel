@@ -78,6 +78,7 @@ supabase/migrations/20260726003000_backup_restore.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.sql
 supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.sql
+supabase/migrations/20260803100000_admin_account_activity.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -108,6 +109,7 @@ supabase/migrations/20260726003000_backup_restore.rollback.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.rollback.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.rollback.sql
 supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.rollback.sql
+supabase/migrations/20260803100000_admin_account_activity.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -132,6 +134,8 @@ Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 
 Life OS v1 升級另需設定 Google OAuth、token encryption、Resend 及 `NEXT_PUBLIC_APP_URL`；ChatGPT 手動分析不需要 API key 或 AI Gateway。每日三日到期電郵由 `vercel.json` 在香港時間約 08:30 呼叫 `/api/cron/due-email`；Google OAuth callback 是 `/api/integrations/google-calendar/callback`。完整上線步驟、帳戶限制及驗證清單見 [`docs/life-os-v1-setup.md`](docs/life-os-v1-setup.md)。
 
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
+
+管理員帳戶活動清單的可見範圍、最後登入／使用時間與 rollback 說明見 [`docs/admin-account-activity.md`](docs/admin-account-activity.md)。
 
 Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback 說明見 [`docs/inbox-processing.md`](docs/inbox-processing.md)。
 
