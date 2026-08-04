@@ -56,8 +56,8 @@ export async function GET(request: Request) {
         from,
         to: row.recipient_email,
         subject: items.length
-          ? `未來 3 日有 ${items.length} 項事情值得預先留意`
-          : "未來 3 日暫時沒有到期事項",
+          ? `今日綜合跟進：${items.length} 項`
+          : "今日暫時沒有需要跟進的事項",
         react: DueSoonDigestEmail({
           displayName: row.display_name,
           items,

@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
     "typecheck": "tsc --noEmit --incremental false",
-    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/ai-planner.test.ts tests/manual-chatgpt.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/checkpoints.test.ts tests/focus-task-feedback.test.ts tests/weekly-review.test.ts tests/migration-contract.test.ts tests/life-os-migration.test.ts tests/backup.test.ts tests/capacity-overload.test.ts tests/home-reminders-sharing.test.ts tests/account-merge-migration.test.ts tests/auth-email-link.test.ts tests/recurring-completion.test.ts tests/recurring-no-deadline.test.ts tests/cashflow-archive.test.ts tests/today-flow.test.ts tests/admin-account-activity.test.ts tests/three-role-workflow.test.ts"
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/planning.test.ts tests/ai-planner.test.ts tests/manual-chatgpt.test.ts tests/authorization.test.ts tests/privacy.test.ts tests/checkpoints.test.ts tests/focus-task-feedback.test.ts tests/weekly-review.test.ts tests/migration-contract.test.ts tests/life-os-migration.test.ts tests/backup.test.ts tests/capacity-overload.test.ts tests/home-reminders-sharing.test.ts tests/account-merge-migration.test.ts tests/auth-email-link.test.ts tests/recurring-completion.test.ts tests/recurring-no-deadline.test.ts tests/cashflow-archive.test.ts tests/today-flow.test.ts tests/admin-account-activity.test.ts tests/three-role-workflow.test.ts tests/suki-workflow.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.52.0",

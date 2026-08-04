@@ -178,7 +178,7 @@ export function TaskCard({
       <div className="mt-4 flex flex-wrap gap-2">
         {!activeHandoff ? <Button variant="success" onClick={() => void completeTask()} disabled={actionBusy}>{actionBusy ? "正在交差…" : isOngoingRecurrence ? "今次已完成" : "完成任務"}</Button> : null}
         <Button variant="secondary" onClick={() => void delay(1)} disabled={actionBusy}>
-          延後 1 日
+          稍後處理（明日）
         </Button>
         <Button variant="secondary" onClick={() => void delay(3)} disabled={actionBusy}>
           延後 3 日
@@ -187,10 +187,10 @@ export function TaskCard({
           延後 7 日
         </Button>
         <Button variant="secondary" onClick={() => void delay()} disabled={actionBusy}>
-          自訂日期
+          重新安排
         </Button>
-        <Button variant="danger" onClick={() => void updateTask({ status: "blocked" })} disabled={actionBusy}>
-          有問題
+        <Button variant="secondary" onClick={() => void updateTask({ status: "blocked" })} disabled={actionBusy}>
+          需要重新安排
         </Button>
         <Button variant="ghost" onClick={() => void updateTask({ status: "cancelled" })} disabled={actionBusy}>
           取消

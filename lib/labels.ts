@@ -23,20 +23,20 @@ export const sourceTypeLabels: Record<SourceType, string> = {
 };
 
 export const taskStatusLabels: Record<TaskStatus, string> = {
-  not_started: "未完成",
-  in_progress: "未完成",
-  waiting: "未完成",
+  not_started: "今日處理",
+  in_progress: "進行中",
+  waiting: "等待別人",
   done: "已完成",
-  blocked: "未完成",
+  blocked: "需要重新安排",
   cancelled: "已取消"
 };
 
 export const taskStatusDetailLabels: Record<TaskStatus, string> = {
-  not_started: "未開始",
+  not_started: "今日處理",
   in_progress: "進行中",
-  waiting: "等待中",
+  waiting: "等待別人",
   done: "已完成",
-  blocked: "有問題",
+  blocked: "需要重新安排",
   cancelled: "已取消"
 };
 

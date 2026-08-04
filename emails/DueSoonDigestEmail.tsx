@@ -7,6 +7,8 @@ export type DueSoonEmailItem = {
   area: "personal" | "family" | "work";
   dueDate: string;
   nextAction: string | null;
+  followUpCategory?: string;
+  isOverdue?: boolean;
 };
 
 export function DueSoonDigestEmail({
@@ -24,33 +26,33 @@ export function DueSoonDigestEmail({
     <html lang="zh-HK">
       <body style={body}>
         <div style={preview}>
-          {items.length ? `未來 ${horizonDays} 日有 ${items.length} 項事情值得預先留意` : `未來 ${horizonDays} 日暫時沒有到期事項`}
+          {items.length ? `今日有 ${items.length} 項綜合跟進` : `今日暫時沒有需要跟進的事項`}
         </div>
         <main style={container}>
           <p style={eyebrow}>DEREK CONTROL PANEL</p>
           <h1 style={heading}>{displayName}，呢封係溫和預覽</h1>
           <p style={intro}>
             {items.length
-              ? `未來 ${horizonDays} 日有 ${items.length} 項到期事項。唔需要一次過完成；先打開系統，揀一個最細下一步就夠。`
-              : `未來 ${horizonDays} 日暫時沒有到期事項。今日可以按實際能量同家庭需要安排，毋須為清單製造額外壓力。`}
+              ? `家屬回覆、護士安排、物資、付款同未來 ${horizonDays} 日事項已合併成每日一次摘要。唔需要一次過完成；先揀一個最細下一步就夠。`
+              : "今日暫時沒有需要跟進的事項。可以按實際時間安排，毋須為清單製造額外壓力。"}
           </p>
           <section style={list}>
             {items.length ? items.map((item) => (
               <section key={`${item.kind}-${item.id}`} style={card}>
-                <p style={meta}>{areaLabel(item.area)} · {formatDate(item.dueDate)}</p>
+                <p style={meta}>{areaLabel(item.area)} · {item.followUpCategory ?? "一般跟進"} · {item.isOverdue ? "需要重新安排" : formatDate(item.dueDate)}</p>
                 <p style={title}>{item.title}</p>
                 {item.nextAction ? <p style={next}>下一步：{item.nextAction}</p> : null}
               </section>
             )) : (
               <section style={emptyCard}>
-                <p style={title}>三日內未有到期事項</p>
+                <p style={title}>今日未有需要跟進事項</p>
                 <p style={next}>可以保留緩衝、休息，或者只推進一個最有幫助嘅小步。</p>
               </section>
             )}
           </section>
           <a href={`${appUrl.replace(/\/$/, "")}/`} style={button}>打開今日計劃</a>
           <p style={footer}>
-            呢封電郵只係預覽，唔代表你今日要做晒。私人項目只寄去項目所屬用戶嘅登入電郵。
+            呢封電郵每天最多一封，只係預覽，唔代表你今日要做晒。私人項目只寄去獲授權用戶嘅登入電郵。
           </p>
         </main>
       </body>

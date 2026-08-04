@@ -23,7 +23,8 @@
 - 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI
 - ChatGPT Task Analysis：系統遮罩敏感資料及寫好 Prompt；一鍵複製並開啟 ChatGPT，回覆可從剪貼簿貼回、驗證及預覽，使用者確認後才更新完成標準、Next Action 及估時
 - Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步。Derek 的 Personal／Family 固定使用 `derekcy0309@gmail.com`，Suki 固定使用 `love29suki@gmail.com`，工作帳戶固定為 `info@wecarenursing.com.hk`
-- 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項時不寄出不必要通知
+- Suki 書面工作流：主頁只突出三項工作；安靜模式只保留真正緊急事項；六款 WhatsApp／電郵範本及固定規則摘要全在本機處理，確認前不會開啟發送程式
+- 每日綜合跟進電郵：家屬回覆、RN、物資、付款、逾期及未來三個曆日事項合併成每人每天最多一封；沿用登入電郵及既有權限，沒有項目時不寄出
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -79,6 +80,9 @@ supabase/migrations/20260726120000_life_os_ai_calendar_email.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.sql
 supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.sql
 supabase/migrations/20260803100000_admin_account_activity.sql
+supabase/migrations/20260804100000_three_role_daily_workflow.sql
+supabase/migrations/20260804130000_recurring_no_deadline_reminders.sql
+supabase/migrations/20260804160000_suki_workflow_followups.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -110,6 +114,9 @@ supabase/migrations/20260726120000_life_os_ai_calendar_email.rollback.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.rollback.sql
 supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.rollback.sql
 supabase/migrations/20260803100000_admin_account_activity.rollback.sql
+supabase/migrations/20260804100000_three_role_daily_workflow.rollback.sql
+supabase/migrations/20260804130000_recurring_no_deadline_reminders.rollback.sql
+supabase/migrations/20260804160000_suki_workflow_followups.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。

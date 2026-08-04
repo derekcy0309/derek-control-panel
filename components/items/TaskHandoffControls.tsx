@@ -9,7 +9,7 @@ import type { Assignment, HandoffNote, Task } from "@/lib/types";
 
 type Participant = { user_id: string; display_name: string };
 type Resolution = "continue" | "return" | "close";
-type HandlerSwitchMode = "assign" | "return" | "reclaim";
+type HandlerSwitchMode = "assign" | "return" | "reclaim" | "transfer";
 const activeStatuses = ["pending_acceptance", "accepted", "in_progress", "waiting", "blocked"] as const;
 
 export function TaskHandoffControls({
@@ -58,7 +58,9 @@ export function TaskHandoffControls({
     if (closed || targetUserId === currentHandlerId) return null;
     if (!active) return isOwner && targetUserId !== currentUserId ? "assign" : null;
     if (isSender && targetUserId === active.assigned_by_id) return "reclaim";
-    if (isRecipient && active.status !== "pending_acceptance" && targetUserId === active.assigned_by_id) return "return";
+    if (isRecipient && active.status !== "pending_acceptance") {
+      return targetUserId === active.assigned_by_id ? "return" : "transfer";
+    }
     return null;
   }
 
@@ -118,7 +120,7 @@ export function TaskHandoffControls({
             >
               <span className="flex items-center gap-2 font-extrabold text-slate-900">
                 {selected ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <ArrowRightLeft className="h-5 w-5 text-indigo-600" />}
-                {isSelf ? "由我跟進" : `由 ${participant.display_name} 跟進`}
+                {selected ? (isSelf ? "由我跟進" : `由 ${participant.display_name} 跟進`) : isSelf ? "改由我跟進" : `轉交 ${participant.display_name}`}
               </span>
               <span className="mt-1 block text-sm leading-5 text-slate-600">
                 {selected
@@ -275,10 +277,17 @@ function SwitchHandlerModal({
           nextStep: "",
           waitingUntil: ""
         });
-      } else {
+      } else if (mode === "reclaim") {
         await controlAction("handoff_reclaim", {
           assignmentId: assignment!.id,
           note
+        });
+      } else {
+        await controlAction("handoff_transfer", {
+          assignmentId: assignment!.id,
+          targetUserId: target.user_id,
+          note,
+          dueDate
         });
       }
       onSaved();
@@ -310,15 +319,15 @@ function SwitchHandlerModal({
             required
           />
         </label>
-        {mode === "assign" ? (
+        {mode === "assign" || mode === "transfer" ? (
           <label>
             <span className="label">今次跟進期限（可留空）</span>
             <input className="field mt-2" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
           </label>
         ) : null}
         <p className="text-sm leading-6 text-slate-600">
-          {mode === "assign"
-            ? "對方接受後負責跟進；任務及舊紀錄會繼續保留。"
+          {mode === "assign" || mode === "transfer"
+            ? "對方接受後負責跟進；只可選擇系統內現有並已連接的帳戶，任務及舊紀錄會繼續保留。"
             : "確認後會立即改變目前跟進者，並保留全部 notes、操作者及日期時間。"}
         </p>
         <div className="flex flex-wrap gap-2">

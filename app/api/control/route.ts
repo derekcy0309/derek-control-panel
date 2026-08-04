@@ -780,6 +780,7 @@ export async function POST(request: NextRequest) {
     case "update_item": return updateOperatingItem(context, body);
     case "share": return shareResource(context, body);
     case "handoff_task": return startTaskHandoff(context, body);
+    case "handoff_transfer": return transferTaskHandoff(context, body);
     case "handoff_reclaim": return reclaimTaskHandoff(context, body);
     case "handoff_progress": return recordTaskHandoffProgress(context, body);
     case "handoff_resolve": return resolveTaskHandoff(context, body);
@@ -1819,6 +1820,27 @@ async function saveSettings({ client, user }: RequestContext, body: Record<strin
     if (profile.error) return databaseError(profile.error);
   }
   return Response.json({ settings: result.data }, { headers: privateHeaders() });
+}
+
+async function transferTaskHandoff({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const assignmentId = uuidValue(body.assignmentId);
+  const targetUserId = uuidValue(body.targetUserId);
+  const note = requiredText(body.note, "請輸入轉交 notes，讓下一手知道目前進度。");
+  if (!assignmentId || !targetUserId) return jsonError("交接紀錄或對象不正確。", 400);
+  if (targetUserId === user.id) return jsonError("請選擇另一位跟進者。", 422);
+  if (note instanceof Response) return note;
+  const result = await client.rpc("transfer_task_handoff", {
+    p_assignment_id: assignmentId,
+    p_target_user_id: targetUserId,
+    p_note: note,
+    p_due_date: dateValue(body.dueDate)
+  });
+  if (result.error) return databaseError(result.error);
+  const found = await client.from("assignments").select("resource_id").eq("id", assignmentId).maybeSingle();
+  if (!found.error && found.data?.resource_id) {
+    await recordActivity(client, user.id, "task", found.data.resource_id, "handoff_transfer", "轉交另一位現有使用者跟進");
+  }
+  return Response.json({ assignmentId: result.data }, { status: 201, headers: privateHeaders() });
 }
 
 async function setQuietMode({ client }: RequestContext, body: Record<string, unknown>) {
