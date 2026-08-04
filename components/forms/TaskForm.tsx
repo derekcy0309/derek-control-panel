@@ -32,6 +32,7 @@ type TaskFormState = {
   handoff_to_user_id: string;
   handoff_note: string;
   recurrence_enabled: boolean;
+  recurrence_deadline_mode: "scheduled" | "none";
   recurrence_frequency: string;
   recurrence_weekdays: number[];
   recurrence_custom_interval_days: string;
@@ -67,6 +68,7 @@ const defaultState: TaskFormState = {
   handoff_to_user_id: "",
   handoff_note: "",
   recurrence_enabled: false,
+  recurrence_deadline_mode: "scheduled",
   recurrence_frequency: "weekly",
   recurrence_weekdays: [],
   recurrence_custom_interval_days: "7",
@@ -125,6 +127,7 @@ export function TaskForm({
           handoff_to_user_id: "",
           handoff_note: "",
           recurrence_enabled: false,
+          recurrence_deadline_mode: "scheduled",
           recurrence_frequency: "weekly",
           recurrence_weekdays: [],
           recurrence_custom_interval_days: "7",
@@ -190,6 +193,14 @@ export function TaskForm({
     }));
   }
 
+  function setRecurrenceDeadlineMode(mode: "scheduled" | "none") {
+    setForm((current) => ({
+      ...current,
+      recurrence_deadline_mode: mode,
+      due_date: mode === "none" ? "" : current.due_date
+    }));
+  }
+
   function toggleNoticeRecipient(userId: string) {
     setForm((current) => ({
       ...current,
@@ -202,6 +213,7 @@ export function TaskForm({
   function recurrencePayload(taskId: string) {
     return {
       taskId,
+      deadlineMode: form.recurrence_deadline_mode,
       frequency: form.recurrence_frequency,
       weekdays: form.recurrence_weekdays,
       customIntervalDays: Number(form.recurrence_custom_interval_days),
@@ -383,6 +395,21 @@ export function TaskForm({
                   <option value="custom">自訂相隔日數</option>
                 </select>
               </label>
+              <fieldset>
+                <legend className="label">每次是否有期限</legend>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_deadline_mode === "scheduled" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-deadline-mode" checked={form.recurrence_deadline_mode === "scheduled"} onChange={() => setRecurrenceDeadlineMode("scheduled")} />
+                    <span className="font-bold text-slate-900">每次有到期日</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">下一次的週期日期會當作到期日。</span>
+                  </label>
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_deadline_mode === "none" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-deadline-mode" checked={form.recurrence_deadline_mode === "none"} onChange={() => setRecurrenceDeadlineMode("none")} />
+                    <span className="font-bold text-slate-900">沒有期限，只按週期提示</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">不會顯示逾期；到每個時段會提示，並保留今次工作直至你按「今次已完成」。</span>
+                  </label>
+                </div>
+              </fieldset>
               {form.recurrence_frequency === "weekly" ? (
                 <div>
                   <p className="label">每星期哪一天</p>
@@ -539,8 +566,8 @@ export function TaskForm({
       ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
-          <span className="label">到期日</span>
-          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} />
+          <span className="label">{form.recurrence_enabled && form.recurrence_deadline_mode === "none" ? "到期日（已選沒有期限）" : "到期日"}</span>
+          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
         </label>
         <label>
           <span className="label">跟進日</span>

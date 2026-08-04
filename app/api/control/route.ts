@@ -772,6 +772,7 @@ export async function POST(request: NextRequest) {
     case "delete_project_milestone": return deleteProjectMilestone(context, body);
     case "save_task_recurrence": return saveTaskRecurrence(context, body);
     case "set_task_recurrence_active": return setTaskRecurrenceActive(context, body);
+    case "set_task_recurrence_deadline_mode": return setTaskRecurrenceDeadlineMode(context, body);
     case "save_transaction": return saveTransaction(context, body);
     case "save_meeting": return saveMeeting(context, body);
     case "save_balance": return saveBalance(context, body);
@@ -1272,6 +1273,7 @@ async function saveTaskRecurrence({ client, user }: RequestContext, body: Record
     seed_task_id: taskId,
     owner_id: user.id,
     created_by_id: user.id,
+    deadline_mode: recurrence.deadlineMode,
     frequency: recurrence.frequency,
     weekdays: recurrence.weekdays,
     custom_interval_days: recurrence.customIntervalDays,
@@ -1288,8 +1290,11 @@ async function saveTaskRecurrence({ client, user }: RequestContext, body: Record
     .single();
   if (rule.error) return databaseError(rule.error);
 
+  const occurrenceDate = dateValue(task.data.due_date) ?? dateValue(task.data.planned_date);
   const linked = await client.from("tasks")
-    .update({ recurrence_rule_id: rule.data.id })
+    .update(recurrence.deadlineMode === "none"
+      ? { recurrence_rule_id: rule.data.id, due_date: null, planned_date: occurrenceDate }
+      : { recurrence_rule_id: rule.data.id })
     .eq("id", taskId)
     .select("id")
     .maybeSingle();
@@ -1318,6 +1323,23 @@ async function setTaskRecurrenceActive({ client, user }: RequestContext, body: R
   if (!result.data) return jsonError("更新重複工作被拒絕。", 403);
   await recordActivity(client, user.id, "task", existing.data.seed_task_id, body.isActive ? "recurrence_resume" : "recurrence_pause", body.isActive ? "恢復重複工作" : "暫停重複工作");
   return Response.json({ rule: result.data }, { headers: privateHeaders() });
+}
+
+async function setTaskRecurrenceDeadlineMode({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  const deadlineMode = enumValue(body.deadlineMode, ["scheduled", "none"] as const, null);
+  if (!id || !deadlineMode) return jsonError("重複工作的期限設定不正確。", 400);
+
+  const result = await client.rpc("set_task_recurrence_deadline_mode", {
+    p_rule_id: id,
+    p_deadline_mode: deadlineMode
+  });
+  if (result.error) return databaseError(result.error);
+  const rule = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!rule) return jsonError("找不到重複工作或你沒有權限。", 404);
+
+  await recordActivity(client, user.id, "task", rule.seed_task_id, "recurrence_deadline_mode", deadlineMode === "none" ? "重複工作改為沒有期限" : "重複工作改為每次有到期日");
+  return Response.json({ rule }, { headers: privateHeaders() });
 }
 
 async function saveProjectMilestone({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -1840,6 +1862,7 @@ async function saveNotificationPreferences(
     today_first_enabled: Boolean(source.todayFirstEnabled),
     deadline_enabled: Boolean(source.deadlineEnabled),
     waiting_enabled: Boolean(source.waitingEnabled),
+    recurrence_enabled: source.recurrenceEnabled === undefined ? true : Boolean(source.recurrenceEnabled),
     handover_enabled: Boolean(source.handoverEnabled),
     focus_enabled: Boolean(source.focusEnabled),
     shutdown_enabled: Boolean(source.shutdownEnabled),
@@ -2531,6 +2554,7 @@ function nextMonthIso(monthStart: string) {
 }
 
 type RecurrenceOptions = {
+  deadlineMode: "scheduled" | "none";
   frequency: "daily" | "weekly" | "monthly" | "custom";
   weekdays: number[];
   customIntervalDays: number | null;
@@ -2542,6 +2566,7 @@ type RecurrenceOptions = {
 };
 
 function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | Response {
+  const deadlineMode = enumValue(body.deadlineMode, ["scheduled", "none"] as const, "scheduled")!;
   const frequency = enumValue(body.frequency, ["daily", "weekly", "monthly", "custom"] as const, null);
   if (!frequency) return jsonError("請選擇有效的重複方式。", 422);
   const rawWeekdays = body.weekdays === undefined ? [] : body.weekdays;
@@ -2569,6 +2594,7 @@ function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | R
   if (rawAnchor && !cycleAnchorDate) return jsonError("夜更週期開始日期不正確。", 422);
 
   return {
+    deadlineMode,
     frequency,
     weekdays: frequency === "weekly" ? validWeekdays : [],
     customIntervalDays,

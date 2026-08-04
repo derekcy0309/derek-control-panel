@@ -36,7 +36,11 @@ export function assessCapacityOverload(input: {
   const actionable = input.tasks.filter((task) => isActionable(task, input.currentUserId, assignments));
   const commitments = (input.commitments ?? []).filter((item) => item.due_date && item.due_date >= today && item.due_date <= weekEnd && !["completed", "cancelled"].includes(item.status));
   const commitmentBuffer = Math.min(90, commitments.reduce((total, item) => total + (item.item_type === "health" || item.item_type === "school" ? 25 : 15), 0));
-  const todayTasks = actionable.filter((task) => task.status === "in_progress" || task.planned_date === today || planning.has(task.id) || isUrgentToday(task, today));
+  const todayTasks = actionable.filter((task) => task.status === "in_progress"
+    || task.planned_date === today
+    || Boolean(task.recurrence_rule_id && task.planned_date && task.planned_date <= today)
+    || planning.has(task.id)
+    || isUrgentToday(task, today));
   const weekTasks = actionable.filter((task) => task.status === "in_progress" || isDuringWeek(task, today, weekEnd));
   const todayCommitted = sumMinutes(todayTasks);
   const weekCommitted = sumMinutes(weekTasks);

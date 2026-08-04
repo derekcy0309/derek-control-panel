@@ -19,6 +19,7 @@ type PreferencesForm = {
   todayFirstEnabled: boolean;
   deadlineEnabled: boolean;
   waitingEnabled: boolean;
+  recurrenceEnabled: boolean;
   handoverEnabled: boolean;
   focusEnabled: boolean;
   shutdownEnabled: boolean;
@@ -39,6 +40,7 @@ const defaultPreferences: PreferencesForm = {
   todayFirstEnabled: true,
   deadlineEnabled: true,
   waitingEnabled: true,
+  recurrenceEnabled: true,
   handoverEnabled: true,
   focusEnabled: true,
   shutdownEnabled: false,
@@ -66,6 +68,7 @@ const kindLabels: Record<NotificationDelivery["kind"], string> = {
   focus_complete: "Focus 完成",
   daily_shutdown: "每日收尾",
   task_notice: "任務通知",
+  recurrence_reminder: "定期工作提示",
   reminder: "活動提醒",
   test: "通知測試"
 };
@@ -98,6 +101,7 @@ export function NotificationSettings({
       todayFirstEnabled: preferences.today_first_enabled,
       deadlineEnabled: preferences.deadline_enabled,
       waitingEnabled: preferences.waiting_enabled,
+      recurrenceEnabled: preferences.recurrence_enabled,
       handoverEnabled: preferences.handover_enabled,
       focusEnabled: preferences.focus_enabled,
       shutdownEnabled: preferences.shutdown_enabled,
@@ -264,6 +268,7 @@ export function NotificationSettings({
         <NotificationToggle checked={form.todayFirstEnabled} onChange={(value) => set("todayFirstEnabled", value)} title="Today 第一項" />
         <NotificationToggle checked={form.deadlineEnabled} onChange={(value) => set("deadlineEnabled", value)} title="Deadline 接近" />
         <NotificationToggle checked={form.waitingEnabled} onChange={(value) => set("waitingEnabled", value)} title="Waiting 跟進日" />
+        <NotificationToggle checked={form.recurrenceEnabled} onChange={(value) => set("recurrenceEnabled", value)} title="定期工作每輪提示" />
         <NotificationToggle checked={form.handoverEnabled} onChange={(value) => set("handoverEnabled", value)} title="交接狀態" />
         <NotificationToggle checked={form.focusEnabled} onChange={(value) => set("focusEnabled", value)} title="Focus Timer 完成" />
         <NotificationToggle checked={form.shutdownEnabled} onChange={(value) => set("shutdownEnabled", value)} title="每日收尾" />

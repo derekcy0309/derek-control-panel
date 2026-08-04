@@ -39,6 +39,23 @@ Migration：`20260804100000_three_role_daily_workflow.sql`
 
 Migration 不更新、搬動或刪除既有任務、財務或帳戶資料。新增外鍵及常用查詢均有索引；現有 table RLS 繼續保護新增欄位。
 
+## 定期任務沒有期限
+
+新增定期任務時，可在「每次是否有期限」選擇：
+
+- 「每次有到期日」：沿用原本行為，下一個週期日期是該次到期日。
+- 「沒有期限，只按週期提示」：不建立假逾期；週期日期會保存為提示／安排日期。到時該次工作會持續顯示，直至使用者按「今次已完成」、延後或暫停規則。
+
+現有定期任務亦可在任務卡切換模式。切換為沒有期限時，目前未完成一輪的原有到期日會保留為安排／提示日期後才清除，因此不會遺失原本的提示時間，也不會被標示成逾期。
+
+Migration：`20260804130000_recurring_no_deadline_reminders.sql`
+
+- 新增 `task_recurrence_rules.deadline_mode`，舊規則預設維持 `scheduled`。
+- 新增個人通知偏好 `notification_preferences.recurrence_enabled`。
+- 每次完成只建立一個 successor；`notification_deliveries` 的 dedupe key 防止同一規則同一時段重複提示。
+- 已授權 Browser／PWA 通知時，無期限 recurrence 會按使用者時區及 Today 提醒時間排入 server-side queue；安靜模式仍然生效。
+- 鎖定畫面只顯示中性內容，不包括任務名稱、個案或健康資料。
+
 ## 回復
 
 配對 rollback：`20260804100000_three_role_daily_workflow.rollback.sql`。
@@ -59,4 +76,3 @@ Migration 不更新、搬動或刪除既有任務、財務或帳戶資料。新�
 2. 用 Derek、Suki、Amigo 三個真實測試帳戶檢查 RLS 和角色首頁。
 3. 測試語音不支援、缺日期、重複提交、待決定確認、安靜模式及網絡重試。
 4. Preview 通過後才可由使用者另行批准 production migration／deployment。
-

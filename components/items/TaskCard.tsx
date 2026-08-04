@@ -234,6 +234,19 @@ function TaskRecurrencePanel({
     }
   }
 
+  async function setDeadlineMode(deadlineMode: "scheduled" | "none") {
+    setBusy(true);
+    setError("");
+    try {
+      await controlAction("set_task_recurrence_deadline_mode", { id: recurrenceRule.id, deadlineMode });
+      onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "未能更新期限模式。請稍後再試。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3" aria-label="重複工作">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -249,8 +262,19 @@ function TaskRecurrencePanel({
         {recurrenceRule.is_active ? "這是一項持續處理的恆常工作。「今次已完成」只記錄這一次，並會按設定建立下一項提醒，不代表結案。" : "規則已暫停；完成目前任務不會再建立下一項。"}
         {recurrenceRule.last_generated_for ? ` 最近一次安排：${formatDate(recurrenceRule.last_generated_for)}。` : ""}
       </p>
+      <p className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold leading-5 text-slate-700">
+        {recurrenceRule.deadline_mode === "none"
+          ? "沒有期限：週期只作提示日期；今次工作會一直保留，直至你完成、延後或暫停重複工作。"
+          : "每次有到期日：下一個週期日期會當作該次到期日。"}
+      </p>
       {ownerCanManage ? (
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button type="button" variant={recurrenceRule.deadline_mode === "none" ? "secondary" : "success"} disabled={busy || recurrenceRule.deadline_mode === "none"} onClick={() => void setDeadlineMode("none")}>
+            沒有期限，只提示
+          </Button>
+          <Button type="button" variant={recurrenceRule.deadline_mode === "scheduled" ? "secondary" : "success"} disabled={busy || recurrenceRule.deadline_mode === "scheduled"} onClick={() => void setDeadlineMode("scheduled")}>
+            每次有到期日
+          </Button>
           <Button type="button" variant={recurrenceRule.is_active ? "secondary" : "success"} disabled={busy} onClick={() => void setActive(!recurrenceRule.is_active)}>
             {busy ? "處理中…" : recurrenceRule.is_active ? "暫停重複工作" : "恢復重複工作"}
           </Button>

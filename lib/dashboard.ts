@@ -8,6 +8,7 @@ export type FocusItem =
 function taskScore(task: Task) {
   const due = task.due_date;
   const followUp = task.follow_up_date;
+  const recurrencePrompt = task.recurrence_rule_id ? task.planned_date : null;
   let score = 0;
 
   if (task.status === "blocked") score += 1000;
@@ -18,6 +19,7 @@ function taskScore(task: Task) {
   if (task.scope === "company" && /收入|收款|付款|客戶|合約/.test(`${task.title}${task.notes ?? ""}`)) score += 300;
   if (task.scope === "home" && /債|付款|租|供款|保費|學費/.test(`${task.title}${task.notes ?? ""}`)) score += 250;
   if (isWithinDays(followUp, 0)) score += 200;
+  if (isWithinDays(recurrencePrompt, 0) || isOverdue(recurrencePrompt)) score += 200;
   if (task.status === "done" || task.status === "cancelled") score -= 1000;
 
   return score;
@@ -73,7 +75,8 @@ export function getTodayFollowUps(tasks: Task[]) {
     (task) =>
       task.status !== "done" &&
       task.status !== "cancelled" &&
-      (isWithinDays(task.follow_up_date, 0) || isWithinDays(task.due_date, 0))
+      (isWithinDays(task.follow_up_date, 0) || isWithinDays(task.due_date, 0)
+        || Boolean(task.recurrence_rule_id && task.planned_date && (isWithinDays(task.planned_date, 0) || isOverdue(task.planned_date))))
   );
 }
 

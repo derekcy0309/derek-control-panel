@@ -385,6 +385,7 @@ export type TaskRecurrenceRule = {
   seed_task_id: string;
   owner_id: string;
   created_by_id: string;
+  deadline_mode: "scheduled" | "none";
   frequency: RecurrenceFrequency;
   weekdays: number[];
   custom_interval_days: number | null;
@@ -674,6 +675,7 @@ export type NotificationPreferences = {
   private_on_lock_screen: boolean;
   reminder_enabled: boolean;
   task_notice_enabled: boolean;
+  recurrence_enabled: boolean;
   quiet_mode_until?: string | null;
   created_at: string;
   updated_at: string;
@@ -691,6 +693,7 @@ export type NotificationKind =
   | "focus_complete"
   | "daily_shutdown"
   | "task_notice"
+  | "recurrence_reminder"
   | "reminder"
   | "test";
 
