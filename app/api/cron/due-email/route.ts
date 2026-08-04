@@ -22,10 +22,10 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const secret = process.env.CRON_SECRET;
   if (!url || !key || !secret || !process.env.RESEND_API_KEY) {
-    return Response.json({ error: "Email digest is not configured." }, { status: 503 });
+    return Response.json({ error: "Email digest server credentials are not configured." }, { status: 503 });
   }
   const client = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }

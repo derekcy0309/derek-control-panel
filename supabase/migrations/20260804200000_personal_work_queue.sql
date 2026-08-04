@@ -141,7 +141,6 @@ end;
 $$;
 
 revoke all on function public.claim_due_email_digests(text, date, integer)
-  from public, authenticated;
+  from public, anon, authenticated;
 grant execute on function public.claim_due_email_digests(text, date, integer)
-  to anon, service_role;
-
+  to service_role;

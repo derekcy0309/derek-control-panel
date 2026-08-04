@@ -74,7 +74,10 @@ test("personal work queue migration is additive, indexed and leaves finance out 
   assert.match(migration, /notification_dispatch_authorized/);
   assert.match(migration, /on conflict \(user_id, digest_date\)/);
   assert.doesNotMatch(migration, /from public\.transactions/);
+  assert.match(migration, /revoke all on function public\.claim_due_email_digests\([\s\S]*from public, anon, authenticated/);
+  assert.match(migration, /grant execute on function public\.claim_due_email_digests\([\s\S]*to service_role/);
+  assert.doesNotMatch(migration, /to anon, service_role/);
+  assert.match(read("app/api/cron/due-email/route.ts"), /SUPABASE_SERVICE_ROLE_KEY/);
   assert.doesNotMatch(migration, /drop table|delete from/);
   assert.match(rollback, /personal_work_queue_rollback_requires_waiting_data_export/);
 });
-
