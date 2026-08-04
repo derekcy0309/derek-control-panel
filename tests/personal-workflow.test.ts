@@ -47,6 +47,14 @@ test("home cards are progressive and waiting work cannot occupy the top three", 
   assert.doesNotMatch(dashboard, /cashflowHint|WrittenCommunicationAssistant/);
 });
 
+test("PWA metadata describes personal work only", () => {
+  const manifest = read("app/manifest.ts");
+  const layout = read("app/layout.tsx");
+  assert.match(manifest, /個人工作管理系統/);
+  assert.match(layout, /個人工作管理系統/);
+  assert.doesNotMatch(manifest, /公司日常作業系統|\"business\"/);
+});
+
 test("quick add keeps three primary inputs, templates and session draft recovery", () => {
   const form = read("components/forms/TaskForm.tsx");
   assert.match(form, /要做甚麼/);

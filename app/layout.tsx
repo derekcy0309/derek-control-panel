@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Derek Control Panel", template: "%s · Derek Control Panel" },
-  description: "私人、家庭及公司日常作業系統",
+  description: "Derek、Suki 及 Amigo 共用的個人工作管理系統",
   applicationName: "Derek Control Panel",
   appleWebApp: { capable: true, statusBarStyle: "default", title: "Control Panel" },
   formatDetection: { telephone: false }
