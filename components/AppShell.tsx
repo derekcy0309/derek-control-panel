@@ -36,10 +36,12 @@ const navGroups: NavGroupData[] = [
       { href: "/weekly-review", label: "每週檢視", icon: ClipboardCheck },
       { href: "/sharing", label: "交辦中心", icon: Share2 },
       { href: "/workspace/decision", label: "決策紀錄", icon: Command },
-      { href: "/workspace/client", label: "客戶流程", icon: UsersRound },
-      { href: "/workspace/sop", label: "SOP", icon: Archive },
-      { href: "/cashflow", label: "財務", icon: Landmark }
+      { href: "/workspace/sop", label: "SOP", icon: Archive }
     ]
+  },
+  {
+    label: "財務（獨立）",
+    items: [{ href: "/cashflow", label: "個人財務", icon: Landmark }]
   },
   {
     label: "家庭",
@@ -124,6 +126,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       try {
         sessionStorage.removeItem(`dcp:voice-handoff-draft:v1:${currentUserId}`);
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:new`);
+        sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:waiting`);
       } catch {
         // Sign-out must still complete if browser storage is unavailable.
       }

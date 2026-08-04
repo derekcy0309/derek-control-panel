@@ -76,7 +76,7 @@ RLS 是真正的存取控制；前端隱藏只屬使用體驗。家庭成員不�
 - 缺少資料
 - 減少 effort 方法
 
-系統先遮罩 HKID、電話、長帳戶號碼、電郵、常見 reference code，以及有「病人／客戶／姓名／地址」標籤的識別資料，再產生包含固定 JSON schema 的 Prompt。使用者按一下會複製 Prompt 並開啟 ChatGPT；系統不讀取 ChatGPT session、cookie 或對話。
+系統先遮罩 HKID、電話、長帳戶號碼、電郵、常見 reference code，以及有「姓名／地址」標籤的識別資料，再產生包含固定 JSON schema 的 Prompt。使用者按一下會複製 Prompt 並開啟 ChatGPT；系統不讀取 ChatGPT session、cookie 或對話。
 
 使用者貼回回覆後，伺服器會：
 
@@ -86,7 +86,7 @@ RLS 是真正的存取控制；前端隱藏只屬使用體驗。家庭成員不�
 - 先顯示預覽
 - 只有任務 owner 明確確認後，才沿用既有 `update_task` mutation 更新 Definition of Done、Next Action 及估時
 
-任務仍不應輸入病人姓名、完整地址或完整醫療紀錄。每日最多匯入五十項 ChatGPT 分析，防止重複及意外大量審計記錄。
+任務不應輸入他人的識別資料、完整地址或其他不必要的敏感內容。每日最多匯入五十項 ChatGPT 分析，防止重複及意外大量審計記錄。
 
 ## Google Calendar 邊界
 
@@ -129,6 +129,6 @@ Vercel Cron 每日約香港時間 08:30 呼叫受 `CRON_SECRET` 保護的 route�
 - Deadline、Latest Safe Start、WIP、安全及 dependency
 - 確認／取消 Google Schedule
 - 完成、延期、刪除、分享或交接
-- 醫療、法律、臨床或財務結論
+- 法律、財務或其他專業結論
 
 以上改動全部需要確定規則或使用者明確確認。

@@ -16,7 +16,6 @@ function taskScore(task: Task) {
   if (isWithinDays(due, 0)) score += 800;
   if (isWithinDays(due, 3)) score += 700;
   if (task.risk === "high") score += 400;
-  if (task.scope === "company" && /收入|收款|付款|客戶|合約/.test(`${task.title}${task.notes ?? ""}`)) score += 300;
   if (task.scope === "home" && /債|付款|租|供款|保費|學費/.test(`${task.title}${task.notes ?? ""}`)) score += 250;
   if (isWithinDays(followUp, 0)) score += 200;
   if (isWithinDays(recurrencePrompt, 0) || isOverdue(recurrencePrompt)) score += 200;

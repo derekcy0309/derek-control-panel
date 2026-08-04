@@ -1062,6 +1062,8 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     description: nullableText(body.description),
     due_date: dateValue(body.dueDate),
     follow_up_date: dateValue(body.followUpDate),
+    waiting_for: resourceText(body.waitingFor, 200),
+    waiting_on: resourceText(body.waitingOn, 1000),
     planned_date: dateValue(body.plannedDate),
     status,
     next_action: nextAction,
@@ -1161,7 +1163,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
         .maybeSingle();
   if (activeHandler && activeHandler.error) return databaseError(activeHandler.error);
   const allowed = existing.data.owner_id === user.id
-    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","materials_required","rn_required","client_update_required"]
+    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","materials_required","rn_required","client_update_required"]
     : activeHandler && activeHandler.data
       ? ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at","due_date","follow_up_date"]
       : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
@@ -1172,6 +1174,8 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
     "training", "assessment", "family_conference"
   ].includes(stringValue(payload.task_type))) return jsonError("工作類別不正確。", 422);
   if (payload.case_code !== undefined) payload.case_code = resourceText(payload.case_code, 80);
+  if (payload.waiting_for !== undefined) payload.waiting_for = resourceText(payload.waiting_for, 200);
+  if (payload.waiting_on !== undefined) payload.waiting_on = resourceText(payload.waiting_on, 1000);
   if (payload.materials_required !== undefined) payload.materials_required = resourceText(payload.materials_required, 2000);
   if (payload.rn_required !== undefined) payload.rn_required = Boolean(payload.rn_required);
   if (payload.client_update_required !== undefined) payload.client_update_required = Boolean(payload.client_update_required);
@@ -2137,7 +2141,7 @@ async function search({ client }: RequestContext, query: string) {
   const pattern = `%${q.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
   const [tasks, items] = await Promise.all([
     client.from("tasks").select("id,title,area,status,due_date,visibility,owner_id").ilike("title", pattern).limit(20),
-    client.from("operating_items").select("id,title,item_type,area,status,due_date,visibility,owner_id").ilike("title", pattern).limit(20)
+    client.from("operating_items").select("id,title,item_type,area,status,due_date,visibility,owner_id").neq("item_type", "client").ilike("title", pattern).limit(20)
   ]);
   if (tasks.error) return databaseError(tasks.error);
   if (items.error) return databaseError(items.error);

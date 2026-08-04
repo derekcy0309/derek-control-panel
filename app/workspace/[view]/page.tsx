@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, CalendarClock, Check, FileLock2, Filter, List, Plus, Search, Share2, Sparkles } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
@@ -9,10 +10,11 @@ import { CaptureFiles } from "@/components/inbox/CaptureFiles";
 import { ProjectMilestonesPanel } from "@/components/projects/ProjectMilestonesPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
+import { TaskForm } from "@/components/forms/TaskForm";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
-import { formatCurrency, formatDate } from "@/lib/date";
-import { waitingAge, weightedPipelineRevenue } from "@/lib/planning";
+import { formatDate } from "@/lib/date";
+import { waitingAge } from "@/lib/planning";
 import type { Area, OperatingItem } from "@/lib/types";
 import { useControlData } from "@/hooks/useControlData";
 import { useInboxProcessing } from "@/hooks/useInboxProcessing";
@@ -22,7 +24,6 @@ const views: Record<string, ViewConfig> = {
   project: { title: "項目作戰室", eyebrow: "Work", description: "集中看下一個里程碑、阻礙、關鍵路徑及停滯工作。", area: "work", itemType: "project", addLabel: "新增項目" },
   waiting: { title: "等待中", eyebrow: "Waiting For", description: "把等待回覆變成有日期、有下一次跟進的閉環。", area: "work", itemType: "waiting", addLabel: "新增等待事項" },
   decision: { title: "決策紀錄", eyebrow: "Decision Log", description: "保留問題、選項、期限與最後理據，減少決策債。", area: "work", itemType: "decision", addLabel: "新增決策" },
-  client: { title: "客戶流程", eyebrow: "Private Care Business", description: "查看轉介、下一次跟進、加權收入及個案狀態。臨床資料預設高度敏感。", area: "work", itemType: "client", addLabel: "新增潛在個案", sensitive: true },
   sop: { title: "SOP 範本", eyebrow: "Operations", description: "用清單、相對日期及證據要求把服務流程標準化。", area: "work", itemType: "sop", addLabel: "新增 SOP" },
   family: { title: "家庭總覽", eyebrow: "Family OS", description: "家庭只是分類入口，不代表自動分享。所有項目仍然預設私人。", area: "family", addLabel: "新增家庭事項" },
   school: { title: "子女及學校", eyebrow: "Family", description: "整理通告、簽署、繳費、活動及所需物品。敏感內容預設私人。", area: "family", itemType: "school", addLabel: "新增學校事項", sensitive: true },
@@ -30,7 +31,7 @@ const views: Record<string, ViewConfig> = {
   household: { title: "家居管理", eyebrow: "Family", description: "跟進維修、保養、家電、保養期及供應商。", area: "family", itemType: "household", addLabel: "新增家居事項" },
   shopping: { title: "家庭購物", eyebrow: "Family", description: "按商店、分類及負責人整理採購，完成後保留紀錄。", area: "family", itemType: "shopping", addLabel: "加入購物項目" },
   personal: { title: "個人總覽", eyebrow: "Personal OS", description: "只顯示你自己的行政、健康、文件、車輛、筆記及目標。", area: "personal", addLabel: "新增個人事項" },
-  health: { title: "健康行政", eyebrow: "Personal", description: "只作預約、文件及跟進管理，不作診斷或治療建議。預設私人。", area: "personal", itemType: "health", addLabel: "新增健康行政", sensitive: true },
+  health: { title: "健康行政", eyebrow: "Personal", description: "整理個人預約、文件及一般跟進。所有內容預設私人。", area: "personal", itemType: "health", addLabel: "新增健康行政", sensitive: true },
   document: { title: "文件", eyebrow: "Personal", description: "追蹤發出日、到期日及遮罩編號；檔案分享需要另行確認。", area: "personal", itemType: "document", addLabel: "新增文件", sensitive: true },
   vehicle: { title: "車輛", eyebrow: "Personal", description: "管理牌照、保險、驗車、保養、維修及費用。", area: "personal", itemType: "vehicle", addLabel: "新增車輛事項" },
   note: { title: "私人筆記", eyebrow: "Personal", description: "筆記不會出現在對方搜尋、共享預覽或通知內容。", area: "personal", itemType: "note", addLabel: "新增私人筆記", sensitive: true }
@@ -40,6 +41,8 @@ export default function WorkspacePage() { return <AuthGate><WorkspaceContent /><
 
 function WorkspaceContent() {
   const params = useParams<{ view: string }>();
+  if (params.view === "waiting") return <WaitingWorkspace />;
+  if (params.view === "client") return <RetiredModuleNotice />;
   const config = views[params.view] ?? views.inbox;
   if (params.view === "inbox") return <InboxWorkspace />;
   return <GenericWorkspaceContent config={config} />;
@@ -65,18 +68,45 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
   }, [config, data, query, status]);
 
   if (loading || error || !data) return <LoadingState error={error} />;
-  const weightedRevenue = config.itemType === "client" ? weightedPipelineRevenue(items.map((item) => ({ monthlyRevenue: Number(item.metadata.monthlyRevenue || 0), conversionProbability: Number(item.metadata.conversionProbability || 0) / 100 }))) : 0;
-
   async function update(item: OperatingItem, changes: Record<string, unknown>) { await controlAction("update_item", { id: item.id, changes }); await reload(); }
 
   return <div className="space-y-5">
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title mt-1">{config.title}</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">{config.description}</p></div><Button onClick={() => setAdding(true)}><Plus className="h-5 w-5" />{config.addLabel}</Button></section>
-    {config.itemType === "client" ? <section className="grid gap-3 sm:grid-cols-3"><Metric label="加權每月收入" value={formatCurrency(weightedRevenue)} /><Metric label="流程內個案" value={String(items.length)} /><Metric label="臨床資料" value="高度敏感" /></section> : null}
     {config.itemType === "project" ? <ProjectMilestonesPanel projects={items} milestones={data.projectMilestones} tasks={data.tasks} onChanged={() => void reload()} /> : null}
     <section className="panel flex flex-col gap-3 p-3 sm:flex-row"><label className="relative flex-1"><span className="sr-only">搜尋此頁</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋標題、內容或下一步" /></label><label className="relative sm:w-48"><span className="sr-only">狀態</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><select className="field pl-10" value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="all">全部</option></select></label></section>
     <section className="grid gap-3 xl:grid-cols-2">{items.length ? items.map((item) => <ItemCard key={item.id} item={item} currentUserId={data.currentUser.id} onEdit={() => setEditing(item)} onComplete={() => update(item, { status: "completed" })} onArchive={() => update(item, { archived_at: new Date().toISOString() })} />) : <div className="panel col-span-full p-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><Plus className="h-5 w-5" /></div><h2 className="mt-4 text-lg font-bold">目前沒有{config.title}項目</h2><p className="muted mt-2 text-sm">你可以新增第一項，或調整上方篩選。</p><Button className="mt-5" onClick={() => setAdding(true)}>{config.addLabel}</Button></div>}</section>
     {adding || editing ? <ItemModal config={config} item={editing} currentUserId={data.currentUser.id} onClose={() => { setAdding(false); setEditing(null); }} onSaved={() => { setAdding(false); setEditing(null); void reload(); }} /> : null}
   </div>;
+}
+
+function WaitingWorkspace() {
+  const { data, loading, error, reload } = useControlData();
+  const [adding, setAdding] = useState(false);
+  if (loading || error || !data) return <LoadingState error={error} />;
+  const tasks = data.tasks
+    .filter((task) => task.status === "waiting" && !task.deleted_at && !task.archived_at)
+    .sort((left, right) => (left.follow_up_date ?? "9999-12-31").localeCompare(right.follow_up_date ?? "9999-12-31"));
+  const legacyCount = data.operatingItems.filter((item) => item.item_type === "waiting" && !item.archived_at).length;
+
+  async function resumeTask(id: string) {
+    await controlAction("update_task", { id, changes: { status: "in_progress" } });
+    await reload();
+  }
+
+  return <div className="space-y-5">
+    <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">Waiting</p><h1 className="page-title mt-1">等待清單</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">同一個工作清單內集中查看等待誰、等待甚麼及下次跟進日期；等待中的工作不會佔用今日三項。</p></div><Button onClick={() => setAdding(true)}><Plus className="h-5 w-5" />新增等待工作</Button></section>
+    {tasks.length ? <section className="grid gap-3">{tasks.map((task) => {
+      const handlerId = task.assignee_id ?? task.owner_id ?? task.user_id;
+      const handler = handlerId === data.currentUser.id ? "我" : data.participants.find((person) => person.user_id === handlerId)?.display_name ?? "已指派使用者";
+      return <article key={task.id} className="panel p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="text-xs font-bold text-indigo-700">現在由 {handler} 跟進</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">{task.title}</h2></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">等待別人</span></div><dl className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt className="text-xs font-bold text-slate-500">等待誰</dt><dd className="mt-1 font-semibold text-slate-800">{task.waiting_for || "尚未填寫"}</dd></div><div><dt className="text-xs font-bold text-slate-500">等待甚麼</dt><dd className="mt-1 font-semibold text-slate-800">{task.waiting_on || task.next_action || "尚未填寫"}</dd></div><div><dt className="text-xs font-bold text-slate-500">下次跟進</dt><dd className="mt-1 font-semibold text-slate-800">{formatDate(task.follow_up_date)}</dd></div></dl><div className="mt-4 flex flex-wrap gap-2"><Link href={`/tasks/${task.id}`} className="inline-flex min-h-11 items-center rounded-lg bg-white px-4 font-semibold text-slate-800 ring-1 ring-slate-200">查看完整工作</Link><Button variant="secondary" onClick={() => void resumeTask(task.id)}>收到回覆，繼續處理</Button></div></article>;
+    })}</section> : <section className="panel p-8 text-center"><h2 className="text-lg font-bold">目前沒有等待中的工作</h2><p className="muted mt-2 text-sm">需要等待別人時再加入，今日三項會保持清晰。</p></section>}
+    {legacyCount ? <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">舊版另有 {legacyCount} 項 Waiting 資料仍安全保留，沒有刪除或改寫；新工作會統一加入目前的 Work Queue。</p> : null}
+    {adding ? <Modal title="新增等待工作" onClose={() => setAdding(false)}><TaskForm userId={data.currentUser.id} participants={data.participants} compact preset={{ status: "waiting", area: "personal", source_type: "follow_up" }} onSaved={() => { setAdding(false); void reload(); }} onCancel={() => setAdding(false)} /></Modal> : null}
+  </div>;
+}
+
+function RetiredModuleNotice() {
+  return <section className="mx-auto max-w-2xl panel p-6 sm:p-8"><p className="eyebrow">Personal Work Only</p><h1 className="page-title mt-1">這個舊有營運模組已從工作流程停用</h1><p className="muted mt-3 leading-7">原有資料沒有刪除或改寫。Derek Panel 現在只用作 Derek、Suki 及 Amigo 的個人工作管理；新增工作請使用統一 Work Queue。</p><Link className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 font-bold text-white" href="/tasks">前往任務</Link></section>;
 }
 
 function InboxWorkspace() {
@@ -247,7 +277,6 @@ function ItemCard({ item, currentUserId, onEdit, onComplete, onArchive }: { item
         {item.next_action ? <p><span className="font-semibold">下一步：</span>{item.next_action}</p> : null}
         {item.due_date ? <p className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4 text-slate-400" />{formatDate(item.due_date)}</p> : null}
         {age ? <p className="text-amber-700">已等待 {age.days} 日 · {age.band}</p> : null}
-        {item.item_type === "client" && item.metadata.monthlyRevenue ? <p>每月收入：{formatCurrency(Number(item.metadata.monthlyRevenue))}</p> : null}
       </div>
       {hasPrivateCaptureFile ? <CaptureFiles inboxItemId={item.id} /> : null}
       {owner ? <div className="mt-4 flex flex-wrap gap-2"><Button variant="secondary" onClick={onEdit}>修改</Button>{item.status !== "completed" ? <Button variant="success" onClick={onComplete}><Check className="h-4 w-4" />完成</Button> : null}<Button variant="ghost" onClick={onArchive}><Archive className="h-4 w-4" />封存</Button></div> : <p className="muted mt-4 text-xs">由對方分享 · 只按授權權限顯示</p>}
@@ -259,11 +288,11 @@ function ItemModal({ config, item, onClose, onSaved }: { config: ViewConfig; ite
   const [form, setForm] = useState({ title: item?.title ?? "", description: item?.description ?? "", dueDate: item?.due_date ?? "", nextAction: item?.next_action ?? "", status: item?.status ?? (config.itemType === "inbox" ? "inbox" : "active"), sensitive: item?.sensitive ?? Boolean(config.sensitive), monthlyRevenue: String(item?.metadata.monthlyRevenue ?? ""), conversionProbability: String(item?.metadata.conversionProbability ?? ""), person: String(item?.metadata.person ?? ""), lastContactDate: String(item?.metadata.lastContactDate ?? ""), store: String(item?.metadata.store ?? "") });
   const [saving, setSaving] = useState(false); const [error, setError] = useState("");
   function set(name: keyof typeof form, value: string | boolean) { setForm((current) => ({ ...current, [name]: value })); }
-  async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); setError(""); const metadata: Record<string, unknown> = { ...(item?.metadata ?? {}) }; if (config.itemType === "client") { metadata.monthlyRevenue = Number(form.monthlyRevenue || 0); metadata.conversionProbability = Number(form.conversionProbability || 0); } if (config.itemType === "waiting") { metadata.person = form.person; metadata.lastContactDate = form.lastContactDate; } if (config.itemType === "shopping") metadata.store = form.store; try { if (item) await controlAction("update_item", { id: item.id, changes: { title: form.title, description: form.description || null, due_date: form.dueDate || null, next_action: form.nextAction || null, status: form.status, metadata } }); else await controlAction("create_item", { itemType: config.itemType || (config.area === "family" ? "event" : "note"), title: form.title, description: form.description, dueDate: form.dueDate, nextAction: form.nextAction, status: form.status, area: config.area, sensitive: form.sensitive, metadata }); onSaved(); } catch (caught) { setError(caught instanceof Error ? caught.message : "未能儲存。"); } finally { setSaving(false); } }
+  async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); setError(""); const metadata: Record<string, unknown> = { ...(item?.metadata ?? {}) }; if (config.itemType === "waiting") { metadata.person = form.person; metadata.lastContactDate = form.lastContactDate; } if (config.itemType === "shopping") metadata.store = form.store; try { if (item) await controlAction("update_item", { id: item.id, changes: { title: form.title, description: form.description || null, due_date: form.dueDate || null, next_action: form.nextAction || null, status: form.status, metadata } }); else await controlAction("create_item", { itemType: config.itemType || (config.area === "family" ? "event" : "note"), title: form.title, description: form.description, dueDate: form.dueDate, nextAction: form.nextAction, status: form.status, area: config.area, sensitive: form.sensitive, metadata }); onSaved(); } catch (caught) { setError(caught instanceof Error ? caught.message : "未能儲存。"); } finally { setSaving(false); } }
   return <Modal title={item ? `修改${config.title}項目` : config.addLabel} onClose={onClose}><form className="grid gap-4" onSubmit={save}><label><span className="label">名稱</span><input className="field mt-2" value={form.title} onChange={(event) => set("title", event.target.value)} autoFocus required /></label>{config.itemType !== "inbox" ? <><label><span className="label">內容</span><textarea className="field mt-2 min-h-28" value={form.description} onChange={(event) => set("description", event.target.value)} /></label><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">日期／死線</span><input className="field mt-2" type="date" value={form.dueDate} onChange={(event) => set("dueDate", event.target.value)} /></label><label><span className="label">狀態</span><select className="field mt-2" value={form.status} onChange={(event) => set("status", event.target.value as typeof form.status)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label></div><label><span className="label">清晰下一步</span><input className="field mt-2" value={form.nextAction} onChange={(event) => set("nextAction", event.target.value)} placeholder="例如：打開表格，列出尚欠資料" /></label></> : null}{config.itemType === "waiting" ? <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">等待誰</span><input className="field mt-2" value={form.person} onChange={(event) => set("person", event.target.value)} /></label><label><span className="label">上次聯絡</span><input className="field mt-2" type="date" value={form.lastContactDate} onChange={(event) => set("lastContactDate", event.target.value)} /></label></div> : null}{config.itemType === "client" ? <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">預計每月收入（HKD）</span><input className="field mt-2" type="number" min="0" value={form.monthlyRevenue} onChange={(event) => set("monthlyRevenue", event.target.value)} /></label><label><span className="label">成交機會（%）</span><input className="field mt-2" type="number" min="0" max="100" value={form.conversionProbability} onChange={(event) => set("conversionProbability", event.target.value)} /></label></div> : null}{config.itemType === "shopping" ? <label><span className="label">商店</span><input className="field mt-2" value={form.store} onChange={(event) => set("store", event.target.value)} /></label> : null}<label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={form.sensitive} onChange={(event) => set("sensitive", event.target.checked)} /><span><span className="block font-semibold">敏感資料</span><span className="muted block text-xs">附件及 linked document 不會預設分享</span></span></label>{error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}<div className="flex flex-wrap gap-2"><Button type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存"}</Button><Button type="button" variant="secondary" onClick={onClose}>取消</Button></div></form></Modal>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="panel p-4"><p className="muted text-xs font-bold uppercase tracking-[.1em]">{label}</p><p className="mt-2 text-xl font-bold">{value}</p></div>; }
 type ViewConfig = { title: string; eyebrow: string; description: string; area: Area; itemType?: string; addLabel: string; sensitive?: boolean };
 const statusLabel: Record<OperatingItem["status"], string> = { inbox: "收集箱", active: "進行中", waiting: "等待中", blocked: "受阻", review: "待檢視", completed: "已完成", cancelled: "已取消" };
-const itemTypeLabel: Record<string, string> = { inbox: "收集箱", project: "項目", waiting: "等待", decision: "決策", client: "客戶", sop: "SOP", school: "學校", event: "家庭事項", pet: "寵物", household: "家居", shopping: "購物", health: "健康行政", document: "文件", vehicle: "車輛", note: "私人筆記" };
+const itemTypeLabel: Record<string, string> = { inbox: "收集箱", project: "項目", waiting: "等待", decision: "決策", client: "舊有已停用資料", sop: "SOP", school: "學校", event: "家庭事項", pet: "寵物", household: "家居", shopping: "購物", health: "健康行政", document: "文件", vehicle: "車輛", note: "私人筆記" };

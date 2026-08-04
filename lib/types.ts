@@ -39,6 +39,8 @@ export type Task = {
   owner: string | null;
   due_date: string | null;
   follow_up_date: string | null;
+  waiting_for?: string | null;
+  waiting_on?: string | null;
   status: TaskStatus;
   next_action: string | null;
   risk: Risk;

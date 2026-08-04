@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { TimeEstimateHint } from "@/components/TimeEstimateHint";
 import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
+import { personalTaskTemplates } from "@/lib/personal-task-templates";
 import type { OperatingItem, Task } from "@/lib/types";
 
 type TaskFormState = {
@@ -16,6 +17,8 @@ type TaskFormState = {
   owner: string;
   due_date: string;
   follow_up_date: string;
+  waiting_for: string;
+  waiting_on: string;
   status: string;
   risk: string;
   next_action: string;
@@ -52,6 +55,8 @@ const defaultState: TaskFormState = {
   owner: "",
   due_date: "",
   follow_up_date: "",
+  waiting_for: "",
+  waiting_on: "",
   status: "not_started",
   risk: "low",
   next_action: "",
@@ -111,6 +116,8 @@ export function TaskForm({
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
           follow_up_date: initialTask.follow_up_date ?? "",
+          waiting_for: initialTask.waiting_for ?? "",
+          waiting_on: initialTask.waiting_on ?? "",
           status: initialTask.status === "done" || initialTask.status === "cancelled" ? initialTask.status : "not_started",
           risk: initialTask.risk,
           next_action: initialTask.next_action ?? "",
@@ -148,8 +155,8 @@ export function TaskForm({
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
-  const draftKey = `dcp:task-form-draft:v1:${userId}:new`;
-  const draftEligible = !initialTask && !preset;
+  const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
+  const draftEligible = !initialTask;
 
   useEffect(() => {
     if (!draftEligible) { setDraftReady(true); return; }
@@ -182,6 +189,19 @@ export function TaskForm({
 
   function update(name: keyof TaskFormState, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function applyTemplate(templateId: string) {
+    const template = personalTaskTemplates.find((item) => item.id === templateId);
+    if (!template) return;
+    setForm((current) => ({
+      ...current,
+      title: template.title,
+      next_action: template.nextAction,
+      source_type: template.sourceType,
+      status: templateId.startsWith("waiting-") ? "waiting" : current.status,
+      waiting_on: templateId.startsWith("waiting-") ? template.title : current.waiting_on
+    }));
   }
 
   function toggleRecurrenceWeekday(day: number) {
@@ -259,6 +279,8 @@ export function TaskForm({
       title: form.title.trim(),
       dueDate: form.due_date || null,
       followUpDate: form.follow_up_date || null,
+      waitingFor: form.waiting_for.trim() || null,
+      waitingOn: form.waiting_on.trim() || null,
       status: form.status,
       nextAction: form.next_action.trim() || null,
       risk: form.risk,
@@ -282,6 +304,7 @@ export function TaskForm({
       if (initialTask) {
         await controlAction("update_task", { id: initialTask.id, noticeUserIds: payload.noticeUserIds, changes: {
           title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
+          waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
           estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel, context: payload.context,
           definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
@@ -327,7 +350,17 @@ export function TaskForm({
           </div>
         </section>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {!initialTask ? (
+        <details className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <summary className="min-h-11 cursor-pointer list-none font-extrabold text-slate-900">由個人工作範本開始（可選）</summary>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {personalTaskTemplates.map((template) => (
+              <button key={template.id} type="button" className="min-h-14 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-700 hover:border-indigo-400" onClick={() => applyTemplate(template.id)}>{template.label}</button>
+            ))}
+          </div>
+        </details>
+      ) : null}
+      {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">範圍</span>
           <select className="field mt-2" value={form.area} onChange={(event) => update("area", event.target.value)}>
@@ -344,8 +377,8 @@ export function TaskForm({
             ))}
           </select>
         </label>
-      </div>
-      {otherParticipants.length ? (
+      </div> : null}
+      {!compact && otherParticipants.length ? (
         <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <legend className="px-1 font-extrabold text-slate-900">俾邊個知道呢項任務？</legend>
           <p className="mt-1 text-sm leading-6 text-slate-600">
@@ -367,10 +400,17 @@ export function TaskForm({
         </fieldset>
       ) : null}
       <label>
-        <span className="label">任務標題</span>
+        <span className="label">要做甚麼</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} required />
       </label>
-      {!initialTask ? (
+      {compact ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label><span className="label">何時完成（可留空）</span><input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} /></label>
+          <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
+        </div>
+      ) : null}
+      {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
+      {!initialTask && !compact ? (
         <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
           <label className="flex cursor-pointer items-start gap-3">
             <input
@@ -454,7 +494,7 @@ export function TaskForm({
           ) : null}
         </fieldset>
       ) : null}
-      {projects.length ? (
+      {!compact && projects.length ? (
         <label>
           <span className="label">所屬項目（可選）</span>
           <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
@@ -464,7 +504,7 @@ export function TaskForm({
           <span className="mt-1 block text-xs text-slate-600">連結只用作規劃；不會自動分享任務或改變現有權限。</span>
         </label>
       ) : null}
-      <label>
+      {!compact ? <label>
         <span className="label">下一步</span>
         <input
           className="field mt-2"
@@ -472,8 +512,8 @@ export function TaskForm({
           onChange={(event) => update("next_action", event.target.value)}
           placeholder="可選填，例如：打開文件，寫第一句摘要"
         />
-      </label>
-      {!initialTask ? (
+      </label> : null}
+      {!initialTask && !compact ? (
         <details
           className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
           open={handoffOpen}
@@ -564,7 +604,7 @@ export function TaskForm({
           </div>
         </details>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">{form.recurrence_enabled && form.recurrence_deadline_mode === "none" ? "到期日（已選沒有期限）" : "到期日"}</span>
           <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
@@ -578,14 +618,15 @@ export function TaskForm({
             onChange={(event) => update("follow_up_date", event.target.value)}
           />
         </label>
-      </div>
-      <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+      </div> : null}
+      {form.status === "waiting" ? <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2"><label><span className="label">等待誰</span><input className="field mt-2 bg-white" value={form.waiting_for} onChange={(event) => update("waiting_for", event.target.value)} placeholder="例如：Amigo" /></label><label><span className="label">等待甚麼</span><input className="field mt-2 bg-white" value={form.waiting_on} onChange={(event) => update("waiting_on", event.target.value)} placeholder="例如：文件覆核結果" /></label><label className="sm:col-span-2"><span className="label">下次跟進日期</span><input className="field mt-2 bg-white" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} /></label></div> : null}
+      {!compact ? <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
         <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
         {initialTask ? <label><span className="label">實際時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.actual_minutes} onChange={(event) => update("actual_minutes", event.target.value)} /><span className="mt-1 block text-xs text-slate-500">只用於你自己的估時學習</span></label> : null}
         <label><span className="label">能量</span><select className="field mt-2" value={form.energy_level} onChange={(event) => update("energy_level", event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
         <label><span className="label">情境</span><select className="field mt-2" value={form.context} onChange={(event) => update("context", event.target.value)}><option value="mobile">手機</option><option value="computer">電腦</option><option value="home">家中</option><option value="office">辦公室</option><option value="phone">電話</option><option value="night_shift">夜更可做</option></select></label>
-      </div>
-      <TimeEstimateHint sourceType={form.source_type} context={form.context} energyLevel={form.energy_level} estimatedMinutes={form.estimated_minutes} onUse={(minutes) => update("estimated_minutes", String(minutes))} />
+      </div> : null}
+      {!compact ? <TimeEstimateHint sourceType={form.source_type} context={form.context} energyLevel={form.energy_level} estimatedMinutes={form.estimated_minutes} onUse={(minutes) => update("estimated_minutes", String(minutes))} /> : null}
       {!compact ? (
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
@@ -645,7 +686,7 @@ export function TaskForm({
           </div>
         </details>
       ) : null}
-      {error ? <p className="rounded-lg bg-red-50 p-3 text-base font-semibold text-red-700">{error}</p> : null}
+      {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900">{error}</p> : null}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={saving || Boolean(createdTaskId)}>
           {saving ? "儲存中..." : initialTask ? "儲存修改" : "新增任務"}

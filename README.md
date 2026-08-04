@@ -1,6 +1,6 @@
 # Derek Control Panel
 
-私人優先、雙帳戶獨立的 ADHD-friendly 生活與工作控制台。登入後標題會按帳戶顯示為 `{displayName} Panel`；所有記錄預設私人，只有明確分享、接受指派或接受共同擁有後才可見。
+私人優先、供 Derek、Suki 及 Amigo 使用的低認知負荷個人工作控制台。登入後標題會按帳戶顯示為 `{displayName} Panel`；所有記錄預設私人，只有明確分享、接受指派或接受共同擁有後才可見。財務保留在獨立頁面；系統不再提供營運或 CRM 新增流程。
 
 ## 主要能力
 
@@ -23,9 +23,10 @@
 - 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI
 - ChatGPT Task Analysis：系統遮罩敏感資料及寫好 Prompt；一鍵複製並開啟 ChatGPT，回覆可從剪貼簿貼回、驗證及預覽，使用者確認後才更新完成標準、Next Action 及估時
 - Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步。Derek 的 Personal／Family 固定使用 `derekcy0309@gmail.com`，Suki 固定使用 `love29suki@gmail.com`，工作帳戶固定為 `info@wecarenursing.com.hk`
-- Suki 書面工作流：主頁只突出三項工作；安靜模式只保留真正緊急事項；六款 WhatsApp／電郵範本及固定規則摘要全在本機處理，確認前不會開啟發送程式
-- 每日綜合跟進電郵：家屬回覆、RN、物資、付款、逾期及未來三個曆日事項合併成每人每天最多一封；沿用登入電郵及既有權限，沒有項目時不寄出
-- Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
+- 三角色個人首頁：每人最多三項可立即開始的工作；Derek、Suki、Amigo 只看到適合自己的摘要，沒有個人表現排名
+- 個人工作範本：會議後跟進、等待文件、等待別人決定、每週行政、每月財務檢查、社交媒體及個人學習
+- 每日綜合提醒：今日工作、等待別人、接近期限及需要重新安排事項合併成每人每天最多一封；不混入財務或已停用營運資料
+- Inbox、Projects、統一 Task Waiting、Decisions、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
 - Cashflow、Meetings、Calendar、全域搜尋、個人設定及安全匯出
@@ -83,6 +84,7 @@ supabase/migrations/20260803100000_admin_account_activity.sql
 supabase/migrations/20260804100000_three_role_daily_workflow.sql
 supabase/migrations/20260804130000_recurring_no_deadline_reminders.sql
 supabase/migrations/20260804160000_suki_workflow_followups.sql
+supabase/migrations/20260804200000_personal_work_queue.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -117,6 +119,7 @@ supabase/migrations/20260803100000_admin_account_activity.rollback.sql
 supabase/migrations/20260804100000_three_role_daily_workflow.rollback.sql
 supabase/migrations/20260804130000_recurring_no_deadline_reminders.rollback.sql
 supabase/migrations/20260804160000_suki_workflow_followups.rollback.sql
+supabase/migrations/20260804200000_personal_work_queue.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。

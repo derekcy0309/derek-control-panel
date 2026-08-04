@@ -8,9 +8,9 @@ import { resolveWorkspaceRole } from "../lib/workspace-role.ts";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
-test("Cantonese handoff becomes an editable, bounded work preview", () => {
+test("Cantonese personal handoff becomes an editable, bounded work preview", () => {
   const preview = parseHandoffText({
-    text: "李太星期五出院，Suki問醫院攞antibiotic schedule，安排星期五晚RN，準備PICC dressing pack，抗生素時間要我確認。",
+    text: "星期五前由 Suki 整理會議 notes，先列出三個下一步，完成後要我確認。",
     currentUserId: "11111111-1111-4111-8111-111111111111",
     currentUserName: "Derek",
     participants: [
@@ -19,19 +19,16 @@ test("Cantonese handoff becomes an editable, bounded work preview", () => {
     ],
     today: "2026-08-04"
   });
-  assert.equal(preview.caseCode, "李太");
   assert.equal(preview.ownerName, "Suki");
   assert.equal(preview.ownerId, "22222222-2222-4222-8222-222222222222");
   assert.equal(preview.dueDate, "2026-08-07");
-  assert.equal(preview.rnRequired, true);
-  assert.equal(preview.materialsRequired, "PICC dressing pack");
   assert.equal(preview.needsDecisionFromName, "Derek");
   assert.equal(preview.needsDecisionFromId, "11111111-1111-4111-8111-111111111111");
 });
 
 test("incomplete handoff remains usable without inventing a deadline", () => {
   const preview = parseHandoffText({
-    text: "幫手跟進醫院資料",
+    text: "幫手跟進文件",
     currentUserId: "11111111-1111-4111-8111-111111111111",
     currentUserName: "Derek",
     participants: [],
@@ -43,10 +40,10 @@ test("incomplete handoff remains usable without inventing a deadline", () => {
   assert.ok(preview.nextAction);
 });
 
-test("duplicate guard uses title or case plus date and never submits silently", () => {
+test("duplicate guard uses title plus date and never submits silently", () => {
   assert.equal(isLikelyDuplicate(
-    { title: "問醫院攞 schedule", caseCode: "C-102", dueDate: "2026-08-07" },
-    [{ title: "問醫院攞 schedule", case_code: "C-102", due_date: "2026-08-07" }]
+    { title: "整理會議 notes", dueDate: "2026-08-07" },
+    [{ title: "整理會議 notes", due_date: "2026-08-07" }]
   ), true);
   const form = read("components/VoiceHandoffForm.tsx");
   assert.match(form, /duplicate && !allowDuplicate/);

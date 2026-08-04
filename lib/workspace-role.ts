@@ -9,18 +9,18 @@ export const workspaceRoleLabels: Record<WorkspaceRole, string> = {
 
 export const taskTypeLabels: Record<WorkflowTaskType, string> = {
   general: "一般工作",
-  intake: "Intake",
-  scheduling: "Scheduling",
-  materials: "物資準備",
-  rn_coordination: "RN 安排",
+  intake: "待整理",
+  scheduling: "時間安排",
+  materials: "文件整理",
+  rn_coordination: "等待別人",
   follow_up: "跟進",
-  sop: "SOP",
-  ai_document: "AI／文件草稿",
-  system_issue: "系統問題",
-  compliance: "Compliance／CCSV",
-  training: "Training Material",
-  assessment: "Assessment",
-  family_conference: "Family Conference"
+  sop: "工作流程",
+  ai_document: "文件草稿",
+  system_issue: "系統工作",
+  compliance: "檢查事項",
+  training: "學習及進修",
+  assessment: "等待覆核",
+  family_conference: "會議工作"
 };
 
 export function resolveWorkspaceRole(input: {
@@ -43,10 +43,8 @@ export function resolveWorkspaceRole(input: {
 export function roleTaskLabel(role: WorkspaceRole, task: Task) {
   const type = task.task_type ?? "general";
   if (role === "suki") {
-    if (type === "rn_coordination" || task.rn_required) return "待安排 RN";
-    if (type === "materials" || task.materials_required) return "待準備物資";
-    if (task.client_update_required) return "待回覆家屬";
-    if (task.status === "blocked" || task.status === "waiting") return "需要重新安排";
+    if (task.status === "waiting") return "等待別人";
+    if (task.status === "blocked") return "需要重新安排";
   }
   if (role === "amigo") {
     if (["sop", "ai_document", "system_issue", "compliance", "training"].includes(type)) {
@@ -54,9 +52,8 @@ export function roleTaskLabel(role: WorkspaceRole, task: Task) {
     }
   }
   if (role === "derek") {
-    if (type === "assessment" || type === "family_conference") return taskTypeLabels[type];
     if (task.safety_impact || task.risk === "high") return "高風險／緊急";
+    if (task.needs_decision_from_id && !task.decision_resolved_at) return "等待我決定";
   }
   return taskTypeLabels[type];
 }
-

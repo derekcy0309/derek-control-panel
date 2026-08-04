@@ -1,78 +1,64 @@
-# 三角色每日工作流程
+# 三角色個人工作流程
 
-## 架構決定
+## 定位
 
-- `public.tasks` 繼續是唯一 Work Queue；沒有建立第二套任務表。
-- `workspace_role` 只控制首頁顯示，不授予管理員或資料權限。
+Derek Control Panel 只供 Derek、Suki 及 Amigo 管理自己的工作，不是公司營運、CRM 或專業紀錄系統。
+
+- `public.tasks` 是唯一 Work Queue；沒有建立第二套任務表。
+- `workspace_role` 只控制首頁預設內容，不授予管理員或資料權限。
 - 交接沿用 `assignments`、`task_handoff_notes`、`share_records` 及現有 RLS。
-- 財務沿用 `transactions`、`balances` 及現有 Cashflow 頁；Derek 首頁只讀取本月三個摘要數字。
+- 財務沿用獨立的 Cashflow 頁，不會在個人工作首頁顯示或影響首頁排序。
 - 語音使用瀏覽器／作業系統原生 Speech Recognition，沒有保存錄音或新增付費 AI。
-- 自由文字只由本機規則整理成可修改預覽；確認前不會寫入資料庫。
+- 自由文字只由本機固定規則整理成可修改預覽；確認前不會寫入資料庫。
 
-## 新流程
+## 每日首頁
 
-1. 主頁按「語音交接」或「新增任務」。
-2. 語音／文字先自動保存在該分頁的 versioned `sessionStorage`。
-3. 規則整理個案代號、下一步、負責人、日期、物資、RN、家屬更新及待確認人。
-4. 使用者修改並確認預覽；可能重複時必須再次明確確認。
-5. `client_request_id` 防止網絡重試重複建立任務。
-6. 指派另一人時沿用現有 handoff，對方接受前不會當作已開始。
-7. 指定決定人只可確認 decision 欄位，不能藉此編輯任務其他內容。
+每人首頁最多突出三項可以立即開始的工作。等待別人、需要重新安排或已完成工作不會佔用這三項。任務卡只顯示：
 
-## 資料庫
+- 任務名稱
+- 下一步
+- 期限
+- 優先程度
+- 狀態
 
-Migration：`20260804100000_three_role_daily_workflow.sql`
+Derek 另見等待自己決定及未填日期的數量；Suki 另見新交接、等待別人、需要重新安排及安靜模式；Amigo 另見系統工作、文件整理和等待覆核。
 
-新增：
+## 快速新增與語音
 
-- `user_profiles.workspace_role`
-- `tasks.case_code`
-- `tasks.task_type`
-- `tasks.needs_decision_from_id`
-- `tasks.decision_resolved_at`
-- `tasks.decision_resolved_by_id`
-- `tasks.materials_required`
-- `tasks.rn_required`
-- `tasks.client_update_required`
-- `tasks.client_request_id`
-- `notification_preferences.quiet_mode_until`
+快速新增只需：要做甚麼、何時完成、負責人。其他資料可在任務詳情稍後補充。表單草稿會按登入使用者及表單類型保存在 versioned `sessionStorage`。
 
-Migration 不更新、搬動或刪除既有任務、財務或帳戶資料。新增外鍵及常用查詢均有索引；現有 table RLS 繼續保護新增欄位。
+語音／文字流程：
 
-## 定期任務沒有期限
+1. 講或輸入要做甚麼、第一步、日期、負責人及需要誰確認。
+2. 本機規則整理任務名稱、下一步、負責人、日期、類別及優先程度。
+3. 使用者修改並確認預覽；可能重複時必須再次確認。
+4. `client_request_id` 防止網絡重試重複建立任務。
+5. 指派另一人時沿用現有 handoff，對方接受前不會當作已開始。
 
-新增定期任務時，可在「每次是否有期限」選擇：
+## 等待與交接
 
-- 「每次有到期日」：沿用原本行為，下一個週期日期是該次到期日。
-- 「沒有期限，只按週期提示」：不建立假逾期；週期日期會保存為提示／安排日期。到時該次工作會持續顯示，直至使用者按「今次已完成」、延後或暫停規則。
+Migration：`20260804200000_personal_work_queue.sql`
 
-現有定期任務亦可在任務卡切換模式。切換為沒有期限時，目前未完成一輪的原有到期日會保留為安排／提示日期後才清除，因此不會遺失原本的提示時間，也不會被標示成逾期。
+在既有 `tasks` 新增兩個 nullable 欄位：
 
-Migration：`20260804130000_recurring_no_deadline_reminders.sql`
+- `waiting_for`：等待誰
+- `waiting_on`：等待甚麼
 
-- 新增 `task_recurrence_rules.deadline_mode`，舊規則預設維持 `scheduled`。
-- 新增個人通知偏好 `notification_preferences.recurrence_enabled`。
-- 每次完成只建立一個 successor；`notification_deliveries` 的 dedupe key 防止同一規則同一時段重複提示。
-- 已授權 Browser／PWA 通知時，無期限 recurrence 會按使用者時區及 Today 提醒時間排入 server-side queue；安靜模式仍然生效。
-- 鎖定畫面只顯示中性內容，不包括任務名稱、個案或健康資料。
+Waiting 頁直接讀取 `tasks.status = 'waiting'`，同時顯示 `follow_up_date`。舊版 Waiting 資料仍保留，但新工作不再進入另一套來源。
 
-## 回復
+交接接收者可接受、要求補充、建議改期或暫不接手；已接手者可更新 notes、等待日期、交回上一手或轉交任何已存在並已連接的使用者。系統不會自行建立帳戶。
 
-配對 rollback：`20260804100000_three_role_daily_workflow.rollback.sql`。
+## 提醒與安靜模式
 
-正式執行 rollback 前必須先匯出新欄位資料；rollback 會還原通知及 task update helper，再移除本版本新增欄位。核心 task、finance、account rows 不會被刪除。
+每日摘要只包括個人 Work Queue 及仍啟用的一般生活工作，不包括財務資料或已停用營運類型。摘要保持每日最多一封電郵；介面非緊急提示集中顯示。安靜模式只影響目前使用者，其他人的工作不受影響。
 
-## 私隱與安全
+## 重複工作
 
-- 通知及 audit log 只保存中性摘要，不保存原始語音／交接全文。
-- 原始文字只保存在獲授權的 task description；登出會清除本機未送出草稿。
-- 高風險且明確標示 `safety_impact` 的工作可穿過安靜模式；其他通知延至恢復時間。
-- 臨床內容只會成為待確認工作，不會自動診斷、安排治療或改動任務狀態。
-- 角色首頁只列出資料庫內真實、active、handoff-enabled 的參與者；不建立虛構帳戶。
+重複工作可選每日、每週、每月、自訂或夜更週期。選擇「沒有期限，只按週期提示」時不會製造假逾期；每次完成只產生一個 successor，並可隨時暫停。
 
-## 部署前檢查
+## 回復與部署
 
-1. 在 Preview Supabase backup／branch 驗證 migration 及 rollback。
-2. 用 Derek、Suki、Amigo 三個真實測試帳戶檢查 RLS 和角色首頁。
-3. 測試語音不支援、缺日期、重複提交、待決定確認、安靜模式及網絡重試。
-4. Preview 通過後才可由使用者另行批准 production migration／deployment。
+- `20260804200000_personal_work_queue.rollback.sql` 在有新 waiting 資料時會停止，要求先匯出資料，避免回退時遺失內容。
+- 舊欄位及舊資料沒有被刪除或重寫。
+- 正式套用前必須先在 Preview／staging 驗證 migration、三個角色登入及 RLS。
+- Production migration 和 deployment 必須另行取得使用者明確批准。

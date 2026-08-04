@@ -39,8 +39,7 @@ function TasksContent() {
       if (filters.scope && task.scope !== filters.scope) return false;
       if (filters.source_type && task.source_type !== filters.source_type) return false;
       if (filters.status === "unfinished" && !unfinishedTaskStatuses.includes(task.status as (typeof unfinishedTaskStatuses)[number])) return false;
-      if (filters.status === "done" && task.status !== "done") return false;
-      if (filters.status === "cancelled" && task.status !== "cancelled") return false;
+      if (filters.status && filters.status !== "unfinished" && task.status !== filters.status) return false;
       if (!filters.status && !filters.show_completed && task.status === "done") return false;
       if (filters.risk && task.risk !== filters.risk) return false;
       if (filters.due_date && task.due_date !== filters.due_date) return false;
@@ -67,7 +66,7 @@ function TasksContent() {
       <section className="panel p-4">
         <h3 className="mb-4 text-xl font-bold">篩選</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <FilterSelect label="家庭 / 公司" value={filters.scope} onChange={(value) => setFilters({ ...filters, scope: value })} options={scopeOptions} />
+          <FilterSelect label="家庭 / 工作" value={filters.scope} onChange={(value) => setFilters({ ...filters, scope: value })} options={scopeOptions} />
           <FilterSelect label="類型" value={filters.source_type} onChange={(value) => setFilters({ ...filters, source_type: value })} options={sourceTypeOptions} />
           <FilterSelect label="狀態" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} options={taskStatusFilterOptions} />
           <FilterSelect label="風險" value={filters.risk} onChange={(value) => setFilters({ ...filters, risk: value })} options={riskOptions} />

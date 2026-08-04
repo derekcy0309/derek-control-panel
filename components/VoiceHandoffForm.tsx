@@ -155,11 +155,7 @@ export function VoiceHandoffForm({
         status: "not_started",
         risk: preview.risk,
         requestedPriority: preview.risk === "high" ? 1 : preview.risk === "medium" ? 2 : 3,
-        caseCode: preview.caseCode || null,
         taskType: preview.taskType,
-        materialsRequired: preview.materialsRequired || null,
-        rnRequired: preview.rnRequired,
-        clientUpdateRequired: preview.clientUpdateRequired,
         needsDecisionFromId: preview.needsDecisionFromId || null,
         handoffToUserId: handoffTarget,
         handoffNote: handoffTarget ? preview.nextAction.trim() : null,
@@ -184,7 +180,7 @@ export function VoiceHandoffForm({
       <div className="space-y-5">
         <div className="rounded-xl bg-indigo-50 p-4 text-sm leading-6 text-indigo-950">
           <p className="font-extrabold">可以照平時講廣東話</p>
-          <p className="mt-1">個案是誰？要做甚麼？幾時完成？由誰負責？有甚麼需要確認？</p>
+          <p className="mt-1">要做甚麼？第一步是甚麼？幾時完成？由誰負責？需要誰確認？</p>
         </div>
         <label className="block">
           <span className="label">交接內容</span>
@@ -192,7 +188,7 @@ export function VoiceHandoffForm({
             className="field mt-2 min-h-44 text-base"
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder="例如：李太星期五出院，Suki問醫院攞 antibiotic schedule，安排星期五晚 RN，準備 PICC dressing pack，抗生素時間要我確認。"
+            placeholder="例如：星期五前由 Suki 整理會議 notes，先列出三個下一步，完成後要我確認。"
             autoFocus
           />
         </label>
@@ -215,22 +211,16 @@ export function VoiceHandoffForm({
     <div className="space-y-5">
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">
         <p className="flex items-center gap-2 font-extrabold"><ShieldCheck className="h-5 w-5" />儲存前確認</p>
-        <p className="mt-1">以下只是工作草稿，不會自動作出臨床決定。需要確認的內容必須由指定人員按確認。</p>
+        <p className="mt-1">以下只是工作草稿。請先修改及確認；系統不會自行建立、交派或完成工作。</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2"><span className="label">任務名稱</span><input className="field mt-2" value={preview.title} onChange={(event) => change("title", event.target.value)} /></label>
         <label className="sm:col-span-2"><span className="label">下一步</span><textarea className="field mt-2 min-h-24" value={preview.nextAction} onChange={(event) => change("nextAction", event.target.value)} /></label>
-        <label><span className="label">個案／病人代號</span><input className="field mt-2" value={preview.caseCode} onChange={(event) => change("caseCode", event.target.value)} placeholder="避免完整姓名" /></label>
         <label><span className="label">截止日期（可留空）</span><input className="field mt-2" type="date" value={preview.dueDate} onChange={(event) => change("dueDate", event.target.value)} /></label>
         <label><span className="label">由誰跟進</span><select className="field mt-2" value={preview.ownerId} onChange={(event) => { const person = people.find((item) => item.user_id === event.target.value); change("ownerId", event.target.value); change("ownerName", person?.display_name ?? ""); }}>{people.map((person) => <option key={person.user_id} value={person.user_id}>{person.user_id === currentUserId ? `我（${person.display_name}）` : person.display_name}</option>)}</select></label>
         <label><span className="label">工作類別</span><select className="field mt-2" value={preview.taskType} onChange={(event) => change("taskType", event.target.value as WorkflowTaskType)}>{taskTypes.map((type) => <option key={type} value={type}>{taskTypeLabels[type]}</option>)}</select></label>
         <label><span className="label">需要誰決定／確認</span><select className="field mt-2" value={preview.needsDecisionFromId} onChange={(event) => { const person = people.find((item) => item.user_id === event.target.value); change("needsDecisionFromId", event.target.value); change("needsDecisionFromName", person?.display_name ?? ""); }}><option value="">不需要</option>{people.map((person) => <option key={person.user_id} value={person.user_id}>{person.display_name}</option>)}</select></label>
         <label><span className="label">優先程度</span><select className="field mt-2" value={preview.risk} onChange={(event) => change("risk", event.target.value as HandoffPreview["risk"])}><option value="low">一般</option><option value="medium">需要留意</option><option value="high">真正緊急／高風險</option></select></label>
-        <label className="sm:col-span-2"><span className="label">需要物資</span><input className="field mt-2" value={preview.materialsRequired} onChange={(event) => change("materialsRequired", event.target.value)} /></label>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 p-3"><input className="h-5 w-5" type="checkbox" checked={preview.rnRequired} onChange={(event) => change("rnRequired", event.target.checked)} /><span className="font-semibold">需要安排 RN</span></label>
-        <label className="flex min-h-14 items-center gap-3 rounded-xl border border-slate-200 p-3"><input className="h-5 w-5" type="checkbox" checked={preview.clientUpdateRequired} onChange={(event) => change("clientUpdateRequired", event.target.checked)} /><span className="font-semibold">需要回覆家屬／客戶</span></label>
       </div>
       {duplicate ? <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4"><input className="mt-0.5 h-5 w-5" type="checkbox" checked={allowDuplicate} onChange={(event) => setAllowDuplicate(event.target.checked)} /><span><span className="block font-extrabold text-amber-950">可能已有相同任務</span><span className="mt-1 block text-sm text-amber-900">先檢查；如確定是另一件工作，剔選後才建立。</span></span></label> : null}
       {message ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="status">{message}</p> : null}

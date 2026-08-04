@@ -33,7 +33,7 @@ export function DueSoonDigestEmail({
           <h1 style={heading}>{displayName}，呢封係溫和預覽</h1>
           <p style={intro}>
             {items.length
-              ? `家屬回覆、護士安排、物資、付款同未來 ${horizonDays} 日事項已合併成每日一次摘要。唔需要一次過完成；先揀一個最細下一步就夠。`
+              ? `今日工作、等待回覆、接近期限同未來 ${horizonDays} 日事項已合併成一封摘要。唔需要一次過完成；先揀一個最細下一步就夠。`
               : "今日暫時沒有需要跟進的事項。可以按實際時間安排，毋須為清單製造額外壓力。"}
           </p>
           <section style={list}>

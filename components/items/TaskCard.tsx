@@ -96,6 +96,32 @@ export function TaskCard({
     await updateTask({ follow_up_date: nextDate });
   }
 
+  async function splitIntoSmallTask() {
+    const nextAction = window.prompt("輸入一個 5–25 分鐘可以開始的最小步驟");
+    if (!nextAction?.trim() || actionBusy) return;
+    setActionBusy(true);
+    setActionError("");
+    try {
+      await controlAction("create_task", {
+        clientRequestId: crypto.randomUUID(),
+        area: task.area ?? (task.scope === "company" ? "work" : "personal"),
+        sourceType: task.source_type,
+        title: `${task.title}：${nextAction.trim().slice(0, 60)}`,
+        description: `由原有工作「${task.title}」拆出。`,
+        nextAction: nextAction.trim(),
+        dueDate: task.due_date,
+        status: "not_started",
+        risk: "low",
+        projectId: task.project_id ?? null
+      });
+      onChanged();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "未能拆出小任務，原有工作沒有改動。");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   return (
     <article className={prominent ? "rounded-2xl border-2 border-indigo-200 bg-white p-5 shadow-soft" : "panel-soft p-4"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -164,14 +190,12 @@ export function TaskCard({
           <span className="font-semibold">下一步：</span>
           {task.next_action || "未設定"}
         </p>
-        {task.case_code ? <p><span className="font-semibold">個案代號：</span>{task.case_code}</p> : null}
-        {task.materials_required ? <p><span className="font-semibold">需要物資：</span>{task.materials_required}</p> : null}
-        {task.rn_required ? <p className="font-semibold text-indigo-800">需要安排 RN</p> : null}
-        {task.client_update_required ? <p className="font-semibold text-indigo-800">需要回覆家屬／客戶</p> : null}
+        {task.status === "waiting" && task.waiting_for ? <p><span className="font-semibold">等待誰：</span>{task.waiting_for}</p> : null}
+        {task.status === "waiting" && task.waiting_on ? <p><span className="font-semibold">等待甚麼：</span>{task.waiting_on}</p> : null}
       </div>
       {task.needs_decision_from_id && !task.decision_resolved_at ? (
         <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div><p className="font-extrabold text-amber-950">等待指定人員決定／確認</p><p className="mt-1 text-sm text-amber-900">系統不會自行執行臨床內容或更改任務。</p></div>
+          <div><p className="font-extrabold text-amber-950">等待指定人員決定／確認</p><p className="mt-1 text-sm text-amber-900">系統只會記錄確認，不會自行更改或完成任務。</p></div>
           {task.needs_decision_from_id === currentUserId ? <Button disabled={actionBusy} onClick={() => void confirmDecision()}>確認已決定</Button> : null}
         </div>
       ) : task.decision_resolved_at ? <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">這項決定已由指定人員確認。</p> : null}
@@ -184,10 +208,13 @@ export function TaskCard({
           延後 3 日
         </Button>
         <Button variant="secondary" onClick={() => void delay(7)} disabled={actionBusy}>
-          延後 7 日
+          下星期處理
         </Button>
         <Button variant="secondary" onClick={() => void delay()} disabled={actionBusy}>
           重新安排
+        </Button>
+        <Button variant="secondary" onClick={() => void splitIntoSmallTask()} disabled={actionBusy}>
+          拆成小任務
         </Button>
         <Button variant="secondary" onClick={() => void updateTask({ status: "blocked" })} disabled={actionBusy}>
           需要重新安排

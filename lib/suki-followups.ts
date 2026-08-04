@@ -1,12 +1,11 @@
 import type { Task } from "@/lib/types";
 
-export type SukiFollowupCategory = "family_reply" | "rn" | "materials" | "payment" | "overdue";
+export type SukiFollowupCategory = "waiting" | "due_soon" | "rearrange" | "overdue";
 
 export const sukiFollowupCategoryLabels: Record<SukiFollowupCategory, string> = {
-  family_reply: "家屬／客戶回覆",
-  rn: "護士安排",
-  materials: "物資",
-  payment: "付款",
+  waiting: "等待別人",
+  due_soon: "接近期限",
+  rearrange: "需要重新安排",
   overdue: "需要重新安排"
 };
 
@@ -43,10 +42,9 @@ export function taskFollowupCategories(task: Task, today = hongKongDate()) {
   const categories: SukiFollowupCategory[] = [];
   const effectiveDate = earliestDate(task.due_date, task.follow_up_date, task.planned_date);
   if (effectiveDate && effectiveDate < today) categories.push("overdue");
-  if (task.client_update_required || task.task_type === "follow_up") categories.push("family_reply");
-  if (task.rn_required || task.task_type === "rn_coordination") categories.push("rn");
-  if (Boolean(task.materials_required?.trim()) || task.task_type === "materials") categories.push("materials");
-  if (paymentPattern.test([task.title, task.next_action, task.description].filter(Boolean).join(" "))) categories.push("payment");
+  if (task.status === "waiting") categories.push("waiting");
+  if (task.status === "blocked") categories.push("rearrange");
+  if (effectiveDate && effectiveDate >= today && effectiveDate <= addDays(today, 3)) categories.push("due_soon");
   return categories;
 }
 
@@ -64,4 +62,8 @@ function earliestDate(...values: Array<string | null | undefined>) {
   return dates[0] ?? null;
 }
 
-const paymentPattern = /(付款|收款|款項|發票|invoice|payment|pay\b)/i;
+function addDays(iso: string, days: number) {
+  const date = new Date(`${iso}T12:00:00+08:00`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
