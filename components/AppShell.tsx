@@ -119,7 +119,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     const response = await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" });
-    if (response.ok && currentUserId) await clearOfflineWrites(currentUserId).catch(() => undefined);
+    if (response.ok && currentUserId) {
+      await clearOfflineWrites(currentUserId).catch(() => undefined);
+      try {
+        sessionStorage.removeItem(`dcp:voice-handoff-draft:v1:${currentUserId}`);
+        sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:new`);
+      } catch {
+        // Sign-out must still complete if browser storage is unavailable.
+      }
+    }
     window.location.reload();
   }
 

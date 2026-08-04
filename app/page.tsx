@@ -27,7 +27,9 @@ import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { ReminderPanel } from "@/components/ReminderPanel";
+import { RoleDailyDashboard } from "@/components/RoleDailyDashboard";
 import { TodayTaskManager } from "@/components/TodayTaskManager";
+import { VoiceHandoffForm } from "@/components/VoiceHandoffForm";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { assessCapacityOverload } from "@/lib/capacity-overload";
@@ -62,6 +64,7 @@ export default function HomePage() {
 function TodayCommandCenter() {
   const { data, loading, error, reload } = useTodayData();
   const [adding, setAdding] = useState(false);
+  const [voiceHandoffOpen, setVoiceHandoffOpen] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [focusMinutes, setFocusMinutes] = useState<number | null>(null);
   const [capacityOpen, setCapacityOpen] = useState(false);
@@ -298,6 +301,36 @@ function TodayCommandCenter() {
     }
   }
 
+  async function setQuietMode(until: string | null) {
+    if (busy) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      await controlAction("set_quiet_mode", { until });
+      await reload();
+      setActionMessage(until ? "安靜模式已開啟；非緊急通知會留待稍後摘要。" : "一般通知已恢復。");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "未能更新安靜模式。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resolveDecision(task: Task) {
+    if (busy) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      await controlAction("resolve_task_decision", { taskId: task.id });
+      await reload();
+      setActionMessage("已記錄由你確認；任務內容及下一步保持不變。");
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "未能確認這項決定。");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (currentData.capacity?.rest_day) {
     return (
       <div className="space-y-5">
@@ -321,8 +354,10 @@ function TodayCommandCenter() {
           </Button>
           {actionError ? <InlineAlert message={actionError} /> : null}
         </section>
-        <ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} />
-        <TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} />
+        <details className="panel group overflow-hidden">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"><span><span className="block font-extrabold text-slate-900">需要時查看提醒或調整 Today</span><span className="mt-1 block text-xs text-slate-500">預設收起，今日休息不需要處理 backlog。</span></span><ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" /></summary>
+          <div className="space-y-4 border-t border-slate-100 p-4"><ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} /><TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} /></div>
+        </details>
         {capacityOpen ? (
           <CapacityModal
             current={currentData.capacity}
@@ -357,6 +392,7 @@ function TodayCommandCenter() {
         minimumDay={minimumDay}
         onCapacity={() => setCapacityOpen(true)}
         onAdd={() => setAdding(true)}
+        showActions={false}
       />
 
       {actionMessage ? (
@@ -365,6 +401,23 @@ function TodayCommandCenter() {
         </p>
       ) : null}
       {actionError ? <InlineAlert message={actionError} /> : null}
+
+      <RoleDailyDashboard
+        data={currentData}
+        topTasks={plannedSequence}
+        busy={busy}
+        onVoice={() => setVoiceHandoffOpen(true)}
+        onAdd={() => setAdding(true)}
+        onQuietMode={setQuietMode}
+        onResolveDecision={resolveDecision}
+      />
+
+      <details className="panel group overflow-hidden">
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+          <span><span className="block font-extrabold text-slate-900">重新安排或查看完整 Today 工具</span><span className="mt-1 block text-xs text-slate-500">需要改容量、Auto‑Plan、Quick Wins 或 Focus 時才打開。</span></span>
+          <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
+        </summary>
+        <div className="space-y-5 border-t border-slate-100 p-4 sm:p-5">
 
       {minimumDay && acceptedCoreCompleted ? (
         <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
@@ -556,6 +609,26 @@ function TodayCommandCenter() {
         </p>
       ) : null}
 
+        </div>
+      </details>
+
+      {voiceHandoffOpen ? (
+        <Modal title="語音／文字交接" onClose={() => setVoiceHandoffOpen(false)}>
+          <VoiceHandoffForm
+            currentUserId={currentData.currentUser.id}
+            currentUserName={currentData.currentUser.displayName}
+            participants={currentData.participants}
+            tasks={currentData.taskCatalog}
+            onSaved={() => {
+              setVoiceHandoffOpen(false);
+              setActionMessage("交接任務已建立；如已交給另一人，會等對方確認接手。");
+              void reload();
+            }}
+            onCancel={() => setVoiceHandoffOpen(false)}
+          />
+        </Modal>
+      ) : null}
+
       {adding ? (
         <Modal title="快速新增任務" onClose={() => setAdding(false)}>
           <TaskForm
@@ -641,11 +714,13 @@ function TodayCommandCenter() {
 function TodayHeader({
   minimumDay,
   onCapacity,
-  onAdd
+  onAdd,
+  showActions = true
 }: {
   minimumDay: boolean;
   onCapacity: () => void;
   onAdd: () => void;
+  showActions?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -660,7 +735,7 @@ function TodayHeader({
             : "系統先提出容量內的次序，你確認後才會加入 Today。"}
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      {showActions ? <div className="flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onCapacity}>
           <BatteryLow className="h-5 w-5" />
           今日容量
@@ -669,7 +744,7 @@ function TodayHeader({
           <Plus className="h-5 w-5" />
           快速新增
         </Button>
-      </div>
+      </div> : null}
     </section>
   );
 }

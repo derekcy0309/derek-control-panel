@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CalendarClock, FilePenLine, Link2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
@@ -25,7 +26,8 @@ export function TaskCard({
   taskDependencies,
   taskRecurrenceRules,
   operatingItems = [],
-  prominent = false
+  prominent = false,
+  detailLink = true
 }: {
   task: Task;
   onChanged: () => void;
@@ -39,6 +41,7 @@ export function TaskCard({
   taskRecurrenceRules: TaskRecurrenceRule[];
   operatingItems?: Array<Pick<OperatingItem, "id" | "title" | "item_type">>;
   prominent?: boolean;
+  detailLink?: boolean;
 }) {
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -73,6 +76,20 @@ export function TaskCard({
     await updateTask({ status: "done", completed_at: new Date().toISOString() });
   }
 
+  async function confirmDecision() {
+    if (actionBusy) return;
+    setActionBusy(true);
+    setActionError("");
+    try {
+      await controlAction("resolve_task_decision", { taskId: task.id });
+      onChanged();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "未能確認這項決定。");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   async function delay(days?: number) {
     const nextDate = days ? addDaysIso(days) : window.prompt("請輸入延後日期，例如 2026-07-01");
     if (!nextDate) return;
@@ -92,12 +109,15 @@ export function TaskCard({
           <h3 className="mt-3 text-xl font-bold text-ink">{task.title}</h3>
           <p className="mt-2 text-base font-semibold text-slate-600">{sourceTypeLabels[task.source_type]}</p>
         </div>
-        {onEdit ? (
-          <Button variant="secondary" onClick={() => onEdit(task)} title="修改">
-            <FilePenLine className="h-5 w-5" />
-            修改
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {detailLink ? <Link className="inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-4 py-2 font-semibold text-slate-800 ring-1 ring-slate-200 hover:bg-slate-50" href={`/tasks/${task.id}`}>查看詳情</Link> : null}
+          {onEdit ? (
+            <Button variant="secondary" onClick={() => onEdit(task)} title="修改">
+              <FilePenLine className="h-5 w-5" />
+              修改
+            </Button>
+          ) : null}
+        </div>
       </div>
       <TaskHandoffControls
         task={task}
@@ -126,6 +146,13 @@ export function TaskCard({
       />
       <TaskResourcePack taskId={task.id} currentUserId={currentUserId} availableItems={operatingItems} editable />
       <TaskCheckpointNotesPanel taskId={task.id} participants={participants} />
+      {task.description || task.notes || task.definition_of_done ? (
+        <section className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-label="任務背景與完成條件">
+          {task.description ? <div><h4 className="text-sm font-extrabold text-slate-900">背景及原始交接內容</h4><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.description}</p></div> : null}
+          {task.definition_of_done ? <div><h4 className="text-sm font-extrabold text-slate-900">完成條件</h4><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.definition_of_done}</p></div> : null}
+          {task.notes ? <div><h4 className="text-sm font-extrabold text-slate-900">備註</h4><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.notes}</p></div> : null}
+        </section>
+      ) : null}
       <div className="mt-4 grid gap-3 text-base text-slate-700 sm:grid-cols-2">
         <p className="flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-indigo-600" />
@@ -137,7 +164,17 @@ export function TaskCard({
           <span className="font-semibold">下一步：</span>
           {task.next_action || "未設定"}
         </p>
+        {task.case_code ? <p><span className="font-semibold">個案代號：</span>{task.case_code}</p> : null}
+        {task.materials_required ? <p><span className="font-semibold">需要物資：</span>{task.materials_required}</p> : null}
+        {task.rn_required ? <p className="font-semibold text-indigo-800">需要安排 RN</p> : null}
+        {task.client_update_required ? <p className="font-semibold text-indigo-800">需要回覆家屬／客戶</p> : null}
       </div>
+      {task.needs_decision_from_id && !task.decision_resolved_at ? (
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><p className="font-extrabold text-amber-950">等待指定人員決定／確認</p><p className="mt-1 text-sm text-amber-900">系統不會自行執行臨床內容或更改任務。</p></div>
+          {task.needs_decision_from_id === currentUserId ? <Button disabled={actionBusy} onClick={() => void confirmDecision()}>確認已決定</Button> : null}
+        </div>
+      ) : task.decision_resolved_at ? <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">這項決定已由指定人員確認。</p> : null}
       <div className="mt-4 flex flex-wrap gap-2">
         {!activeHandoff ? <Button variant="success" onClick={() => void completeTask()} disabled={actionBusy}>{actionBusy ? "正在交差…" : isOngoingRecurrence ? "今次已完成" : "完成任務"}</Button> : null}
         <Button variant="secondary" onClick={() => void delay(1)} disabled={actionBusy}>

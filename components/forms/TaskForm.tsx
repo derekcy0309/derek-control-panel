@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TimeEstimateHint } from "@/components/TimeEstimateHint";
@@ -142,7 +142,40 @@ export function TaskForm({
   const [saving, setSaving] = useState(false);
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
   const [recurrenceWarning, setRecurrenceWarning] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
+  const draftKey = `dcp:task-form-draft:v1:${userId}:new`;
+  const draftEligible = !initialTask && !preset;
+
+  useEffect(() => {
+    if (!draftEligible) { setDraftReady(true); return; }
+    try {
+      const saved = sessionStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<TaskFormState>;
+        if (parsed.title || parsed.next_action || parsed.notes || parsed.handoff_note) {
+          setForm((current) => ({ ...current, ...parsed }));
+          setDraftRestored(true);
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(draftKey);
+    } finally {
+      setDraftReady(true);
+    }
+  }, [draftEligible, draftKey]);
+
+  useEffect(() => {
+    if (!draftEligible || !draftReady) return;
+    const hasContent = Boolean(form.title.trim() || form.next_action.trim() || form.notes.trim() || form.handoff_note.trim());
+    try {
+      if (hasContent) sessionStorage.setItem(draftKey, JSON.stringify(form));
+      else sessionStorage.removeItem(draftKey);
+    } catch {
+      // The form stays usable when private browsing blocks session storage.
+    }
+  }, [draftEligible, draftKey, draftReady, form]);
 
   function update(name: keyof TaskFormState, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -244,6 +277,7 @@ export function TaskForm({
         } });
       } else {
         const created = await controlAction<{ task: Task }>("create_task", payload);
+        sessionStorage.removeItem(draftKey);
         if (form.recurrence_enabled) {
           try {
             await controlAction("save_task_recurrence", recurrencePayload(created.task.id));
@@ -261,12 +295,16 @@ export function TaskForm({
       return;
     }
     setSaving(false);
-    if (!initialTask) setForm(defaultState);
+    if (!initialTask) {
+      sessionStorage.removeItem(draftKey);
+      setForm(defaultState);
+    }
     onSaved();
   }
 
   return (
     <form className="grid gap-4" onSubmit={save}>
+      {draftRestored ? <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" role="status">已恢復上次未送出的任務草稿；成功儲存前會繼續自動保留。</p> : null}
       {createdTaskId ? (
         <section className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4" aria-live="polite">
           <p className="font-extrabold text-amber-950">任務已建立，但重複工作尚未設定。</p>

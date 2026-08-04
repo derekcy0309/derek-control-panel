@@ -8,6 +8,21 @@ export type TaskStatus =
   | "blocked"
   | "cancelled";
 export type Risk = "low" | "medium" | "high";
+export type WorkspaceRole = "general" | "derek" | "suki" | "amigo";
+export type WorkflowTaskType =
+  | "general"
+  | "intake"
+  | "scheduling"
+  | "materials"
+  | "rn_coordination"
+  | "follow_up"
+  | "sop"
+  | "ai_document"
+  | "system_issue"
+  | "compliance"
+  | "training"
+  | "assessment"
+  | "family_conference";
 export type TransactionType = "income" | "expense";
 export type Frequency = "monthly" | "one_time" | "irregular";
 export type IncomeStatus = "expected" | "received" | "delayed" | "problem" | "cancelled";
@@ -62,6 +77,15 @@ export type Task = {
   project_id?: string | null;
   recurrence_rule_id?: string | null;
   household_id?: string | null;
+  case_code?: string | null;
+  task_type?: WorkflowTaskType;
+  needs_decision_from_id?: string | null;
+  decision_resolved_at?: string | null;
+  decision_resolved_by_id?: string | null;
+  materials_required?: string | null;
+  rn_required?: boolean;
+  client_update_required?: boolean;
+  client_request_id?: string | null;
 };
 
 export type Transaction = {
@@ -180,6 +204,7 @@ export type UserProfile = {
   must_change_password: boolean;
   personal_calendar_email: string | null;
   last_seen_at: string | null;
+  workspace_role?: WorkspaceRole;
 };
 
 export type CurrentUser = { id: string; email: string; displayName: string };
@@ -649,6 +674,7 @@ export type NotificationPreferences = {
   private_on_lock_screen: boolean;
   reminder_enabled: boolean;
   task_notice_enabled: boolean;
+  quiet_mode_until?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -742,6 +768,33 @@ export type TodayData = {
   capacityCommitments: Array<Pick<OperatingItem, "id" | "item_type" | "area" | "due_date" | "status">>;
   weeklyAvailableMinutes: number | null;
   reminders: Reminder[];
+  notificationPreferences: NotificationPreferences | null;
+  cashflowHint: {
+    receivedIncome: number;
+    unpaidExpenses: number;
+    projectedBalance: number;
+  } | null;
+};
+
+export type TaskDetailData = {
+  currentUser: CurrentUser;
+  task: Task;
+  participants: Array<{ user_id: string; display_name: string }>;
+  assignments: Assignment[];
+  handoffNotes: HandoffNote[];
+  taskDependencies: TaskDependency[];
+  taskRecurrenceRules: TaskRecurrenceRule[];
+  activityLogs: ActivityLog[];
+};
+
+export type ActivityLog = {
+  id: string;
+  resource_type: string;
+  resource_id: string;
+  actor_id: string;
+  action: string;
+  summary: string | null;
+  created_at: string;
 };
 
 export type AppData = {

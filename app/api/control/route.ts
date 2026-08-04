@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
   if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
   if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
   if (view === "focus_sessions") return focusSessions(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "task_detail") return taskDetail(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "archived_transactions") return archivedTransactions(context, request.nextUrl.searchParams);
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
@@ -136,13 +137,78 @@ async function archivedTransactions({ client, user }: RequestContext, searchPara
   }, { headers: privateHeaders() });
 }
 
+async function taskDetail(
+  { client, user }: RequestContext,
+  requestedTaskId: string
+) {
+  const taskId = uuidValue(requestedTaskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+
+  const task = await client.from("tasks")
+    .select("*")
+    .eq("id", taskId)
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (!task.data) return jsonError("找不到任務或你沒有查看權限。", 404);
+
+  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs] = await Promise.all([
+    client.from("user_profiles").select("display_name").eq("user_id", user.id).maybeSingle(),
+    client.rpc("participant_profiles"),
+    client.from("assignments")
+      .select("*")
+      .eq("resource_type", "task")
+      .eq("resource_id", taskId)
+      .order("created_at", { ascending: false }),
+    client.from("task_handoff_notes")
+      .select("*")
+      .eq("task_id", taskId)
+      .order("created_at", { ascending: false }),
+    client.from("task_dependencies")
+      .select("*")
+      .or(`task_id.eq.${taskId},depends_on_task_id.eq.${taskId}`)
+      .order("created_at", { ascending: false }),
+    task.data.recurrence_rule_id
+      ? client.from("task_recurrence_rules")
+          .select("*")
+          .eq("id", task.data.recurrence_rule_id)
+          .limit(1)
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>>, error: null }),
+    client.from("activity_logs")
+      .select("id,resource_type,resource_id,actor_id,action,summary,created_at")
+      .eq("resource_type", "task")
+      .eq("resource_id", taskId)
+      .order("created_at", { ascending: false })
+      .limit(100)
+  ]);
+  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs]
+    .find((result) => result.error)?.error;
+  if (firstError) return databaseError(firstError);
+
+  return Response.json({
+    currentUser: {
+      id: user.id,
+      email: user.email ?? "",
+      displayName: profile.data?.display_name ?? inferDisplayName(user)
+    },
+    task: task.data,
+    participants: participants.data ?? [],
+    assignments: assignments.data ?? [],
+    handoffNotes: handoffNotes.data ?? [],
+    taskDependencies: dependencies.data ?? [],
+    taskRecurrenceRules: recurrenceRules.data ?? [],
+    activityLogs: activityLogs.data ?? []
+  }, { headers: privateHeaders() });
+}
+
 async function todayDashboard({ client, user }: RequestContext) {
   const displayName = inferDisplayName(user);
   const today = hkDateString();
   const weekStart = weekStartForDate(today);
   const weekEnd = weekStart ? addCalendarDays(weekStart, 6) : null;
   const capacityReviewWeek = weekStart ? addCalendarDays(weekStart, -7) : null;
-  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients] =
+  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients, notificationPreferences] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -190,10 +256,14 @@ async function todayDashboard({ client, user }: RequestContext) {
         .gte("starts_at", new Date(Date.now() - 86_400_000).toISOString())
         .order("starts_at", { ascending: true })
         .limit(100),
-      client.from("reminder_recipients").select("*")
+      client.from("reminder_recipients").select("*"),
+      client.from("notification_preferences")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle()
     ]);
 
-  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients]
+  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients, notificationPreferences]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -236,6 +306,41 @@ async function todayDashboard({ client, user }: RequestContext) {
     .order("due_date", { ascending: true, nullsFirst: false })
     .limit(500);
   if (taskCatalog.error) return databaseError(taskCatalog.error);
+
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const nextMonthStart = nextMonthIso(monthStart);
+  const profileIdentity = `${profile.data.workspace_role ?? ""} ${profile.data.display_name ?? ""} ${user.email ?? ""}`.toLowerCase();
+  const showCashflowHint = profileIdentity.includes("derek") || profileIdentity.includes("derekcy0309") || profileIdentity.includes("kwok_cy");
+  const [monthTransactions, monthBalance] = await Promise.all([
+    showCashflowHint ? client.from("transactions")
+      .select("type,amount,status")
+      .eq("user_id", user.id)
+      .is("archived_at", null)
+      .gte("expected_date", monthStart)
+      .lt("expected_date", nextMonthStart)
+      .limit(500) : Promise.resolve({ data: [] as Array<{ type: string; amount: number; status: string }>, error: null }),
+    showCashflowHint ? client.from("balances")
+      .select("opening_balance")
+      .eq("user_id", user.id)
+      .eq("month", monthStart)
+      .is("archived_at", null)
+      .maybeSingle() : Promise.resolve({ data: null as { opening_balance: number } | null, error: null })
+  ]);
+  const financeError = monthTransactions.error ?? monthBalance.error;
+  if (financeError) return databaseError(financeError);
+  const financeRows = monthTransactions.data ?? [];
+  const receivedIncome = financeRows
+    .filter((row) => row.type === "income" && row.status === "received")
+    .reduce((total, row) => total + Number(row.amount ?? 0), 0);
+  const unpaidExpenses = financeRows
+    .filter((row) => row.type === "expense" && ["unpaid", "problem"].includes(String(row.status)))
+    .reduce((total, row) => total + Number(row.amount ?? 0), 0);
+  const activeIncome = financeRows
+    .filter((row) => row.type === "income" && row.status !== "cancelled")
+    .reduce((total, row) => total + Number(row.amount ?? 0), 0);
+  const activeExpenses = financeRows
+    .filter((row) => row.type === "expense" && !["cancelled", "skipped"].includes(String(row.status)))
+    .reduce((total, row) => total + Number(row.amount ?? 0), 0);
 
   const plannedIds = (plannedToday.data ?? []).map((item) => item.resource_id);
   const plannedTasks = plannedIds.length
@@ -299,6 +404,12 @@ async function todayDashboard({ client, user }: RequestContext) {
     taskDependencies: dependencies.data ?? [],
     capacityCommitments: capacityCommitments.data ?? [],
     weeklyAvailableMinutes: weeklyReview.data?.next_week_available_minutes ?? null,
+    notificationPreferences: notificationPreferences.data ?? null,
+    cashflowHint: showCashflowHint ? {
+      receivedIncome,
+      unpaidExpenses,
+      projectedBalance: Number(monthBalance.data?.opening_balance ?? 0) + activeIncome - activeExpenses
+    } : null,
     reminders: (reminders.data ?? []).map((reminder) => ({
       ...reminder,
       recipient_user_ids: (reminderRecipients.data ?? [])
@@ -651,6 +762,7 @@ export async function POST(request: NextRequest) {
   switch (action) {
     case "create_task": return createTask(context, body);
     case "update_task": return updateTask(context, body);
+    case "resolve_task_decision": return resolveTaskDecision(context, body);
     case "set_today_task": return setTodayTask(context, body);
     case "save_reminder": return saveReminder(context, body);
     case "delete_reminder": return deleteReminder(context, body);
@@ -674,6 +786,7 @@ export async function POST(request: NextRequest) {
     case "joint_response": return respondToJoint(context, body);
     case "revoke_share": return revokeShare(context, body);
     case "save_settings": return saveSettings(context, body);
+    case "set_quiet_mode": return setQuietMode(context, body);
     case "admin_reset_password": return adminResetPassword(context, body);
     case "capacity_checkin": return saveCapacity(context, body);
     case "accept_today_plan": return acceptTodayPlan(context, body);
@@ -894,6 +1007,20 @@ async function undoInboxProcessing(
 async function createTask({ client, user }: RequestContext, body: Record<string, unknown>) {
   const title = requiredText(body.title, "請輸入任務標題。");
   if (title instanceof Response) return title;
+  const requestedClientRequestId = nullableText(body.clientRequestId);
+  const clientRequestId = requestedClientRequestId ? uuidValue(requestedClientRequestId) : null;
+  if (requestedClientRequestId && !clientRequestId) return jsonError("防重複提交識別碼不正確。", 400);
+  if (clientRequestId) {
+    const existingRequest = await client.from("tasks")
+      .select("*")
+      .eq("owner_id", user.id)
+      .eq("client_request_id", clientRequestId)
+      .maybeSingle();
+    if (existingRequest.error) return databaseError(existingRequest.error);
+    if (existingRequest.data) {
+      return Response.json({ task: existingRequest.data, assignmentId: null, deduplicated: true }, { headers: privateHeaders() });
+    }
+  }
   const requestedHandoffTarget = nullableText(body.handoffToUserId);
   const handoffTarget = requestedHandoffTarget ? uuidValue(requestedHandoffTarget) : null;
   const handoffNote = nullableText(body.handoffNote);
@@ -903,6 +1030,16 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   if (requestedProjectId && !projectId) return jsonError("項目識別碼不正確。", 400);
   if (handoffTarget === user.id) return jsonError("請選擇另一位跟進者。", 422);
   if (handoffTarget && !handoffNote) return jsonError("請輸入交接 notes，讓對方知道第一步。", 422);
+  const requestedDecisionTarget = nullableText(body.needsDecisionFromId);
+  const decisionTarget = requestedDecisionTarget ? uuidValue(requestedDecisionTarget) : null;
+  if (requestedDecisionTarget && !decisionTarget) return jsonError("需要決定的人員不正確。", 400);
+  if (decisionTarget && decisionTarget !== user.id) {
+    const trusted = await client.rpc("participant_profiles");
+    if (trusted.error) return databaseError(trusted.error);
+    if (!(trusted.data ?? []).some((person: { user_id: string }) => person.user_id === decisionTarget)) {
+      return jsonError("這位使用者尚未加入你的工作名單。", 422);
+    }
+  }
   const status = enumValue(body.status, ["not_started", "in_progress", "waiting", "done", "blocked", "cancelled"], "not_started");
   const nextAction = nullableText(body.nextAction);
   if (status === "in_progress" && !nextAction) return jsonError("開始任務前必須設定清晰的下一步。", 422);
@@ -919,6 +1056,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     area,
     source_type: enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up"], "follow_up"),
     title,
+    owner: nullableText(body.owner),
     description: nullableText(body.description),
     due_date: dateValue(body.dueDate),
     follow_up_date: dateValue(body.followUpDate),
@@ -938,10 +1076,35 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     estimated_duration_days: integerValue(body.estimatedDurationDays, 0, 3650),
     buffer_days: integerValue(body.bufferDays, 0, 365) ?? 0,
     project_id: projectId,
-    notes: nullableText(body.notes)
+    notes: nullableText(body.notes),
+    case_code: resourceText(body.caseCode, 80),
+    task_type: enumValue(body.taskType, [
+      "general", "intake", "scheduling", "materials", "rn_coordination",
+      "follow_up", "sop", "ai_document", "system_issue", "compliance",
+      "training", "assessment", "family_conference"
+    ] as const, "general"),
+    needs_decision_from_id: decisionTarget,
+    decision_resolved_at: null,
+    decision_resolved_by_id: null,
+    materials_required: resourceText(body.materialsRequired, 2000),
+    rn_required: Boolean(body.rnRequired),
+    client_update_required: Boolean(body.clientUpdateRequired),
+    client_request_id: clientRequestId
   };
   const result = await client.from("tasks").insert(payload).select("*").single();
-  if (result.error) return databaseError(result.error);
+  if (result.error) {
+    if (result.error.code === "23505" && clientRequestId) {
+      const existingRequest = await client.from("tasks")
+        .select("*")
+        .eq("owner_id", user.id)
+        .eq("client_request_id", clientRequestId)
+        .maybeSingle();
+      if (existingRequest.data) {
+        return Response.json({ task: existingRequest.data, assignmentId: null, deduplicated: true }, { headers: privateHeaders() });
+      }
+    }
+    return databaseError(result.error);
+  }
   const noticeError = await syncTaskNoticeRecipients(client, result.data.id, body.noticeUserIds);
   if (noticeError) {
     await client.from("tasks").delete().eq("id", result.data.id);
@@ -984,10 +1147,32 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   }
 
   const changes = objectValue(body.changes);
+  const activeHandler = existing.data.owner_id === user.id
+    ? false
+    : await client.from("assignments")
+        .select("id")
+        .eq("resource_type", "task")
+        .eq("resource_id", id)
+        .eq("assigned_to_id", user.id)
+        .in("status", ["accepted", "in_progress", "waiting", "blocked"])
+        .limit(1)
+        .maybeSingle();
+  if (activeHandler && activeHandler.error) return databaseError(activeHandler.error);
   const allowed = existing.data.owner_id === user.id
-    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id"]
-    : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
+    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","materials_required","rn_required","client_update_required"]
+    : activeHandler && activeHandler.data
+      ? ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at","due_date","follow_up_date"]
+      : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
   const payload = pick(changes, allowed);
+  if (payload.task_type !== undefined && ![
+    "general", "intake", "scheduling", "materials", "rn_coordination",
+    "follow_up", "sop", "ai_document", "system_issue", "compliance",
+    "training", "assessment", "family_conference"
+  ].includes(stringValue(payload.task_type))) return jsonError("工作類別不正確。", 422);
+  if (payload.case_code !== undefined) payload.case_code = resourceText(payload.case_code, 80);
+  if (payload.materials_required !== undefined) payload.materials_required = resourceText(payload.materials_required, 2000);
+  if (payload.rn_required !== undefined) payload.rn_required = Boolean(payload.rn_required);
+  if (payload.client_update_required !== undefined) payload.client_update_required = Boolean(payload.client_update_required);
   if (payload.status === "in_progress" && !stringValue(payload.next_action ?? existing.data.next_action)) {
     return jsonError("開始任務前必須設定清晰的下一步。", 422);
   }
@@ -1000,6 +1185,31 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   if (noticeError) return noticeError;
   await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
   return Response.json({ task: result.data }, { headers: privateHeaders() });
+}
+
+async function resolveTaskDecision({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  const existing = await client.from("tasks")
+    .select("id,needs_decision_from_id,decision_resolved_at")
+    .eq("id", taskId)
+    .maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到任務或你沒有查看權限。", 404);
+  if (existing.data.needs_decision_from_id !== user.id) return jsonError("只有被指定決定的人可以確認。", 403);
+  if (existing.data.decision_resolved_at) return jsonError("這項決定已經確認。", 409);
+
+  const now = new Date().toISOString();
+  const updated = await client.from("tasks")
+    .update({ decision_resolved_at: now, decision_resolved_by_id: user.id, last_progress_at: now })
+    .eq("id", taskId)
+    .is("decision_resolved_at", null)
+    .select("*")
+    .maybeSingle();
+  if (updated.error) return databaseError(updated.error);
+  if (!updated.data) return jsonError("這項決定已由另一個工作階段處理。", 409);
+  await recordActivity(client, user.id, "task", taskId, "decision_confirmed", "已確認任務所需決定");
+  return Response.json({ task: updated.data }, { headers: privateHeaders() });
 }
 
 async function createTaskDependency({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -1578,11 +1788,31 @@ async function saveSettings({ client, user }: RequestContext, body: Record<strin
   const result = await client.from("user_settings").update(payload).eq("user_id", user.id).select("*").single();
   if (result.error) return databaseError(result.error);
   const displayName = stringValue(body.displayName).trim();
+  const requestedRole = stringValue(body.workspaceRole);
+  const workspaceRole = enumValue(requestedRole, ["general", "derek", "suki", "amigo"] as const, "general");
   if (displayName) {
-    const profile = await client.from("user_profiles").update({ display_name: displayName }).eq("user_id", user.id);
+    const profile = await client.from("user_profiles")
+      .update({ display_name: displayName, workspace_role: workspaceRole })
+      .eq("user_id", user.id);
     if (profile.error) return databaseError(profile.error);
   }
   return Response.json({ settings: result.data }, { headers: privateHeaders() });
+}
+
+async function setQuietMode({ client }: RequestContext, body: Record<string, unknown>) {
+  const rawUntil = body.until;
+  const until = rawUntil === null || rawUntil === "" ? null : timestampValue(rawUntil);
+  if (rawUntil !== null && rawUntil !== "" && !until) return jsonError("安靜模式恢復時間不正確。", 422);
+  if (until) {
+    const milliseconds = new Date(until).getTime() - Date.now();
+    if (milliseconds <= 0 || milliseconds > 7 * 86_400_000) {
+      return jsonError("安靜模式可設定最長七日，請重新選擇恢復時間。", 422);
+    }
+  }
+  const result = await client.rpc("set_current_user_quiet_mode", { p_until: until });
+  if (result.error) return databaseError(result.error);
+  const preferences = Array.isArray(result.data) ? result.data[0] : result.data;
+  return Response.json({ preferences }, { headers: privateHeaders() });
 }
 
 async function saveNotificationPreferences(
@@ -2294,6 +2524,12 @@ function hkDateString() {
   }).format(new Date());
 }
 
+function nextMonthIso(monthStart: string) {
+  const [year, month] = monthStart.split("-").map(Number);
+  const next = new Date(Date.UTC(year, month, 1));
+  return next.toISOString().slice(0, 10);
+}
+
 type RecurrenceOptions = {
   frequency: "daily" | "weekly" | "monthly" | "custom";
   weekdays: number[];
@@ -2504,6 +2740,7 @@ function databaseError(error: { code?: string; message?: string }) {
   if (error.message?.includes("INBOX_UNDO_NOT_LATEST")) return jsonError("只可撤銷最近一次處理。", 409);
   if (error.message?.includes("INBOX_UNDO_TARGET_CHANGED")) return jsonError("新項目已有進度，為保障資料不會自動撤銷。", 409);
   if (error.message?.includes("INBOX_UNDO_SOURCE_MISSING")) return jsonError("原始收集箱內容已不存在，未有改動其他資料。", 409);
+  if (error.message?.includes("QUIET_MODE_UNTIL_INVALID")) return jsonError("安靜模式可設定最長七日，請重新選擇恢復時間。", 422);
   if (error.message?.includes("INVALID_PLAN_") || error.message?.includes("DUPLICATE_TASK") || error.message?.includes("PLAN_DATE_REQUIRED") || error.message?.includes("IDEMPOTENCY_KEY_REQUIRED")) return jsonError("今日建議內容不正確，未有加入任何任務。", 422);
   if (error.message?.includes("TASK_NOT_ELIGIBLE")) return jsonError("其中一項任務已完成、被阻塞或權限有變，請重新安排。", 409);
   if (error.message?.includes("RECURRENCE_SEED_TASK_OWNER_INVALID") || error.message?.includes("TASK_RECURRENCE_ACCESS_DENIED")) return jsonError("重複工作必須由任務擁有者設定。", 403);

@@ -9,6 +9,7 @@ import type {
   InboxProcessingBundle,
   InboxProcessingEvent,
   TaskCheckpointBundle,
+  TaskDetailData,
   TaskResourceBundle,
   TimeEstimateSuggestion,
   Transaction,
@@ -30,6 +31,13 @@ export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser
 
 export async function loadTodayData(): Promise<TodayData> {
   return controlRequest<TodayData>("/api/control?view=today", { method: "GET" });
+}
+
+export async function loadTaskDetail(taskId: string): Promise<TaskDetailData> {
+  return controlRequest<TaskDetailData>(
+    `/api/control?view=task_detail&taskId=${encodeURIComponent(taskId)}`,
+    { method: "GET" }
+  );
 }
 
 export async function loadArchivedTransactions(page = 1) {
