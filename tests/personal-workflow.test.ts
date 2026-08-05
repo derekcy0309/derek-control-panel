@@ -47,6 +47,18 @@ test("home cards are progressive and waiting work cannot occupy the top three", 
   assert.doesNotMatch(dashboard, /cashflowHint|WrittenCommunicationAssistant/);
 });
 
+test("task list cards keep key information visible and disclose details on demand", () => {
+  const taskCard = read("components/items/TaskCard.tsx");
+  const detailPage = read("app/tasks/[id]/page.tsx");
+  assert.match(taskCard, /useState\(prominent\)/);
+  assert.match(taskCard, /aria-expanded=\{expanded\}/);
+  assert.match(taskCard, /到期：\{formatDate\(task\.due_date\)\}/);
+  assert.match(taskCard, /展開詳情/);
+  assert.match(taskCard, /收起詳情/);
+  assert.match(taskCard, /\{expanded \? \(/);
+  assert.match(detailPage, /prominent/);
+});
+
 test("PWA metadata describes personal work only", () => {
   const manifest = read("app/manifest.ts");
   const layout = read("app/layout.tsx");

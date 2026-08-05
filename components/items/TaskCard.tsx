@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, FilePenLine, Link2, Unlink } from "lucide-react";
+import { CalendarClock, ChevronDown, FilePenLine, Link2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
 import { TaskAIAnalysisPanel } from "@/components/TaskAIAnalysisPanel";
@@ -43,6 +43,8 @@ export function TaskCard({
   prominent?: boolean;
   detailLink?: boolean;
 }) {
+  const detailsId = useId();
+  const [expanded, setExpanded] = useState(prominent);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const activeHandoff = assignments.some((item) =>
@@ -123,19 +125,40 @@ export function TaskCard({
   }
 
   return (
-    <article className={prominent ? "rounded-2xl border-2 border-indigo-200 bg-white p-5 shadow-soft" : "panel-soft p-4"}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap gap-2">
+    <article className={prominent ? "overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white shadow-soft" : "panel-soft overflow-hidden"}>
+      <button
+        type="button"
+        className={`flex min-h-24 w-full items-start justify-between gap-4 p-4 text-left transition hover:bg-slate-50 ${prominent ? "sm:p-5" : ""}`}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap gap-2">
             <ScopeBadge scope={task.scope} />
             <StatusBadge status={task.status} />
             <RiskBadge risk={task.risk} />
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
-          </div>
-          <h3 className="mt-3 text-xl font-bold text-ink">{task.title}</h3>
-          <p className="mt-2 text-base font-semibold text-slate-600">{sourceTypeLabels[task.source_type]}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+          </span>
+          <span className="mt-3 block text-xl font-bold text-ink">{task.title}</span>
+          <span className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold text-slate-600">
+            <span className="inline-flex items-center gap-2">
+              <CalendarClock className="h-4 w-4 text-indigo-600" />
+              到期：{formatDate(task.due_date)}
+            </span>
+            {task.follow_up_date ? <span>跟進：{formatDate(task.follow_up_date)}</span> : null}
+          </span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1 pt-1 text-sm font-bold text-indigo-700">
+          <span className="hidden sm:inline">{expanded ? "收起詳情" : "展開詳情"}</span>
+          <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+        </span>
+      </button>
+      {expanded ? (
+        <div id={detailsId} className={`border-t border-slate-200 p-4 ${prominent ? "sm:p-5" : ""}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-base font-semibold text-slate-600">{sourceTypeLabels[task.source_type]}</p>
+            <div className="flex flex-wrap gap-2">
           {detailLink ? <Link className="inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-4 py-2 font-semibold text-slate-800 ring-1 ring-slate-200 hover:bg-slate-50" href={`/tasks/${task.id}`}>查看詳情</Link> : null}
           {onEdit ? (
             <Button variant="secondary" onClick={() => onEdit(task)} title="修改">
@@ -143,8 +166,8 @@ export function TaskCard({
               修改
             </Button>
           ) : null}
-        </div>
-      </div>
+            </div>
+          </div>
       <TaskHandoffControls
         task={task}
         currentUserId={currentUserId}
@@ -227,6 +250,8 @@ export function TaskCard({
         </Button>
       </div>
       {actionError ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">未能交差／更新任務：{actionError}</p> : null}
+        </div>
+      ) : null}
     </article>
   );
 }
