@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { getCashflowSummary } from "../lib/cashflow.ts";
+import { cashflowDefaultMonth } from "../lib/date.ts";
 import type { Transaction } from "../lib/types.ts";
 
 const root = process.cwd();
@@ -70,6 +71,12 @@ test("cashflow summary only includes the selected month", () => {
   };
   const summary = getCashflowSummary([base, { ...base, id: "oct", item: "十月", expected_date: "2026-10-01", amount: 200 }], [], "home", "2026-09-01");
   assert.equal(summary.expectedExpense, 100);
+});
+
+test("cashflow opens next month from the 27th while preserving the current month before then", () => {
+  assert.equal(cashflowDefaultMonth(new Date(2026, 8, 26, 12)), "2026-09-01");
+  assert.equal(cashflowDefaultMonth(new Date(2026, 8, 27, 12)), "2026-10-01");
+  assert.equal(cashflowDefaultMonth(new Date(2026, 11, 27, 12)), "2027-01-01");
 });
 
 test("cashflow uses one actual payment date while retaining legacy records", () => {

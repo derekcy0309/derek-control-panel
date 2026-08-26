@@ -12,7 +12,7 @@ import { RecurringIncomeForm } from "@/components/forms/RecurringIncomeForm";
 import { TransactionCard } from "@/components/items/TransactionCard";
 import { Button } from "@/components/ui/Button";
 import { getCashflowSummary } from "@/lib/cashflow";
-import { currentMonth, formatCurrency, isWithinDays } from "@/lib/date";
+import { cashflowDefaultMonth, formatCurrency, isWithinDays } from "@/lib/date";
 import { scopeLabels, transactionTypeLabels } from "@/lib/labels";
 import { controlAction, loadArchivedTransactions } from "@/lib/control-api";
 import type { RecurringExpenseRule, RecurringIncomeRule, Scope, Transaction } from "@/lib/types";
@@ -34,7 +34,7 @@ function CashflowContent() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingRecurringExpense, setEditingRecurringExpense] = useState<RecurringExpenseRule | null>(null);
   const [editingRecurringIncome, setEditingRecurringIncome] = useState<RecurringIncomeRule | null>(null);
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(cashflowDefaultMonth());
   const [showArchived, setShowArchived] = useState(false);
   const [archivedTransactions, setArchivedTransactions] = useState<Transaction[] | null>(null);
   const [archivedPage, setArchivedPage] = useState(1);
