@@ -36,8 +36,8 @@ export function TransactionCard({
       item: transaction.item,
       category: transaction.category,
       amount: transaction.amount,
-      expected_date: nextMonthDate(transaction.expected_date),
-      actual_date: null,
+      expected_date: nextMonthDate(transaction.actual_date ?? transaction.expected_date),
+      actual_date: nextMonthDate(transaction.actual_date ?? transaction.expected_date),
       frequency: transaction.frequency,
       status: transaction.type === "income" ? "expected" : "unpaid",
       payment_method: transaction.payment_method,
@@ -73,8 +73,7 @@ export function TransactionCard({
       </div>
       <div className="mt-4 grid gap-2 text-base text-slate-700 sm:grid-cols-2">
         <p className="text-xl font-bold">{formatCurrency(Number(transaction.amount))}</p>
-        <p>預計日期：{formatDate(transaction.expected_date)}</p>
-        <p>實際日期：{formatDate(transaction.actual_date)}</p>
+        <p>實際日期：{formatDate(transaction.actual_date ?? transaction.expected_date)}</p>
         <p>分類：{transaction.category || "未設定"}</p>
       </div>
       {archived ? (

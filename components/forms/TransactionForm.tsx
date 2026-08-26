@@ -12,7 +12,6 @@ type TransactionFormState = {
   item: string;
   category: string;
   amount: string;
-  expected_date: string;
   actual_date: string;
   frequency: string;
   status: string;
@@ -28,7 +27,6 @@ const defaultState: TransactionFormState = {
   item: "",
   category: "",
   amount: "",
-  expected_date: "",
   actual_date: "",
   frequency: "one_time",
   status: "unpaid",
@@ -61,8 +59,9 @@ export function TransactionForm({
           item: initialTransaction.item,
           category: initialTransaction.category ?? "",
           amount: String(initialTransaction.amount ?? ""),
-          expected_date: initialTransaction.expected_date ?? "",
-          actual_date: initialTransaction.actual_date ?? "",
+          // Older records used expected_date.  Show that value as the single
+          // payment date so users never have to manage two dates.
+          actual_date: initialTransaction.actual_date ?? initialTransaction.expected_date ?? "",
           frequency: initialTransaction.frequency,
           status: initialTransaction.status,
           payment_method: initialTransaction.payment_method ?? "",
@@ -99,7 +98,9 @@ export function TransactionForm({
       item: form.item.trim(),
       category: form.category.trim() || null,
       amount,
-      expected_date: form.expected_date || null,
+      // expected_date remains populated for backwards-compatible reporting,
+      // but the interface and source of truth are the one actual payment date.
+      expected_date: form.actual_date || null,
       actual_date: form.actual_date || null,
       frequency: form.frequency,
       status: form.status,
@@ -169,22 +170,11 @@ export function TransactionForm({
           <input className="field mt-2" type="number" min="0" step="0.01" value={form.amount} onChange={(event) => update("amount", event.target.value)} required />
         </label>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <label>
-          <span className="label">預計日期</span>
-          <input
-            className="field mt-2"
-            type={form.frequency === "monthly" ? "month" : "date"}
-            value={form.frequency === "monthly" ? form.expected_date.slice(0, 7) : form.expected_date}
-            onChange={(event) => update("expected_date", form.frequency === "monthly" && event.target.value ? `${event.target.value}-01` : event.target.value)}
-          />
+          <span className="label">實際日期</span>
+          <input className="field mt-2" type={form.frequency === "monthly" ? "month" : "date"} value={form.frequency === "monthly" ? form.actual_date.slice(0, 7) : form.actual_date} onChange={(event) => update("actual_date", form.frequency === "monthly" && event.target.value ? `${event.target.value}-01` : event.target.value)} />
         </label>
-        {!compact ? (
-          <label>
-            <span className="label">實際日期</span>
-            <input className="field mt-2" type={form.frequency === "monthly" ? "month" : "date"} value={form.frequency === "monthly" ? form.actual_date.slice(0, 7) : form.actual_date} onChange={(event) => update("actual_date", form.frequency === "monthly" && event.target.value ? `${event.target.value}-01` : event.target.value)} />
-          </label>
-        ) : null}
         <label>
           <span className="label">頻率</span>
           <select className="field mt-2" value={form.frequency} onChange={(event) => update("frequency", event.target.value)}>

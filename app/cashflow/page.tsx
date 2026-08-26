@@ -86,7 +86,7 @@ function CashflowContent() {
   const upcomingPayments = useMemo(
     () =>
       activeTransactions.filter(
-        (item) => item.type === "expense" && item.status !== "paid" && item.status !== "cancelled" && isWithinDays(item.expected_date, 7)
+        (item) => item.type === "expense" && item.status !== "paid" && item.status !== "cancelled" && isWithinDays(item.actual_date ?? item.expected_date, 7)
       ),
     [activeTransactions]
   );
@@ -107,7 +107,7 @@ function CashflowContent() {
     .map((rule) => recurringExpenseOccurrence(rule, month)), [recurringRulesForMonth, recurringPaymentByRuleId, month]);
   const cashflowTransactions = useMemo(() => [...activeTransactions, ...virtualRecurringExpenses], [activeTransactions, virtualRecurringExpenses]);
   const thisMonthExpenses = useMemo(
-    () => activeTransactions.filter((item) => item.type === "expense" && item.expected_date?.slice(0, 7) === monthKey && !item.recurring_expense_rule_id),
+    () => activeTransactions.filter((item) => item.type === "expense" && (item.actual_date ?? item.expected_date)?.slice(0, 7) === monthKey && !item.recurring_expense_rule_id),
     [activeTransactions, monthKey]
   );
   const paidThisMonth = useMemo(

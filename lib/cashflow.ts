@@ -18,7 +18,7 @@ export function getCashflowSummary(transactions: Transaction[], balances: Balanc
     item.scope === scope
     && !item.archived_at
     && item.status !== "cancelled"
-    && item.expected_date?.slice(0, 7) === monthKey
+    && (item.actual_date ?? item.expected_date)?.slice(0, 7) === monthKey
   );
   const openingBalance = balances.find((item) => item.scope === scope && item.month === month)?.opening_balance ?? 0;
   const actualIncome = sum(scoped.filter((item) => item.type === "income" && item.status === "received"));

@@ -45,3 +45,20 @@ test("cashflow summary only includes the selected month", () => {
   const summary = getCashflowSummary([base, { ...base, id: "oct", item: "十月", expected_date: "2026-10-01", amount: 200 }], [], "home", "2026-09-01");
   assert.equal(summary.expectedExpense, 100);
 });
+
+test("cashflow uses one actual payment date while retaining legacy records", () => {
+  const form = read("components/forms/TransactionForm.tsx");
+  const card = read("components/items/TransactionCard.tsx");
+  assert.doesNotMatch(form, />預計日期</);
+  assert.match(form, />實際日期</);
+  assert.doesNotMatch(card, /預計日期：/);
+
+  const legacy: Transaction = {
+    id: "legacy", user_id: "u", scope: "home", type: "expense", item: "舊紀錄", category: null, amount: 100,
+    expected_date: "2026-09-01", actual_date: null, frequency: "monthly", status: "unpaid", payment_method: null,
+    owner: null, proof_url: null, notes: null, archived_at: null, created_at: "2026-09-01T00:00:00.000Z", updated_at: "2026-09-01T00:00:00.000Z"
+  };
+  const actual: Transaction = { ...legacy, id: "actual", expected_date: "2026-08-01", actual_date: "2026-09-01" };
+  const summary = getCashflowSummary([legacy, actual], [], "home", "2026-09-01");
+  assert.equal(summary.expectedExpense, 200);
+});
