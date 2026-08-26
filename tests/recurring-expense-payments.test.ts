@@ -1,0 +1,47 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { getCashflowSummary } from "../lib/cashflow.ts";
+import type { Transaction } from "../lib/types.ts";
+
+const root = process.cwd();
+const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
+
+test("recurring expenses use a month-only schedule with an optional final payment month", () => {
+  const form = read("components/forms/RecurringExpenseForm.tsx");
+  const migration = read("supabase/migrations/20260826120000_recurring_expense_payments.sql");
+  assert.match(form, /開始付款月份/);
+  assert.match(form, /最後付款月份（可留空）/);
+  assert.match(form, /type="month"/);
+  assert.match(form, /2026-10 起不會再出現/);
+  assert.match(migration, /last_payment_month date/);
+  assert.match(migration, /transactions_recurring_expense_month_unique/);
+  assert.match(migration, /enable row level security/);
+});
+
+test("cashflow keeps paid and unpaid entries reversible and separates personal from company", () => {
+  const page = read("app/cashflow/page.tsx");
+  const card = read("components/items/TransactionCard.tsx");
+  const api = read("app/api/control/route.ts");
+  assert.match(page, /批量標記已付款/);
+  assert.match(page, /個人／家庭恆常支出/);
+  assert.match(page, /公司恆常支出/);
+  assert.match(page, /個人／家庭付款紀錄/);
+  assert.match(page, /公司付款紀錄/);
+  assert.match(page, /改回未付款/);
+  assert.match(card, /status: "unpaid", actual_date: null/);
+  assert.match(api, /record_recurring_expense_payments/);
+  assert.match(api, /paymentMonth = monthValue/);
+  assert.match(api, /status: "paid", actual_date: paymentMonth/);
+});
+
+test("cashflow summary only includes the selected month", () => {
+  const base: Transaction = {
+    id: "sept", user_id: "u", scope: "home", type: "expense", item: "九月", category: null, amount: 100,
+    expected_date: "2026-09-01", actual_date: null, frequency: "monthly", status: "unpaid", payment_method: null,
+    owner: null, proof_url: null, notes: null, archived_at: null, created_at: "2026-09-01T00:00:00.000Z", updated_at: "2026-09-01T00:00:00.000Z"
+  };
+  const summary = getCashflowSummary([base, { ...base, id: "oct", item: "十月", expected_date: "2026-10-01", amount: 200 }], [], "home", "2026-09-01");
+  assert.equal(summary.expectedExpense, 100);
+});

@@ -106,6 +106,8 @@ export type Transaction = {
   owner: string | null;
   proof_url: string | null;
   notes: string | null;
+  recurring_expense_rule_id?: string | null;
+  payment_month?: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -207,6 +209,25 @@ export type UserProfile = {
   personal_calendar_email: string | null;
   last_seen_at: string | null;
   workspace_role?: WorkspaceRole;
+};
+
+export type RecurringExpenseRule = {
+  id: string;
+  user_id: string;
+  scope: Scope;
+  item: string;
+  category: string | null;
+  amount: number;
+  payment_method: string | null;
+  owner: string | null;
+  proof_url: string | null;
+  notes: string | null;
+  start_month: string;
+  last_payment_month: string | null;
+  is_active: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CurrentUser = { id: string; email: string; displayName: string };
@@ -805,6 +826,7 @@ export type ActivityLog = {
 export type AppData = {
   tasks: Task[];
   transactions: Transaction[];
+  recurringExpenseRules: RecurringExpenseRule[];
   meetings: Meeting[];
   balances: Balance[];
   settings: UserSettings | null;

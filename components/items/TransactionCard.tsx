@@ -106,9 +106,15 @@ export function TransactionCard({
           </>
           ) : (
           <>
-            <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: new Date().toISOString().slice(0, 10) })}>
-              已付款
-            </Button>
+            {transaction.status === "paid" ? (
+              <Button variant="secondary" onClick={() => updateTransaction({ status: "unpaid", actual_date: null })}>
+                改回未付款
+              </Button>
+            ) : (
+              <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: new Date().toISOString().slice(0, 10) })}>
+                已付款
+              </Button>
+            )}
             <Button variant="danger" onClick={() => updateTransaction({ status: "problem" })}>
               有問題
             </Button>
