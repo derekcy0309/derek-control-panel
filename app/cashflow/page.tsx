@@ -406,7 +406,16 @@ function RecurringExpenseColumn({
   onChanged: () => void;
   onEdit: (rule: RecurringExpenseRule) => void;
 }) {
-  const scopedRules = rules.filter((rule) => rule.scope === scope);
+  const scopedRules = rules
+    .filter((rule) => rule.scope === scope)
+    // Personal / family monthly expenses should start with the actionable items.
+    // Keep paid items available, but place them after the unpaid list.
+    .sort((left, right) => {
+      if (scope !== "home") return 0;
+      const leftPaid = payments.get(left.id)?.status === "paid";
+      const rightPaid = payments.get(right.id)?.status === "paid";
+      return Number(leftPaid) - Number(rightPaid);
+    });
 
   async function setPaymentStatus(payment: Transaction, status: "paid" | "unpaid") {
     await controlAction("save_transaction", {

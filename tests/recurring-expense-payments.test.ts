@@ -27,6 +27,8 @@ test("cashflow keeps paid and unpaid entries reversible and separates personal f
   assert.match(page, /批量標記已付款/);
   assert.match(page, /個人／家庭恆常支出/);
   assert.match(page, /公司恆常支出/);
+  assert.match(page, /Personal \/ family monthly expenses should start with the actionable items/);
+  assert.match(page, /return Number\(leftPaid\) - Number\(rightPaid\)/);
   assert.match(page, /個人／家庭臨時支出/);
   assert.match(page, /公司臨時支出/);
   assert.match(page, /改回未付款/);
