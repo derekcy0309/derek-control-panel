@@ -61,12 +61,26 @@ test("task list cards keep key information visible and disclose details on deman
 
 test("tasks keep work and family separate with family collapsed by default", () => {
   const tasksPage = read("app/tasks/page.tsx");
-  assert.match(tasksPage, /const workTasks = filteredTasks\.filter\(\(task\) => task\.scope === "company"\)/);
-  assert.match(tasksPage, /const familyTasks = filteredTasks\.filter\(\(task\) => task\.scope === "home"\)/);
+  assert.match(tasksPage, /const personalTasks = filteredTasks\.filter\(\(task\) => taskCategoryFor\(task\) === "personal"\)/);
+  assert.match(tasksPage, /const familyTasks = filteredTasks\.filter\(\(task\) => taskCategoryFor\(task\) === "family"\)/);
   assert.match(tasksPage, /const \[familyExpanded, setFamilyExpanded\] = useState\(false\)/);
-  assert.match(tasksPage, /工作任務/);
+  assert.match(tasksPage, /個人任務/);
   assert.match(tasksPage, /家庭任務/);
+  assert.match(tasksPage, /SEC 任務/);
+  assert.match(tasksPage, /Wecare 任務/);
   assert.match(tasksPage, /aria-expanded=\{isFamilyOpen\}/);
+});
+
+test("task categories use the existing area and scope fields without a database migration", () => {
+  const categories = read("lib/task-categories.ts");
+  const form = read("components/forms/TaskForm.tsx");
+  const api = read("app/api/control/route.ts");
+  assert.match(categories, /"personal" \| "family" \| "sec" \| "wecare"/);
+  assert.match(categories, /case "sec": return \{ area: "work", scope: "home" \}/);
+  assert.match(categories, /case "wecare": return \{ area: "work", scope: "company" \}/);
+  assert.match(form, /taskCategory: form\.task_category/);
+  assert.match(api, /taskCategoryValue\(body\.taskCategory\)/);
+  assert.doesNotMatch(categories, /supabase|migration/i);
 });
 
 test("PWA metadata describes personal work only", () => {

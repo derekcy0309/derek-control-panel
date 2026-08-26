@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient, type User } from "@supabase/supabase
 import { NextRequest } from "next/server";
 import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
+import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 
 export const dynamic = "force-dynamic";
 
@@ -1053,7 +1054,10 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const status = enumValue(body.status, ["not_started", "in_progress", "waiting", "done", "blocked", "cancelled"], "not_started");
   const nextAction = nullableText(body.nextAction);
   if (status === "in_progress" && !nextAction) return jsonError("開始任務前必須設定清晰的下一步。", 422);
-  const area = enumValue(body.area, ["work", "family", "personal"] as const, "personal");
+  const requestedTaskCategory = body.taskCategory === undefined ? null : taskCategoryValue(body.taskCategory);
+  if (body.taskCategory !== undefined && !requestedTaskCategory) return jsonError("任務分類不正確。", 422);
+  const categoryFields = requestedTaskCategory ? taskCategoryFields(requestedTaskCategory) : null;
+  const area = categoryFields?.area ?? enumValue(body.area, ["work", "family", "personal"] as const, "personal");
   const access = await defaultResourceAccess(client, user.id, area);
   if (access instanceof Response) return access;
   const payload = {
@@ -1062,7 +1066,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     created_by_id: user.id,
     visibility: access.visibility,
     household_id: access.householdId,
-    scope: area === "work" ? "company" : "home",
+    scope: categoryFields?.scope ?? (area === "work" ? "company" : "home"),
     area,
     source_type: enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up"], "follow_up"),
     title,
@@ -1176,6 +1180,18 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
       ? ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at","due_date","follow_up_date"]
       : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
   const payload = pick(changes, allowed);
+  const requestedTaskCategory = body.taskCategory === undefined ? null : taskCategoryValue(body.taskCategory);
+  if (body.taskCategory !== undefined && !requestedTaskCategory) return jsonError("任務分類不正確。", 422);
+  if (requestedTaskCategory) {
+    if (existing.data.owner_id !== user.id) return jsonError("只有擁有者可以修改任務分類。", 403);
+    const categoryFields = taskCategoryFields(requestedTaskCategory);
+    const access = await defaultResourceAccess(client, user.id, categoryFields.area);
+    if (access instanceof Response) return access;
+    payload.area = categoryFields.area;
+    payload.scope = categoryFields.scope;
+    payload.visibility = access.visibility;
+    payload.household_id = access.householdId;
+  }
   if (payload.task_type !== undefined && ![
     "general", "intake", "scheduling", "materials", "rn_coordination",
     "follow_up", "sop", "ai_document", "system_issue", "compliance",

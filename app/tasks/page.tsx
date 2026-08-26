@@ -8,7 +8,8 @@ import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { TaskCard } from "@/components/items/TaskCard";
 import { Button } from "@/components/ui/Button";
-import { riskOptions, scopeOptions, sourceTypeOptions, taskStatusFilterOptions, unfinishedTaskStatuses } from "@/lib/labels";
+import { riskOptions, sourceTypeOptions, taskStatusFilterOptions, unfinishedTaskStatuses } from "@/lib/labels";
+import { taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { Task } from "@/lib/types";
 import { useControlData } from "@/hooks/useControlData";
 
@@ -26,7 +27,7 @@ function TasksContent() {
   const [isAdding, setIsAdding] = useState(false);
   const [familyExpanded, setFamilyExpanded] = useState(false);
   const [filters, setFilters] = useState({
-    scope: "",
+    category: "",
     source_type: "",
     status: "",
     risk: "",
@@ -37,7 +38,7 @@ function TasksContent() {
   const filteredTasks = useMemo(() => {
     if (!data) return [];
     return data.tasks.filter((task) => {
-      if (filters.scope && task.scope !== filters.scope) return false;
+      if (filters.category && taskCategoryFor(task) !== filters.category) return false;
       if (filters.source_type && task.source_type !== filters.source_type) return false;
       if (filters.status === "unfinished" && !unfinishedTaskStatuses.includes(task.status as (typeof unfinishedTaskStatuses)[number])) return false;
       if (filters.status && filters.status !== "unfinished" && task.status !== filters.status) return false;
@@ -50,11 +51,12 @@ function TasksContent() {
 
   if (loading || error || !data) return <LoadingState error={error} />;
 
-  const workTasks = filteredTasks.filter((task) => task.scope === "company");
-  const familyTasks = filteredTasks.filter((task) => task.scope === "home");
-  const showWork = filters.scope !== "home";
-  const showFamily = filters.scope !== "company";
-  const isFamilyOpen = filters.scope === "home" || familyExpanded;
+  const personalTasks = filteredTasks.filter((task) => taskCategoryFor(task) === "personal");
+  const familyTasks = filteredTasks.filter((task) => taskCategoryFor(task) === "family");
+  const secTasks = filteredTasks.filter((task) => taskCategoryFor(task) === "sec");
+  const wecareTasks = filteredTasks.filter((task) => taskCategoryFor(task) === "wecare");
+  const showCategory = (category: TaskCategory) => !filters.category || filters.category === category;
+  const isFamilyOpen = filters.category === "family" || familyExpanded;
   const renderTask = (task: Task) => (
     <TaskCard
       key={task.id}
@@ -89,7 +91,7 @@ function TasksContent() {
       <section className="panel p-4">
         <h3 className="mb-4 text-xl font-bold">篩選</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <FilterSelect label="家庭 / 工作" value={filters.scope} onChange={(value) => setFilters({ ...filters, scope: value })} options={scopeOptions} />
+          <FilterSelect label="分類" value={filters.category} onChange={(value) => setFilters({ ...filters, category: value })} options={taskCategoryOptions} />
           <FilterSelect label="類型" value={filters.source_type} onChange={(value) => setFilters({ ...filters, source_type: value })} options={sourceTypeOptions} />
           <FilterSelect label="狀態" value={filters.status} onChange={(value) => setFilters({ ...filters, status: value })} options={taskStatusFilterOptions} />
           <FilterSelect label="風險" value={filters.risk} onChange={(value) => setFilters({ ...filters, risk: value })} options={riskOptions} />
@@ -110,8 +112,8 @@ function TasksContent() {
       </section>
 
       <section className="grid gap-5">
-        {showWork ? <TaskGroup title="工作任務" description="目前需要處理的工作任務" tasks={workTasks} renderTask={renderTask} /> : null}
-        {showFamily ? (
+        {showCategory("personal") ? <TaskGroup title="個人任務" description="目前需要處理的個人任務" tasks={personalTasks} renderTask={renderTask} /> : null}
+        {showCategory("family") ? (
           <section className="panel overflow-hidden">
             <button
               type="button"
@@ -128,6 +130,8 @@ function TasksContent() {
             {isFamilyOpen ? <div className="grid gap-4 border-t border-slate-100 p-4 sm:p-5">{familyTasks.length ? familyTasks.map(renderTask) : <EmptyTaskGroup />}</div> : null}
           </section>
         ) : null}
+        {showCategory("sec") ? <TaskGroup title="SEC 任務" description="目前需要處理的 SEC 任務" tasks={secTasks} renderTask={renderTask} /> : null}
+        {showCategory("wecare") ? <TaskGroup title="Wecare 任務" description="目前需要處理的 Wecare 任務" tasks={wecareTasks} renderTask={renderTask} /> : null}
       </section>
 
       {isAdding ? (

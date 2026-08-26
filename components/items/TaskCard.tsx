@@ -8,10 +8,11 @@ import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
 import { TaskAIAnalysisPanel } from "@/components/TaskAIAnalysisPanel";
 import { TaskCheckpointNotesPanel } from "@/components/TaskCheckpointNotesPanel";
 import { TaskResourcePack } from "@/components/TaskResourcePack";
-import { RiskBadge, ScopeBadge, StatusBadge } from "@/components/ui/Badge";
+import { RiskBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
+import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
 import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskRecurrenceRule } from "@/lib/types";
 
 export function TaskCard({
@@ -58,6 +59,8 @@ export function TaskCard({
     ? taskRecurrenceRules.find((rule) => rule.id === task.recurrence_rule_id) ?? null
     : null;
   const isOngoingRecurrence = Boolean(recurrenceRule?.is_active);
+  const category = taskCategoryFor(task);
+  const categoryLabel = taskCategoryOptions.find((option) => option.value === category)?.label ?? category;
   async function updateTask(values: Partial<Task>) {
     if (actionBusy) return false;
     setActionBusy(true);
@@ -107,6 +110,7 @@ export function TaskCard({
       await controlAction("create_task", {
         clientRequestId: crypto.randomUUID(),
         area: task.area ?? (task.scope === "company" ? "work" : "personal"),
+        taskCategory: category,
         sourceType: task.source_type,
         title: `${task.title}：${nextAction.trim().slice(0, 60)}`,
         description: `由原有工作「${task.title}」拆出。`,
@@ -135,7 +139,7 @@ export function TaskCard({
       >
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap gap-2">
-            <ScopeBadge scope={task.scope} />
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{categoryLabel}</span>
             <StatusBadge status={task.status} />
             <RiskBadge risk={task.risk} />
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}

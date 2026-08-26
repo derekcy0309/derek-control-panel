@@ -7,11 +7,13 @@ import { TimeEstimateHint } from "@/components/TimeEstimateHint";
 import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import { personalTaskTemplates } from "@/lib/personal-task-templates";
+import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
 
 type TaskFormState = {
   scope: string;
   area: string;
+  task_category: TaskCategory;
   source_type: string;
   title: string;
   owner: string;
@@ -50,6 +52,7 @@ type TaskFormState = {
 const defaultState: TaskFormState = {
   scope: "home",
   area: "personal",
+  task_category: "personal",
   source_type: "follow_up",
   title: "",
   owner: "",
@@ -111,6 +114,7 @@ export function TaskForm({
       ? {
           scope: initialTask.scope,
           area: initialTask.area ?? (initialTask.scope === "company" ? "work" : "family"),
+          task_category: taskCategoryFor(initialTask),
           source_type: initialTask.source_type,
           title: initialTask.title,
           owner: initialTask.owner ?? "",
@@ -145,7 +149,7 @@ export function TaskForm({
           recurrence_cycle_anchor_date: "",
           notice_user_ids: initialNoticeUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal" }
   );
   const [handoffOpen, setHandoffOpen] = useState(Boolean(form.handoff_to_user_id));
   const [error, setError] = useState("");
@@ -157,6 +161,11 @@ export function TaskForm({
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
+
+  function setTaskCategory(category: TaskCategory) {
+    const fields = taskCategoryFields(category);
+    setForm((current) => ({ ...current, task_category: category, area: fields.area, scope: fields.scope }));
+  }
 
   useEffect(() => {
     if (!draftEligible) { setDraftReady(true); return; }
@@ -275,6 +284,7 @@ export function TaskForm({
 
     const payload = {
       area: form.area,
+      taskCategory: form.task_category,
       sourceType: form.source_type,
       title: form.title.trim(),
       dueDate: form.due_date || null,
@@ -302,7 +312,7 @@ export function TaskForm({
     };
     try {
       if (initialTask) {
-        await controlAction("update_task", { id: initialTask.id, noticeUserIds: payload.noticeUserIds, changes: {
+        await controlAction("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
           title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
@@ -362,9 +372,9 @@ export function TaskForm({
       ) : null}
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <label>
-          <span className="label">範圍</span>
-          <select className="field mt-2" value={form.area} onChange={(event) => update("area", event.target.value)}>
-            <option value="work">工作</option><option value="family">家庭</option><option value="personal">個人</option>
+          <span className="label">分類</span>
+          <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory)}>
+            {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </label>
         <label>
