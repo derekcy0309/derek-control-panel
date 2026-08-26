@@ -39,6 +39,7 @@ const defaultState: TransactionFormState = {
 export function TransactionForm({
   initialTransaction,
   forcedType,
+  monthlyOnly = false,
   compact = false,
   onSaved,
   onCancel
@@ -46,6 +47,7 @@ export function TransactionForm({
   userId: string;
   initialTransaction?: Transaction | null;
   forcedType?: "income" | "expense";
+  monthlyOnly?: boolean;
   compact?: boolean;
   onSaved: () => void;
   onCancel?: () => void;
@@ -69,7 +71,7 @@ export function TransactionForm({
           proof_url: initialTransaction.proof_url ?? "",
           notes: initialTransaction.notes ?? ""
         }
-      : { ...defaultState, type, status: type === "income" ? "expected" : "unpaid" };
+      : { ...defaultState, type, frequency: monthlyOnly ? "monthly" : "one_time", status: type === "income" ? "expected" : "unpaid" };
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -102,7 +104,7 @@ export function TransactionForm({
       // but the interface and source of truth are the one actual payment date.
       expected_date: form.actual_date || null,
       actual_date: form.actual_date || null,
-      frequency: form.frequency,
+      frequency: monthlyOnly ? "monthly" : form.frequency,
       status: form.status,
       payment_method: form.payment_method.trim() || null,
       owner: form.owner.trim() || null,
@@ -118,7 +120,7 @@ export function TransactionForm({
       return;
     }
     setSaving(false);
-    if (!initialTransaction) setForm({ ...defaultState, type: forcedType ?? "expense", status: forcedType === "income" ? "expected" : "unpaid" });
+    if (!initialTransaction) setForm({ ...defaultState, type: forcedType ?? "expense", frequency: monthlyOnly ? "monthly" : "one_time", status: forcedType === "income" ? "expected" : "unpaid" });
     onSaved();
   }
 
@@ -173,9 +175,9 @@ export function TransactionForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">實際日期</span>
-          <input className="field mt-2" type={form.frequency === "monthly" ? "month" : "date"} value={form.frequency === "monthly" ? form.actual_date.slice(0, 7) : form.actual_date} onChange={(event) => update("actual_date", form.frequency === "monthly" && event.target.value ? `${event.target.value}-01` : event.target.value)} />
+          <input className="field mt-2" type={monthlyOnly || form.frequency === "monthly" ? "month" : "date"} value={monthlyOnly || form.frequency === "monthly" ? form.actual_date.slice(0, 7) : form.actual_date} onChange={(event) => update("actual_date", (monthlyOnly || form.frequency === "monthly") && event.target.value ? `${event.target.value}-01` : event.target.value)} />
         </label>
-        <label>
+        {!monthlyOnly ? <label>
           <span className="label">頻率</span>
           <select className="field mt-2" value={form.frequency} onChange={(event) => update("frequency", event.target.value)}>
             {frequencyOptions.map((option) => (
@@ -184,7 +186,7 @@ export function TransactionForm({
               </option>
             ))}
           </select>
-        </label>
+        </label> : null}
       </div>
       {!compact ? (
         <>

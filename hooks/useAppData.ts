@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { loadControlData } from "@/lib/control-api";
 import type { AppData } from "@/lib/types";
 
-const emptyData: AppData = { tasks: [], transactions: [], recurringExpenseRules: [], meetings: [], balances: [], settings: null };
+const emptyData: AppData = { tasks: [], transactions: [], recurringExpenseRules: [], recurringIncomeRules: [], meetings: [], balances: [], settings: null };
 
 export function useAppData() {
   const [data, setData] = useState<AppData>(emptyData);
@@ -20,7 +20,7 @@ export function useAppData() {
       const result = await loadControlData();
       setUserId(result.currentUser.id);
       setParticipants(result.participants);
-      setData({ tasks: result.tasks, transactions: result.transactions, recurringExpenseRules: result.recurringExpenseRules ?? [], meetings: result.meetings, balances: result.balances, settings: result.settings });
+      setData({ tasks: result.tasks, transactions: result.transactions, recurringExpenseRules: result.recurringExpenseRules ?? [], recurringIncomeRules: result.recurringIncomeRules ?? [], meetings: result.meetings, balances: result.balances, settings: result.settings });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "資料讀取失敗。");
     } finally {

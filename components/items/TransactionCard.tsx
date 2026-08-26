@@ -1,9 +1,9 @@
 "use client";
 
-import { Copy, FilePenLine, RotateCcw } from "lucide-react";
+import { FilePenLine, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScopeBadge, StatusBadge } from "@/components/ui/Badge";
-import { formatCurrency, formatDate, nextMonthDate } from "@/lib/date";
+import { formatCurrency, formatDate } from "@/lib/date";
 import { frequencyLabels, transactionTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import type { Transaction } from "@/lib/types";
@@ -25,27 +25,6 @@ export function TransactionCard({
 }) {
   async function updateTransaction(values: Partial<Transaction>) {
     await controlAction("save_transaction", { ...transaction, ...values, id: transaction.id });
-    onChanged();
-  }
-
-  async function copyToNextMonth() {
-    const payload = {
-      user_id: transaction.user_id,
-      scope: transaction.scope,
-      type: transaction.type,
-      item: transaction.item,
-      category: transaction.category,
-      amount: transaction.amount,
-      expected_date: nextMonthDate(transaction.actual_date ?? transaction.expected_date),
-      actual_date: nextMonthDate(transaction.actual_date ?? transaction.expected_date),
-      frequency: transaction.frequency,
-      status: transaction.type === "income" ? "expected" : "unpaid",
-      payment_method: transaction.payment_method,
-      owner: transaction.owner,
-      proof_url: transaction.proof_url,
-      notes: transaction.notes
-    };
-    await controlAction("save_transaction", payload);
     onChanged();
   }
 
@@ -125,10 +104,6 @@ export function TransactionCard({
             </Button>
           </>
           )}
-          <Button variant="secondary" onClick={copyToNextMonth}>
-            <Copy className="h-5 w-5" />
-            複製到下月
-          </Button>
           <Button variant="ghost" onClick={() => updateTransaction({ archived_at: new Date().toISOString() })}>
             封存
           </Button>

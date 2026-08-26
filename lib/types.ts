@@ -107,6 +107,7 @@ export type Transaction = {
   proof_url: string | null;
   notes: string | null;
   recurring_expense_rule_id?: string | null;
+  recurring_income_rule_id?: string | null;
   payment_month?: string | null;
   archived_at: string | null;
   created_at: string;
@@ -224,6 +225,25 @@ export type RecurringExpenseRule = {
   notes: string | null;
   start_month: string;
   last_payment_month: string | null;
+  is_active: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RecurringIncomeRule = {
+  id: string;
+  user_id: string;
+  scope: Scope;
+  item: string;
+  category: string | null;
+  amount: number;
+  payment_method: string | null;
+  owner: string | null;
+  proof_url: string | null;
+  notes: string | null;
+  start_month: string;
+  last_receipt_month: string | null;
   is_active: boolean;
   archived_at: string | null;
   created_at: string;
@@ -827,6 +847,7 @@ export type AppData = {
   tasks: Task[];
   transactions: Transaction[];
   recurringExpenseRules: RecurringExpenseRule[];
+  recurringIncomeRules: RecurringIncomeRule[];
   meetings: Meeting[];
   balances: Balance[];
   settings: UserSettings | null;

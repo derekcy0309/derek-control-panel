@@ -29,13 +29,14 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, recurringExpenseRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients] =
+  const [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("tasks").select("*").is("deleted_at", null).is("archived_at", null).order("due_date", { ascending: true, nullsFirst: false }),
       client.from("transactions").select("*").is("archived_at", null).order("expected_date", { ascending: true, nullsFirst: false }),
       client.from("recurring_expense_rules").select("*").is("archived_at", null).order("item", { ascending: true }),
+      client.from("recurring_income_rules").select("*").is("archived_at", null).order("item", { ascending: true }),
       client.from("meetings").select("*").is("archived_at", null).order("meeting_date", { ascending: false }),
       client.from("balances").select("*").is("archived_at", null).order("month", { ascending: false }),
       client.from("operating_items").select("*").is("archived_at", null).order("due_date", { ascending: true, nullsFirst: false }),
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
       client.from("task_notice_recipients").select("*")
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients]
+  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -97,6 +98,7 @@ export async function GET(request: NextRequest) {
     tasks: tasks.data ?? [],
     transactions: transactions.data ?? [],
     recurringExpenseRules: recurringExpenseRules.data ?? [],
+    recurringIncomeRules: recurringIncomeRules.data ?? [],
     meetings: meetings.data ?? [],
     balances: balances.data ?? [],
     operatingItems: items.data ?? [],
@@ -778,6 +780,8 @@ export async function POST(request: NextRequest) {
     case "save_transaction": return saveTransaction(context, body);
     case "save_recurring_expense_rule": return saveRecurringExpenseRule(context, body);
     case "record_recurring_expense_payments": return recordRecurringExpensePayments(context, body);
+    case "save_recurring_income_rule": return saveRecurringIncomeRule(context, body);
+    case "record_recurring_income_receipts": return recordRecurringIncomeReceipts(context, body);
     case "save_meeting": return saveMeeting(context, body);
     case "save_balance": return saveBalance(context, body);
     case "create_item": return createOperatingItem(context, body);
@@ -1539,6 +1543,95 @@ async function recordRecurringExpensePayments({ client, user }: RequestContext, 
   }
   await Promise.all(eligibleRules.map((rule) => recordActivity(client, user.id, "recurring_expense_rule", rule.id, "payment_marked_paid", `標記 ${paymentMonth.slice(0, 7)} 已付款`)));
   return Response.json({ paymentMonth, paidRuleIds: eligibleRules.map((rule) => rule.id) }, { headers: privateHeaders() });
+}
+
+async function saveRecurringIncomeRule({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (id) {
+    const existing = await client.from("recurring_income_rules").select("user_id").eq("id", id).maybeSingle();
+    if (existing.error) return databaseError(existing.error);
+    if (!existing.data || existing.data.user_id !== user.id) return jsonError("只有擁有者可以修改此恆常收入。", 403);
+  }
+  const item = requiredText(body.item, "請輸入恆常收入名稱。");
+  if (item instanceof Response) return item;
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 9999999999) return jsonError("金額必須大於 0。", 422);
+  const startMonth = monthValue(body.start_month);
+  if (!startMonth) return jsonError("請選擇開始收款月份。", 422);
+  const rawLastReceiptMonth = stringValue(body.last_receipt_month).trim();
+  const lastReceiptMonth = rawLastReceiptMonth ? monthValue(rawLastReceiptMonth) : null;
+  if (rawLastReceiptMonth && !lastReceiptMonth) return jsonError("最後收款月份格式不正確。", 422);
+  if (lastReceiptMonth && lastReceiptMonth < startMonth) return jsonError("最後收款月份不可早於開始月份。", 422);
+  const payload = {
+    user_id: user.id,
+    scope: enumValue(body.scope, ["home", "company"], "home"),
+    item,
+    category: nullableText(body.category),
+    amount,
+    payment_method: nullableText(body.payment_method),
+    owner: nullableText(body.owner),
+    proof_url: safeUrl(body.proof_url),
+    notes: nullableText(body.notes),
+    start_month: startMonth,
+    last_receipt_month: lastReceiptMonth,
+    is_active: body.is_active === undefined ? true : Boolean(body.is_active)
+  };
+  const result = id
+    ? await client.from("recurring_income_rules").update(payload).eq("id", id).select("*").single()
+    : await client.from("recurring_income_rules").insert(payload).select("*").single();
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "recurring_income_rule", result.data.id, id ? "update" : "create", id ? "更新恆常收入" : "建立恆常收入");
+  return Response.json({ rule: result.data }, { status: id ? 200 : 201, headers: privateHeaders() });
+}
+
+async function recordRecurringIncomeReceipts({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const ruleIds = recurringExpenseRuleIds(body.ruleIds);
+  if (ruleIds instanceof Response) return ruleIds;
+  if (!ruleIds.length) return jsonError("請先選擇至少一項恆常收入。", 422);
+  const receiptMonth = monthValue(body.receiptMonth);
+  if (!receiptMonth) return jsonError("收款月份格式不正確。", 422);
+  const rules = await client.from("recurring_income_rules")
+    .select("*")
+    .eq("user_id", user.id)
+    .is("archived_at", null)
+    .eq("is_active", true)
+    .in("id", ruleIds);
+  if (rules.error) return databaseError(rules.error);
+  const eligibleRules = (rules.data ?? []).filter((rule) =>
+    rule.start_month <= receiptMonth && (!rule.last_receipt_month || rule.last_receipt_month >= receiptMonth)
+  );
+  if (!eligibleRules.length) return jsonError("所選恆常收入不適用於這個月份。", 422);
+  const existing = await client.from("transactions")
+    .select("id, recurring_income_rule_id")
+    .eq("user_id", user.id)
+    .in("recurring_income_rule_id", eligibleRules.map((rule) => rule.id))
+    .eq("payment_month", receiptMonth)
+    .is("archived_at", null);
+  if (existing.error) return databaseError(existing.error);
+  const existingRuleIds = new Set((existing.data ?? []).map((row) => row.recurring_income_rule_id));
+  const rowsToInsert = eligibleRules
+    .filter((rule) => !existingRuleIds.has(rule.id))
+    .map((rule) => ({
+      user_id: user.id, scope: rule.scope, type: "income", item: rule.item, category: rule.category, amount: rule.amount,
+      expected_date: receiptMonth, actual_date: receiptMonth, frequency: "monthly", status: "received",
+      payment_method: rule.payment_method, owner: rule.owner, proof_url: rule.proof_url, notes: rule.notes,
+      recurring_income_rule_id: rule.id, payment_month: receiptMonth
+    }));
+  if (rowsToInsert.length) {
+    const inserted = await client.from("transactions").insert(rowsToInsert).select("id");
+    if (inserted.error) return databaseError(inserted.error);
+  }
+  if (existingRuleIds.size) {
+    const updated = await client.from("transactions")
+      .update({ status: "received", actual_date: receiptMonth })
+      .eq("user_id", user.id)
+      .in("recurring_income_rule_id", [...existingRuleIds])
+      .eq("payment_month", receiptMonth)
+      .is("archived_at", null);
+    if (updated.error) return databaseError(updated.error);
+  }
+  await Promise.all(eligibleRules.map((rule) => recordActivity(client, user.id, "recurring_income_rule", rule.id, "receipt_marked_received", `標記 ${receiptMonth.slice(0, 7)} 已收到`)));
+  return Response.json({ receiptMonth, receivedRuleIds: eligibleRules.map((rule) => rule.id) }, { headers: privateHeaders() });
 }
 
 async function saveMeeting({ client, user }: RequestContext, body: Record<string, unknown>) {

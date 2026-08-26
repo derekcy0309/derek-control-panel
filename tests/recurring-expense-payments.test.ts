@@ -27,13 +27,33 @@ test("cashflow keeps paid and unpaid entries reversible and separates personal f
   assert.match(page, /批量標記已付款/);
   assert.match(page, /個人／家庭恆常支出/);
   assert.match(page, /公司恆常支出/);
-  assert.match(page, /個人／家庭付款紀錄/);
-  assert.match(page, /公司付款紀錄/);
+  assert.match(page, /個人／家庭臨時支出/);
+  assert.match(page, /公司臨時支出/);
   assert.match(page, /改回未付款/);
   assert.match(card, /status: "unpaid", actual_date: null/);
   assert.match(api, /record_recurring_expense_payments/);
   assert.match(api, /paymentMonth = monthValue/);
   assert.match(api, /status: "paid", actual_date: paymentMonth/);
+  assert.match(page, /payment_month\?\.slice\(0, 7\) === monthKey/);
+});
+
+test("cashflow supports recurring income and one-month-only income and expenses", () => {
+  const page = read("app/cashflow/page.tsx");
+  const incomeForm = read("components/forms/RecurringIncomeForm.tsx");
+  const card = read("components/items/TransactionCard.tsx");
+  const migration = read("supabase/migrations/20260826170630_recurring_income_payments.sql");
+  const api = read("app/api/control/route.ts");
+  assert.match(page, /新增恆常收入/);
+  assert.match(page, /新增臨時收入/);
+  assert.match(page, /新增臨時支出/);
+  assert.match(page, /本月臨時收入/);
+  assert.doesNotMatch(page, /全部現金流紀錄/);
+  assert.doesNotMatch(card, /複製到下月/);
+  assert.match(incomeForm, /最後收款月份（可留空）/);
+  assert.match(migration, /create table if not exists public\.recurring_income_rules/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /transactions_recurring_income_month_unique/);
+  assert.match(api, /recordRecurringIncomeReceipts/);
 });
 
 test("cashflow summary only includes the selected month", () => {
