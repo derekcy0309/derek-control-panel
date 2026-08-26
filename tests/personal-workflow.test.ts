@@ -59,6 +59,16 @@ test("task list cards keep key information visible and disclose details on deman
   assert.match(detailPage, /prominent/);
 });
 
+test("tasks keep work and family separate with family collapsed by default", () => {
+  const tasksPage = read("app/tasks/page.tsx");
+  assert.match(tasksPage, /const workTasks = filteredTasks\.filter\(\(task\) => task\.scope === "company"\)/);
+  assert.match(tasksPage, /const familyTasks = filteredTasks\.filter\(\(task\) => task\.scope === "home"\)/);
+  assert.match(tasksPage, /const \[familyExpanded, setFamilyExpanded\] = useState\(false\)/);
+  assert.match(tasksPage, /工作任務/);
+  assert.match(tasksPage, /家庭任務/);
+  assert.match(tasksPage, /aria-expanded=\{isFamilyOpen\}/);
+});
+
 test("PWA metadata describes personal work only", () => {
   const manifest = read("app/manifest.ts");
   const layout = read("app/layout.tsx");

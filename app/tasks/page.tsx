@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { type ReactNode, useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
@@ -24,6 +24,7 @@ function TasksContent() {
   const { data, loading, error, reload } = useControlData();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  const [familyExpanded, setFamilyExpanded] = useState(false);
   const [filters, setFilters] = useState({
     scope: "",
     source_type: "",
@@ -48,6 +49,28 @@ function TasksContent() {
   }, [data, filters]);
 
   if (loading || error || !data) return <LoadingState error={error} />;
+
+  const workTasks = filteredTasks.filter((task) => task.scope === "company");
+  const familyTasks = filteredTasks.filter((task) => task.scope === "home");
+  const showWork = filters.scope !== "home";
+  const showFamily = filters.scope !== "company";
+  const isFamilyOpen = filters.scope === "home" || familyExpanded;
+  const renderTask = (task: Task) => (
+    <TaskCard
+      key={task.id}
+      task={task}
+      currentUserId={data.currentUser.id}
+      participants={data.participants}
+      assignments={data.assignments}
+      handoffNotes={data.handoffNotes}
+      allTasks={data.tasks}
+      taskDependencies={data.taskDependencies}
+      taskRecurrenceRules={data.taskRecurrenceRules}
+      operatingItems={data.operatingItems}
+      onChanged={reload}
+      onEdit={setEditingTask}
+    />
+  );
 
   return (
     <div className="space-y-5">
@@ -86,27 +109,25 @@ function TasksContent() {
         </label>
       </section>
 
-      <section className="grid gap-4">
-        {filteredTasks.length ? (
-          filteredTasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              currentUserId={data.currentUser.id}
-              participants={data.participants}
-              assignments={data.assignments}
-              handoffNotes={data.handoffNotes}
-              allTasks={data.tasks}
-              taskDependencies={data.taskDependencies}
-              taskRecurrenceRules={data.taskRecurrenceRules}
-              operatingItems={data.operatingItems}
-              onChanged={reload}
-              onEdit={setEditingTask}
-            />
-          ))
-        ) : (
-          <div className="panel p-5 text-base text-slate-600">沒有符合條件的任務。</div>
-        )}
+      <section className="grid gap-5">
+        {showWork ? <TaskGroup title="工作任務" description="目前需要處理的工作任務" tasks={workTasks} renderTask={renderTask} /> : null}
+        {showFamily ? (
+          <section className="panel overflow-hidden">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-4 p-5 text-left"
+              onClick={() => setFamilyExpanded((current) => !current)}
+              aria-expanded={isFamilyOpen}
+            >
+              <span>
+                <span className="block text-xl font-bold text-ink">家庭任務</span>
+                <span className="mt-1 block text-sm font-semibold text-slate-600">{familyTasks.length} 項；按這裡才顯示家庭工作</span>
+              </span>
+              {isFamilyOpen ? <ChevronDown className="h-6 w-6 text-indigo-700" /> : <ChevronRight className="h-6 w-6 text-indigo-700" />}
+            </button>
+            {isFamilyOpen ? <div className="grid gap-4 border-t border-slate-100 p-4 sm:p-5">{familyTasks.length ? familyTasks.map(renderTask) : <EmptyTaskGroup />}</div> : null}
+          </section>
+        ) : null}
       </section>
 
       {isAdding ? (
@@ -122,6 +143,27 @@ function TasksContent() {
       ) : null}
     </div>
   );
+}
+
+function TaskGroup({ title, description, tasks, renderTask }: {
+  title: string;
+  description: string;
+  tasks: Task[];
+  renderTask: (task: Task) => ReactNode;
+}) {
+  return (
+    <section className="grid gap-4">
+      <div className="px-1">
+        <h3 className="text-xl font-bold text-ink">{title}</h3>
+        <p className="mt-1 text-sm font-semibold text-slate-600">{description} · {tasks.length} 項</p>
+      </div>
+      {tasks.length ? tasks.map(renderTask) : <EmptyTaskGroup />}
+    </section>
+  );
+}
+
+function EmptyTaskGroup() {
+  return <div className="panel p-5 text-base text-slate-600">沒有符合條件的任務。</div>;
 }
 
 function FilterSelect({
