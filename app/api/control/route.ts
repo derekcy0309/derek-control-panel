@@ -1517,11 +1517,13 @@ async function recordRecurringExpensePayments({ client, user }: RequestContext, 
   if (!eligibleRules.length) return jsonError("所選恆常支出不適用於這個月份。", 422);
 
   const existing = await client.from("transactions")
-    .select("id, recurring_expense_rule_id")
+    // Include archived records here. A recurring payment is the month’s
+    // payment state, so marking it paid again must restore that same row
+    // instead of attempting an insert that conflicts with the month index.
+    .select("id, recurring_expense_rule_id, archived_at")
     .eq("user_id", user.id)
     .in("recurring_expense_rule_id", eligibleRules.map((rule) => rule.id))
-    .eq("payment_month", paymentMonth)
-    .is("archived_at", null);
+    .eq("payment_month", paymentMonth);
   if (existing.error) return databaseError(existing.error);
   const existingRuleIds = new Set((existing.data ?? []).map((row) => row.recurring_expense_rule_id));
   const rowsToInsert = eligibleRules
@@ -1550,11 +1552,10 @@ async function recordRecurringExpensePayments({ client, user }: RequestContext, 
   }
   if (existingRuleIds.size) {
     const updated = await client.from("transactions")
-      .update({ status: "paid", actual_date: paymentMonth })
+      .update({ status: "paid", actual_date: paymentMonth, archived_at: null })
       .eq("user_id", user.id)
       .in("recurring_expense_rule_id", [...existingRuleIds])
-      .eq("payment_month", paymentMonth)
-      .is("archived_at", null);
+      .eq("payment_month", paymentMonth);
     if (updated.error) return databaseError(updated.error);
   }
   await Promise.all(eligibleRules.map((rule) => recordActivity(client, user.id, "recurring_expense_rule", rule.id, "payment_marked_paid", `標記 ${paymentMonth.slice(0, 7)} 已付款`)));
@@ -1618,11 +1619,12 @@ async function recordRecurringIncomeReceipts({ client, user }: RequestContext, b
   );
   if (!eligibleRules.length) return jsonError("所選恆常收入不適用於這個月份。", 422);
   const existing = await client.from("transactions")
-    .select("id, recurring_income_rule_id")
+    // Archived receipt rows must be restored, not treated as missing,
+    // otherwise the unique month record cannot return to the cashflow view.
+    .select("id, recurring_income_rule_id, archived_at")
     .eq("user_id", user.id)
     .in("recurring_income_rule_id", eligibleRules.map((rule) => rule.id))
-    .eq("payment_month", receiptMonth)
-    .is("archived_at", null);
+    .eq("payment_month", receiptMonth);
   if (existing.error) return databaseError(existing.error);
   const existingRuleIds = new Set((existing.data ?? []).map((row) => row.recurring_income_rule_id));
   const rowsToInsert = eligibleRules
@@ -1639,11 +1641,10 @@ async function recordRecurringIncomeReceipts({ client, user }: RequestContext, b
   }
   if (existingRuleIds.size) {
     const updated = await client.from("transactions")
-      .update({ status: "received", actual_date: receiptMonth })
+      .update({ status: "received", actual_date: receiptMonth, archived_at: null })
       .eq("user_id", user.id)
       .in("recurring_income_rule_id", [...existingRuleIds])
-      .eq("payment_month", receiptMonth)
-      .is("archived_at", null);
+      .eq("payment_month", receiptMonth);
     if (updated.error) return databaseError(updated.error);
   }
   await Promise.all(eligibleRules.map((rule) => recordActivity(client, user.id, "recurring_income_rule", rule.id, "receipt_marked_received", `標記 ${receiptMonth.slice(0, 7)} 已收到`)));

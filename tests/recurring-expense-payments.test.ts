@@ -34,6 +34,8 @@ test("cashflow keeps paid and unpaid entries reversible and separates personal f
   assert.match(api, /record_recurring_expense_payments/);
   assert.match(api, /paymentMonth = monthValue/);
   assert.match(api, /status: "paid", actual_date: paymentMonth/);
+  assert.match(api, /status: "paid", actual_date: paymentMonth, archived_at: null/);
+  assert.match(api, /select\("id, recurring_expense_rule_id, archived_at"\)/);
   assert.match(page, /payment_month\?\.slice\(0, 7\) === monthKey/);
 });
 
@@ -54,6 +56,8 @@ test("cashflow supports recurring income and one-month-only income and expenses"
   assert.match(migration, /enable row level security/);
   assert.match(migration, /transactions_recurring_income_month_unique/);
   assert.match(api, /recordRecurringIncomeReceipts/);
+  assert.match(api, /status: "received", actual_date: receiptMonth, archived_at: null/);
+  assert.match(api, /select\("id, recurring_income_rule_id, archived_at"\)/);
 });
 
 test("cashflow summary only includes the selected month", () => {
