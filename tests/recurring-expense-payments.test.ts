@@ -82,3 +82,10 @@ test("cashflow uses one actual payment date while retaining legacy records", () 
   const summary = getCashflowSummary([legacy, actual], [], "home", "2026-09-01");
   assert.equal(summary.expectedExpense, 200);
 });
+
+test("marking a monthly entry received or paid preserves its selected month", () => {
+  const card = read("components/items/TransactionCard.tsx");
+  assert.match(card, /const settlementDate = transaction\.actual_date \?\? transaction\.expected_date/);
+  assert.match(card, /status: "received", actual_date: settlementDate/);
+  assert.match(card, /status: "paid", actual_date: settlementDate/);
+});

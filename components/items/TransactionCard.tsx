@@ -29,6 +29,9 @@ export function TransactionCard({
   }
 
   const isIncome = transaction.type === "income";
+  // Keep a selected monthly item in that month when it is marked received/paid.
+  // Falling back to today is only for legacy records without any date.
+  const settlementDate = transaction.actual_date ?? transaction.expected_date ?? new Date().toISOString().slice(0, 10);
 
   return (
     <article className={highlight ? "rounded-xl border-2 border-orange-200 bg-orange-50 p-4 shadow-soft" : "panel-soft p-4"}>
@@ -69,7 +72,7 @@ export function TransactionCard({
         <div className="mt-4 flex flex-wrap gap-2">
           {isIncome ? (
           <>
-            <Button variant="success" onClick={() => updateTransaction({ status: "received", actual_date: new Date().toISOString().slice(0, 10) })}>
+            <Button variant="success" onClick={() => updateTransaction({ status: "received", actual_date: settlementDate })}>
               已收到
             </Button>
             <Button variant="secondary" onClick={() => updateTransaction({ status: "delayed" })}>
@@ -89,7 +92,7 @@ export function TransactionCard({
                 改回未付款
               </Button>
             ) : (
-              <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: new Date().toISOString().slice(0, 10) })}>
+              <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: settlementDate })}>
                 已付款
               </Button>
             )}
