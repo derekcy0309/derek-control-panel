@@ -2,18 +2,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Archive, Plus } from "lucide-react";
+import { Archive, CheckSquare, Plus } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TransactionForm } from "@/components/forms/TransactionForm";
+import { RecurringExpenseForm } from "@/components/forms/RecurringExpenseForm";
 import { TransactionCard } from "@/components/items/TransactionCard";
 import { Button } from "@/components/ui/Button";
 import { getCashflowSummary } from "@/lib/cashflow";
 import { currentMonth, formatCurrency, isWithinDays } from "@/lib/date";
 import { scopeLabels, transactionTypeLabels } from "@/lib/labels";
 import { controlAction, loadArchivedTransactions } from "@/lib/control-api";
-import type { Scope, Transaction } from "@/lib/types";
+import type { RecurringExpenseRule, Scope, Transaction } from "@/lib/types";
 import { useAppData } from "@/hooks/useAppData";
 
 export default function CashflowPage() {
@@ -27,7 +28,9 @@ export default function CashflowPage() {
 function CashflowContent() {
   const { data, userId, loading, error, reload } = useAppData();
   const [addingType, setAddingType] = useState<"income" | "expense" | null>(null);
+  const [addingRecurringExpense, setAddingRecurringExpense] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [editingRecurringExpense, setEditingRecurringExpense] = useState<RecurringExpenseRule | null>(null);
   const [month, setMonth] = useState(currentMonth());
   const [showArchived, setShowArchived] = useState(false);
   const [archivedTransactions, setArchivedTransactions] = useState<Transaction[] | null>(null);
@@ -36,6 +39,9 @@ function CashflowContent() {
   const [archivedLoading, setArchivedLoading] = useState(false);
   const [archivedError, setArchivedError] = useState("");
   const [archiveFeedback, setArchiveFeedback] = useState("");
+  const [selectedRecurringRuleIds, setSelectedRecurringRuleIds] = useState<string[]>([]);
+  const [recurringBusy, setRecurringBusy] = useState(false);
+  const [recurringFeedback, setRecurringFeedback] = useState("");
 
   const activeTransactions = useMemo(() => data.transactions.filter((item) => !item.archived_at), [data.transactions]);
 
@@ -85,8 +91,23 @@ function CashflowContent() {
     [activeTransactions]
   );
   const monthKey = month.slice(0, 7);
+  const recurringRulesForMonth = useMemo(
+    () => data.recurringExpenseRules.filter((rule) =>
+      rule.is_active && !rule.archived_at && rule.start_month <= month && (!rule.last_payment_month || rule.last_payment_month >= month)
+    ),
+    [data.recurringExpenseRules, month]
+  );
+  const recurringPaymentByRuleId = useMemo(() => new Map(
+    activeTransactions
+      .filter((item) => item.recurring_expense_rule_id && item.payment_month === month)
+      .map((item) => [item.recurring_expense_rule_id as string, item])
+  ), [activeTransactions, month]);
+  const virtualRecurringExpenses = useMemo(() => recurringRulesForMonth
+    .filter((rule) => !recurringPaymentByRuleId.has(rule.id))
+    .map((rule) => recurringExpenseOccurrence(rule, month)), [recurringRulesForMonth, recurringPaymentByRuleId, month]);
+  const cashflowTransactions = useMemo(() => [...activeTransactions, ...virtualRecurringExpenses], [activeTransactions, virtualRecurringExpenses]);
   const thisMonthExpenses = useMemo(
-    () => activeTransactions.filter((item) => item.type === "expense" && item.expected_date?.slice(0, 7) === monthKey),
+    () => activeTransactions.filter((item) => item.type === "expense" && item.expected_date?.slice(0, 7) === monthKey && !item.recurring_expense_rule_id),
     [activeTransactions, monthKey]
   );
   const paidThisMonth = useMemo(
@@ -97,6 +118,30 @@ function CashflowContent() {
     () => thisMonthExpenses.filter((item) => !["paid", "cancelled", "skipped"].includes(item.status)),
     [thisMonthExpenses]
   );
+
+  function toggleRecurringRule(ruleId: string) {
+    setSelectedRecurringRuleIds((current) => current.includes(ruleId) ? current.filter((id) => id !== ruleId) : [...current, ruleId]);
+  }
+
+  function selectAllUnpaidRecurring() {
+    setSelectedRecurringRuleIds(recurringRulesForMonth.filter((rule) => recurringPaymentByRuleId.get(rule.id)?.status !== "paid").map((rule) => rule.id));
+  }
+
+  async function markSelectedRecurringPaid() {
+    if (!selectedRecurringRuleIds.length) return;
+    setRecurringBusy(true);
+    setRecurringFeedback("");
+    try {
+      const result = await controlAction<{ paidRuleIds: string[] }>("record_recurring_expense_payments", { ruleIds: selectedRecurringRuleIds, paymentMonth: monthKey });
+      setRecurringFeedback(`已標記 ${result.paidRuleIds.length} 項 ${monthKey} 恆常支出為已付款。你仍可隨時改回未付款。`);
+      setSelectedRecurringRuleIds([]);
+      await reload();
+    } catch (caught) {
+      setRecurringFeedback(caught instanceof Error ? caught.message : "未能更新付款狀態，請稍後再試。");
+    } finally {
+      setRecurringBusy(false);
+    }
+  }
 
   if (loading || error || !userId) return <LoadingState error={error} />;
 
@@ -117,6 +162,10 @@ function CashflowContent() {
             <Plus className="h-5 w-5" />
             新增支出
           </Button>
+          <Button variant="secondary" onClick={() => setAddingRecurringExpense(true)}>
+            <Plus className="h-5 w-5" />
+            新增恆常支出
+          </Button>
           <Button variant="secondary" onClick={() => void toggleArchived()} aria-expanded={showArchived}>
             <Archive className="h-5 w-5" />
             {showArchived ? "收起已封存" : "查看已封存"}
@@ -132,18 +181,37 @@ function CashflowContent() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <CashflowScope scope="home" month={month} userId={userId} transactions={activeTransactions} balances={data.balances} reload={reload} />
-        <CashflowScope scope="company" month={month} userId={userId} transactions={activeTransactions} balances={data.balances} reload={reload} />
+        <CashflowScope scope="home" month={month} userId={userId} transactions={cashflowTransactions} balances={data.balances} reload={reload} />
+        <CashflowScope scope="company" month={month} userId={userId} transactions={cashflowTransactions} balances={data.balances} reload={reload} />
       </section>
 
       <section className="panel p-4">
         <div>
-          <h3 className="text-xl font-bold text-ink">本月付款狀態</h3>
-          <p className="mt-1 text-sm text-slate-600">按預計日期分開顯示，已取消、跳過及已封存項目不會列入未付款。</p>
+          <h3 className="text-xl font-bold text-ink">恆常支出</h3>
+          <p className="mt-1 text-sm text-slate-600">只按年月記錄。選擇最後付款月份後，下一個月便不會再顯示；已付款可隨時改回未付款。</p>
         </div>
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
-          <PaymentGroup title="本月已付款" items={paidThisMonth} emptyMessage="本月暫時沒有已付款支出。" onChanged={handleActiveTransactionChanged} onEdit={setEditingTransaction} />
-          <PaymentGroup title="本月未付款" items={unpaidThisMonth} emptyMessage="本月暫時沒有未付款支出。" onChanged={handleActiveTransactionChanged} onEdit={setEditingTransaction} highlight />
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={selectAllUnpaidRecurring}>全選未付款</Button>
+          <Button disabled={recurringBusy || !selectedRecurringRuleIds.length} onClick={() => void markSelectedRecurringPaid()}>
+            <CheckSquare className="h-5 w-5" />
+            {recurringBusy ? "更新中…" : `批量標記已付款${selectedRecurringRuleIds.length ? `（${selectedRecurringRuleIds.length}）` : ""}`}
+          </Button>
+        </div>
+        {recurringFeedback ? <p className="mt-3 rounded-lg bg-indigo-50 p-3 text-sm font-semibold text-indigo-900">{recurringFeedback}</p> : null}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <RecurringExpenseColumn title="個人／家庭恆常支出" scope="home" rules={recurringRulesForMonth} payments={recurringPaymentByRuleId} selectedRuleIds={selectedRecurringRuleIds} onToggle={toggleRecurringRule} onChanged={handleActiveTransactionChanged} onEdit={setEditingRecurringExpense} />
+          <RecurringExpenseColumn title="公司恆常支出" scope="company" rules={recurringRulesForMonth} payments={recurringPaymentByRuleId} selectedRuleIds={selectedRecurringRuleIds} onToggle={toggleRecurringRule} onChanged={handleActiveTransactionChanged} onEdit={setEditingRecurringExpense} />
+        </div>
+      </section>
+
+      <section className="panel p-4">
+        <div>
+          <h3 className="text-xl font-bold text-ink">本月其他付款紀錄</h3>
+          <p className="mt-1 text-sm text-slate-600">已付及未付分開列出；若誤按，打開項目後可直接改回未付款。</p>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <MonthlyPaymentColumn title="個人／家庭付款紀錄" scope="home" paidItems={paidThisMonth} unpaidItems={unpaidThisMonth} onChanged={handleActiveTransactionChanged} onEdit={setEditingTransaction} />
+          <MonthlyPaymentColumn title="公司付款紀錄" scope="company" paidItems={paidThisMonth} unpaidItems={unpaidThisMonth} onChanged={handleActiveTransactionChanged} onEdit={setEditingTransaction} />
         </div>
       </section>
 
@@ -204,6 +272,18 @@ function CashflowContent() {
         </Modal>
       ) : null}
 
+      {addingRecurringExpense ? (
+        <Modal title="新增恆常支出" onClose={() => setAddingRecurringExpense(false)}>
+          <RecurringExpenseForm onSaved={() => finish(reload, () => setAddingRecurringExpense(false))} onCancel={() => setAddingRecurringExpense(false)} />
+        </Modal>
+      ) : null}
+
+      {editingRecurringExpense ? (
+        <Modal title="修改恆常支出" onClose={() => setEditingRecurringExpense(null)}>
+          <RecurringExpenseForm initialRule={editingRecurringExpense} onSaved={() => finish(reload, () => setEditingRecurringExpense(null))} onCancel={() => setEditingRecurringExpense(null)} />
+        </Modal>
+      ) : null}
+
       {editingTransaction ? (
         <Modal title="修改收入支出" onClose={() => setEditingTransaction(null)}>
           <TransactionForm
@@ -215,6 +295,119 @@ function CashflowContent() {
         </Modal>
       ) : null}
     </div>
+  );
+}
+
+function RecurringExpenseColumn({
+  title,
+  scope,
+  rules,
+  payments,
+  selectedRuleIds,
+  onToggle,
+  onChanged,
+  onEdit
+}: {
+  title: string;
+  scope: Scope;
+  rules: RecurringExpenseRule[];
+  payments: Map<string, Transaction>;
+  selectedRuleIds: string[];
+  onToggle: (ruleId: string) => void;
+  onChanged: () => void;
+  onEdit: (rule: RecurringExpenseRule) => void;
+}) {
+  const scopedRules = rules.filter((rule) => rule.scope === scope);
+
+  async function setPaymentStatus(payment: Transaction, status: "paid" | "unpaid") {
+    await controlAction("save_transaction", {
+      ...payment,
+      id: payment.id,
+      status,
+      actual_date: status === "paid" ? payment.payment_month : null
+    });
+    onChanged();
+  }
+
+  return (
+    <section className={scope === "home" ? "rounded-xl bg-home-50 p-4" : "rounded-xl bg-work-50 p-4"}>
+      <div className="flex items-center justify-between gap-3"><h4 className="text-lg font-bold text-ink">{title}</h4><span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700">{scopedRules.length} 項</span></div>
+      <div className="mt-3 grid gap-3">
+        {scopedRules.length ? scopedRules.map((rule) => {
+          const payment = payments.get(rule.id);
+          const paid = payment?.status === "paid";
+          return (
+            <article key={rule.id} className="rounded-xl bg-white p-4 shadow-soft">
+              <div className="flex items-start justify-between gap-3">
+                <label className="flex min-w-0 cursor-pointer items-start gap-3">
+                  <input className="mt-1 h-5 w-5 accent-indigo-600" type="checkbox" checked={selectedRuleIds.includes(rule.id)} onChange={() => onToggle(rule.id)} aria-label={`選擇 ${rule.item}`} />
+                  <span><span className="block text-lg font-bold text-ink">{rule.item}</span><span className="mt-1 block text-sm font-semibold text-slate-600">{formatCurrency(Number(rule.amount))}／月</span></span>
+                </label>
+                <span className={paid ? "rounded-full bg-emerald-100 px-3 py-1 text-sm font-bold text-emerald-800" : "rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-900"}>{paid ? "已付款" : "未付款"}</span>
+              </div>
+              <p className="mt-3 text-sm text-slate-600">最後付款月份：{rule.last_payment_month ? rule.last_payment_month.slice(0, 7) : "持續，未設定"}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {payment ? <Button variant="secondary" onClick={() => void setPaymentStatus(payment, paid ? "unpaid" : "paid")}>{paid ? "改回未付款" : "標記已付款"}</Button> : null}
+                <Button variant="ghost" onClick={() => onEdit(rule)}>修改設定</Button>
+              </div>
+            </article>
+          );
+        }) : <p className="rounded-lg bg-white p-4 text-sm font-semibold text-slate-600">這個月份沒有恆常支出。</p>}
+      </div>
+    </section>
+  );
+}
+
+function recurringExpenseOccurrence(rule: RecurringExpenseRule, month: string): Transaction {
+  return {
+    id: `recurring-${rule.id}-${month}`,
+    user_id: rule.user_id,
+    scope: rule.scope,
+    type: "expense",
+    item: rule.item,
+    category: rule.category,
+    amount: Number(rule.amount),
+    expected_date: month,
+    actual_date: null,
+    frequency: "monthly",
+    status: "unpaid",
+    payment_method: rule.payment_method,
+    owner: rule.owner,
+    proof_url: rule.proof_url,
+    notes: rule.notes,
+    recurring_expense_rule_id: rule.id,
+    payment_month: month,
+    archived_at: null,
+    created_at: rule.created_at,
+    updated_at: rule.updated_at
+  };
+}
+
+function MonthlyPaymentColumn({
+  title,
+  scope,
+  paidItems,
+  unpaidItems,
+  onChanged,
+  onEdit
+}: {
+  title: string;
+  scope: Scope;
+  paidItems: Transaction[];
+  unpaidItems: Transaction[];
+  onChanged: () => void;
+  onEdit: (transaction: Transaction) => void;
+}) {
+  const scopePaid = paidItems.filter((item) => item.scope === scope);
+  const scopeUnpaid = unpaidItems.filter((item) => item.scope === scope);
+  return (
+    <section className={scope === "home" ? "rounded-xl bg-home-50 p-4" : "rounded-xl bg-work-50 p-4"}>
+      <h4 className="text-lg font-bold text-ink">{title}</h4>
+      <div className="mt-3 grid gap-3">
+        <PaymentGroup title="本月已付款" items={scopePaid} emptyMessage="本月暫時沒有已付款支出。" onChanged={onChanged} onEdit={onEdit} />
+        <PaymentGroup title="本月未付款" items={scopeUnpaid} emptyMessage="本月暫時沒有未付款支出。" onChanged={onChanged} onEdit={onEdit} highlight />
+      </div>
+    </section>
   );
 }
 

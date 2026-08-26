@@ -29,12 +29,13 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients] =
+  const [profile, settings, tasks, transactions, recurringExpenseRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("tasks").select("*").is("deleted_at", null).is("archived_at", null).order("due_date", { ascending: true, nullsFirst: false }),
       client.from("transactions").select("*").is("archived_at", null).order("expected_date", { ascending: true, nullsFirst: false }),
+      client.from("recurring_expense_rules").select("*").is("archived_at", null).order("item", { ascending: true }),
       client.from("meetings").select("*").is("archived_at", null).order("meeting_date", { ascending: false }),
       client.from("balances").select("*").is("archived_at", null).order("month", { ascending: false }),
       client.from("operating_items").select("*").is("archived_at", null).order("due_date", { ascending: true, nullsFirst: false }),
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
       client.from("task_notice_recipients").select("*")
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients]
+  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -95,6 +96,7 @@ export async function GET(request: NextRequest) {
     settings: settings.data,
     tasks: tasks.data ?? [],
     transactions: transactions.data ?? [],
+    recurringExpenseRules: recurringExpenseRules.data ?? [],
     meetings: meetings.data ?? [],
     balances: balances.data ?? [],
     operatingItems: items.data ?? [],
@@ -774,6 +776,8 @@ export async function POST(request: NextRequest) {
     case "set_task_recurrence_active": return setTaskRecurrenceActive(context, body);
     case "set_task_recurrence_deadline_mode": return setTaskRecurrenceDeadlineMode(context, body);
     case "save_transaction": return saveTransaction(context, body);
+    case "save_recurring_expense_rule": return saveRecurringExpenseRule(context, body);
+    case "record_recurring_expense_payments": return recordRecurringExpensePayments(context, body);
     case "save_meeting": return saveMeeting(context, body);
     case "save_balance": return saveBalance(context, body);
     case "create_item": return createOperatingItem(context, body);
@@ -1432,6 +1436,109 @@ async function saveTransaction({ client, user }: RequestContext, body: Record<st
     await recordActivity(client, user.id, "transaction", result.data.id, archiveAction, archiveAction === "archive" ? "封存現金流項目" : "還原現金流項目");
   }
   return Response.json({ transaction: result.data }, { status: id ? 200 : 201, headers: privateHeaders() });
+}
+
+async function saveRecurringExpenseRule({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (id) {
+    const existing = await client.from("recurring_expense_rules").select("user_id").eq("id", id).maybeSingle();
+    if (existing.error) return databaseError(existing.error);
+    if (!existing.data || existing.data.user_id !== user.id) return jsonError("只有擁有者可以修改此恆常支出。", 403);
+  }
+  const item = requiredText(body.item, "請輸入恆常支出名稱。");
+  if (item instanceof Response) return item;
+  const amount = Number(body.amount);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 9999999999) return jsonError("金額必須大於 0。", 422);
+  const startMonth = monthValue(body.start_month);
+  if (!startMonth) return jsonError("請選擇開始付款月份。", 422);
+  const rawLastPaymentMonth = stringValue(body.last_payment_month).trim();
+  const lastPaymentMonth = rawLastPaymentMonth ? monthValue(rawLastPaymentMonth) : null;
+  if (rawLastPaymentMonth && !lastPaymentMonth) return jsonError("最後付款月份格式不正確。", 422);
+  if (lastPaymentMonth && lastPaymentMonth < startMonth) return jsonError("最後付款月份不可早於開始月份。", 422);
+  const payload = {
+    user_id: user.id,
+    scope: enumValue(body.scope, ["home", "company"], "home"),
+    item,
+    category: nullableText(body.category),
+    amount,
+    payment_method: nullableText(body.payment_method),
+    owner: nullableText(body.owner),
+    proof_url: safeUrl(body.proof_url),
+    notes: nullableText(body.notes),
+    start_month: startMonth,
+    last_payment_month: lastPaymentMonth,
+    is_active: body.is_active === undefined ? true : Boolean(body.is_active)
+  };
+  const result = id
+    ? await client.from("recurring_expense_rules").update(payload).eq("id", id).select("*").single()
+    : await client.from("recurring_expense_rules").insert(payload).select("*").single();
+  if (result.error) return databaseError(result.error);
+  await recordActivity(client, user.id, "recurring_expense_rule", result.data.id, id ? "update" : "create", id ? "更新恆常支出" : "建立恆常支出");
+  return Response.json({ rule: result.data }, { status: id ? 200 : 201, headers: privateHeaders() });
+}
+
+async function recordRecurringExpensePayments({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const ruleIds = recurringExpenseRuleIds(body.ruleIds);
+  if (ruleIds instanceof Response) return ruleIds;
+  if (!ruleIds.length) return jsonError("請先選擇至少一項恆常支出。", 422);
+  const paymentMonth = monthValue(body.paymentMonth);
+  if (!paymentMonth) return jsonError("付款月份格式不正確。", 422);
+
+  const rules = await client.from("recurring_expense_rules")
+    .select("*")
+    .eq("user_id", user.id)
+    .is("archived_at", null)
+    .eq("is_active", true)
+    .in("id", ruleIds);
+  if (rules.error) return databaseError(rules.error);
+  const eligibleRules = (rules.data ?? []).filter((rule) =>
+    rule.start_month <= paymentMonth && (!rule.last_payment_month || rule.last_payment_month >= paymentMonth)
+  );
+  if (!eligibleRules.length) return jsonError("所選恆常支出不適用於這個月份。", 422);
+
+  const existing = await client.from("transactions")
+    .select("id, recurring_expense_rule_id")
+    .eq("user_id", user.id)
+    .in("recurring_expense_rule_id", eligibleRules.map((rule) => rule.id))
+    .eq("payment_month", paymentMonth)
+    .is("archived_at", null);
+  if (existing.error) return databaseError(existing.error);
+  const existingRuleIds = new Set((existing.data ?? []).map((row) => row.recurring_expense_rule_id));
+  const rowsToInsert = eligibleRules
+    .filter((rule) => !existingRuleIds.has(rule.id))
+    .map((rule) => ({
+      user_id: user.id,
+      scope: rule.scope,
+      type: "expense",
+      item: rule.item,
+      category: rule.category,
+      amount: rule.amount,
+      expected_date: paymentMonth,
+      actual_date: paymentMonth,
+      frequency: "monthly",
+      status: "paid",
+      payment_method: rule.payment_method,
+      owner: rule.owner,
+      proof_url: rule.proof_url,
+      notes: rule.notes,
+      recurring_expense_rule_id: rule.id,
+      payment_month: paymentMonth
+    }));
+  if (rowsToInsert.length) {
+    const inserted = await client.from("transactions").insert(rowsToInsert).select("id");
+    if (inserted.error) return databaseError(inserted.error);
+  }
+  if (existingRuleIds.size) {
+    const updated = await client.from("transactions")
+      .update({ status: "paid", actual_date: paymentMonth })
+      .eq("user_id", user.id)
+      .in("recurring_expense_rule_id", [...existingRuleIds])
+      .eq("payment_month", paymentMonth)
+      .is("archived_at", null);
+    if (updated.error) return databaseError(updated.error);
+  }
+  await Promise.all(eligibleRules.map((rule) => recordActivity(client, user.id, "recurring_expense_rule", rule.id, "payment_marked_paid", `標記 ${paymentMonth.slice(0, 7)} 已付款`)));
+  return Response.json({ paymentMonth, paidRuleIds: eligibleRules.map((rule) => rule.id) }, { headers: privateHeaders() });
 }
 
 async function saveMeeting({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -2672,6 +2779,11 @@ function nullableText(value: unknown) { const text = stringValue(value).trim(); 
 function requiredText(value: unknown, message: string) { const text = stringValue(value).trim(); return text ? text.slice(0, 500) : jsonError(message, 422); }
 function resourceText(value: unknown, maxLength: number) { const text = stringValue(value).trim(); return text ? text.slice(0, maxLength) : null; }
 function dateValue(value: unknown) { const text = stringValue(value); return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null; }
+function monthValue(value: unknown) {
+  const text = stringValue(value).trim();
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(text)) return `${text}-01`;
+  return /^\d{4}-(0[1-9]|1[0-2])-01$/.test(text) ? text : null;
+}
 function timeValue(value: unknown) { const text = stringValue(value); return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : null; }
 function timestampValue(value: unknown) { const text = stringValue(value).trim(); if (!text) return null; const date = new Date(text); return Number.isNaN(date.getTime()) ? null : date.toISOString(); }
 function integerValue(value: unknown, min: number, max: number) { const number = Number(value); return Number.isInteger(number) && number >= min && number <= max ? number : null; }
@@ -2681,6 +2793,11 @@ function uuidArray(value: unknown): string[] | Response {
   if (!Array.isArray(value) || value.length > 20) return jsonError("通知對象格式不正確；最多可選 20 人。", 422);
   const ids = [...new Set(value.map(uuidValue))];
   return ids.some((id) => !id) ? jsonError("通知對象識別碼不正確。", 422) : ids as string[];
+}
+function recurringExpenseRuleIds(value: unknown): string[] | Response {
+  if (!Array.isArray(value) || value.length > 100) return jsonError("恆常支出選擇不正確；每次最多可標記 100 項。", 422);
+  const ids = [...new Set(value.map(uuidValue))];
+  return ids.some((id) => !id) ? jsonError("恆常支出識別碼不正確。", 422) : ids as string[];
 }
 async function syncTaskNoticeRecipients(client: SupabaseClient, taskId: string, value: unknown) {
   if (value === undefined) return null;

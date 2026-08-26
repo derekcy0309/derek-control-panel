@@ -174,15 +174,15 @@ export function TransactionForm({
           <span className="label">預計日期</span>
           <input
             className="field mt-2"
-            type="date"
-            value={form.expected_date}
-            onChange={(event) => update("expected_date", event.target.value)}
+            type={form.frequency === "monthly" ? "month" : "date"}
+            value={form.frequency === "monthly" ? form.expected_date.slice(0, 7) : form.expected_date}
+            onChange={(event) => update("expected_date", form.frequency === "monthly" && event.target.value ? `${event.target.value}-01` : event.target.value)}
           />
         </label>
         {!compact ? (
           <label>
             <span className="label">實際日期</span>
-            <input className="field mt-2" type="date" value={form.actual_date} onChange={(event) => update("actual_date", event.target.value)} />
+            <input className="field mt-2" type={form.frequency === "monthly" ? "month" : "date"} value={form.frequency === "monthly" ? form.actual_date.slice(0, 7) : form.actual_date} onChange={(event) => update("actual_date", form.frequency === "monthly" && event.target.value ? `${event.target.value}-01` : event.target.value)} />
           </label>
         ) : null}
         <label>
