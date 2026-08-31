@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X
+  PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -58,6 +58,7 @@ const navGroups: NavGroupData[] = [
     items: [
       { href: "/workspace/personal", label: "個人總覽", icon: CircleUserRound },
       { href: "/workspace/health", label: "健康行政", icon: HeartHandshake },
+      { href: "/medications", label: "藥物紀錄", icon: Pill },
       { href: "/workspace/document", label: "文件", icon: Archive },
       { href: "/workspace/vehicle", label: "車輛", icon: Home },
       { href: "/workspace/note", label: "私人筆記", icon: Inbox }

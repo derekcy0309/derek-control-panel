@@ -1,0 +1,6 @@
+drop policy if exists personal_medication_logs_delete_own on public.personal_medication_logs;
+drop policy if exists personal_medication_logs_update_own on public.personal_medication_logs;
+drop policy if exists personal_medication_logs_insert_own on public.personal_medication_logs;
+drop policy if exists personal_medication_logs_select_own on public.personal_medication_logs;
+drop trigger if exists personal_medication_logs_set_updated_at on public.personal_medication_logs;
+drop table if exists public.personal_medication_logs;
