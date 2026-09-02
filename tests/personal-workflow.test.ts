@@ -83,12 +83,18 @@ test("PWA metadata describes personal work only", () => {
   assert.doesNotMatch(manifest, /公司日常作業系統|\"business\"/);
 });
 
-test("quick add keeps three primary inputs, multi-person follow-up and session draft recovery", () => {
+test("task form starts with a clear task name and keeps follow-up simple", () => {
   const form = read("components/forms/TaskForm.tsx");
-  assert.match(form, /要做甚麼/);
+  assert.match(form, /任務名稱/);
   assert.match(form, /何時完成（可留空）/);
   assert.match(form, /主要跟進人/);
   assert.match(form, /共同跟進（可多選）/);
+  assert.ok(form.indexOf("任務名稱") < form.indexOf("由誰共同跟進？"));
+  assert.ok(form.indexOf("負責人（可留空）") < form.indexOf("由誰共同跟進？"));
+  assert.doesNotMatch(form, /<span className="label">下一步<\/span>/);
+  assert.doesNotMatch(form, /<span className="label">情境<\/span>/);
+  assert.doesNotMatch(form, /<span className="label">完成定義<\/span>/);
+  assert.doesNotMatch(form, /<span className="label">預計工期（日）<\/span>/);
   assert.doesNotMatch(form, /personalTaskTemplates|由個人工作範本開始/);
   assert.match(form, /sessionStorage/);
 });

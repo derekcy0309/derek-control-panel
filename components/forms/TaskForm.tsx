@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { TimeEstimateHint } from "@/components/TimeEstimateHint";
-import { riskOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
@@ -318,11 +316,10 @@ export function TaskForm({
     try {
       if (initialTask) {
         await controlAction("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
-          title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
+          title: payload.title, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
-          risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
-          estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel, context: payload.context,
-          definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
+          notes: payload.notes, completed_at: payload.completedAt,
+          estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel,
           buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
           task_type_label: payload.taskType
         } });
@@ -366,18 +363,24 @@ export function TaskForm({
           </div>
         </section>
       ) : null}
+      <label>
+        <span className="label">任務名稱</span>
+        <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
+      </label>
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <label>
-          <span className="label">分類</span>
-          <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory)}>
-            {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
+          <span className="label">到期日</span>
+          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
         </label>
         <label>
-          <span className="label">任務類型（可留空）</span>
-          <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
+          <span className="label">跟進日</span>
+          <input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} />
         </label>
       </div> : null}
+      {!compact ? <label>
+        <span className="label">負責人（可留空）</span>
+        <input className="field mt-2" value={form.owner} onChange={(event) => update("owner", event.target.value)} placeholder="例如：Derek" />
+      </label> : null}
       {!compact && otherParticipants.length ? (
         <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <legend className="px-1 font-extrabold text-slate-900">由誰共同跟進？</legend>
@@ -399,29 +402,6 @@ export function TaskForm({
           </div>
         </fieldset>
       ) : null}
-      {!compact && otherParticipants.length ? (
-        <fieldset className="rounded-2xl border border-slate-200 bg-white p-4">
-          <legend className="px-1 font-extrabold text-slate-900">通知誰（可選）</legend>
-          <p className="mt-1 text-sm leading-6 text-slate-600">只接收這項工作的提醒；不會取得更改工作內容的權限。</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {otherParticipants.map((participant) => (
-              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 font-semibold text-slate-800" key={participant.user_id}>
-                <input
-                  className="h-5 w-5 accent-indigo-600"
-                  type="checkbox"
-                  checked={form.notice_user_ids.includes(participant.user_id)}
-                  onChange={() => toggleNotice(participant.user_id)}
-                />
-                通知 {participant.display_name}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-      ) : null}
-      <label>
-        <span className="label">要做甚麼</span>
-        <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} required />
-      </label>
       {compact ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className="label">何時完成（可留空）</span><input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} /></label>
@@ -514,25 +494,6 @@ export function TaskForm({
           ) : null}
         </fieldset>
       ) : null}
-      {!compact && projects.length ? (
-        <label>
-          <span className="label">所屬項目（可選）</span>
-          <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
-            <option value="">不連結項目</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-          </select>
-          <span className="mt-1 block text-xs text-slate-600">連結只用作規劃；不會自動分享任務或改變現有權限。</span>
-        </label>
-      ) : null}
-      {!compact ? <label>
-        <span className="label">下一步</span>
-        <input
-          className="field mt-2"
-          value={form.next_action}
-          onChange={(event) => update("next_action", event.target.value)}
-          placeholder="可選填，例如：打開文件，寫第一句摘要"
-        />
-      </label> : null}
       {!initialTask && !compact ? (
         <details
           className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
@@ -624,85 +585,57 @@ export function TaskForm({
           </div>
         </details>
       ) : null}
-      {!compact ? <div className="grid gap-4 sm:grid-cols-2">
-        <label>
-          <span className="label">{form.recurrence_enabled && form.recurrence_deadline_mode === "none" ? "到期日（已選沒有期限）" : "到期日"}</span>
-          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
-        </label>
-        <label>
-          <span className="label">跟進日</span>
-          <input
-            className="field mt-2"
-            type="date"
-            value={form.follow_up_date}
-            onChange={(event) => update("follow_up_date", event.target.value)}
-          />
-        </label>
-      </div> : null}
-      {form.status === "waiting" ? <div className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2"><label><span className="label">等待誰</span><input className="field mt-2 bg-white" value={form.waiting_for} onChange={(event) => update("waiting_for", event.target.value)} placeholder="例如：Amigo" /></label><label><span className="label">等待甚麼</span><input className="field mt-2 bg-white" value={form.waiting_on} onChange={(event) => update("waiting_on", event.target.value)} placeholder="例如：文件覆核結果" /></label><label className="sm:col-span-2"><span className="label">下次跟進日期</span><input className="field mt-2 bg-white" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} /></label></div> : null}
-      {!compact ? <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+      {!compact ? <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
         {initialTask ? <label><span className="label">實際時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.actual_minutes} onChange={(event) => update("actual_minutes", event.target.value)} /><span className="mt-1 block text-xs text-slate-500">只用於你自己的估時學習</span></label> : null}
         <label><span className="label">能量</span><select className="field mt-2" value={form.energy_level} onChange={(event) => update("energy_level", event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
-        <label><span className="label">情境</span><select className="field mt-2" value={form.context} onChange={(event) => update("context", event.target.value)}><option value="mobile">手機</option><option value="computer">電腦</option><option value="home">家中</option><option value="office">辦公室</option><option value="phone">電話</option><option value="night_shift">夜更可做</option></select></label>
       </div> : null}
-      {!compact ? <TimeEstimateHint sourceType={form.source_type} context={form.context} energyLevel={form.energy_level} estimatedMinutes={form.estimated_minutes} onUse={(minutes) => update("estimated_minutes", String(minutes))} /> : null}
       {!compact ? (
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
             更多選項
-            <span className="ml-2 text-xs font-medium text-slate-500">風險、備註、完成定義、工期同關鍵路徑</span>
+            <span className="ml-2 text-xs font-medium text-slate-500">分類、類型、項目、備註及通知</span>
           </summary>
           <div className="mt-4 grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label>
-              <span className="label">負責人</span>
-              <input className="field mt-2" value={form.owner} onChange={(event) => update("owner", event.target.value)} />
-            </label>
-            <label>
-              <span className="label">狀態</span>
-              <select className="field mt-2" value={form.status} onChange={(event) => update("status", event.target.value)}>
-                {taskStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+              <span className="label">分類</span>
+              <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory)}>
+                {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <label>
-              <span className="label">風險</span>
-              <select className="field mt-2" value={form.risk} onChange={(event) => update("risk", event.target.value)}>
-                {riskOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <span className="label">任務類型（可留空）</span>
+              <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
             </label>
           </div>
+          {projects.length ? (
+            <label>
+              <span className="label">所屬項目（可選）</span>
+              <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
+                <option value="">不連結項目</option>
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label>
             <span className="label">備註</span>
             <textarea className="field mt-2 min-h-28" value={form.notes} onChange={(event) => update("notes", event.target.value)} />
           </label>
-          <label><span className="label">完成定義</span><input className="field mt-2" value={form.definition_of_done} onChange={(event) => update("definition_of_done", event.target.value)} placeholder="怎樣才算真正完成？" /></label>
-          <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">預計工期（日）</span><input className="field mt-2" type="number" min="0" value={form.estimated_duration_days} onChange={(event) => update("estimated_duration_days", event.target.value)} /></label><label><span className="label">緩衝（日）</span><input className="field mt-2" type="number" min="0" value={form.buffer_days} onChange={(event) => update("buffer_days", event.target.value)} /></label></div>
-          <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-4 ${form.critical_path ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
-            <input
-              className="mt-1 h-5 w-5 shrink-0 accent-amber-600"
-              type="checkbox"
-              checked={form.critical_path}
-              onChange={(event) => update("critical_path", event.target.checked)}
-            />
-            <span>
-              <span className="block font-bold text-slate-900">這項任務會卡住後續工作</span>
-              <span className="mt-1 block text-sm leading-6 text-slate-600">
-                即「關鍵路徑」：只有遲咗會令整個項目或死線一齊延遲先剔。系統會把它排得更優先；一般任務不用剔。
-              </span>
-              <span className="mt-1 block text-sm font-semibold text-amber-800">
-                例：必須先簽好合約，其他人先可以正式開工。
-              </span>
-            </span>
-          </label>
+          {otherParticipants.length ? (
+            <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <legend className="px-1 text-sm font-extrabold text-slate-900">通知誰（可選）</legend>
+              <p className="text-sm leading-6 text-slate-600">只接收提醒，不會取得更改內容的權限。</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {otherParticipants.map((participant) => (
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}>
+                    <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.notice_user_ids.includes(participant.user_id)} onChange={() => toggleNotice(participant.user_id)} />
+                    通知 {participant.display_name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           </div>
         </details>
       ) : null}
