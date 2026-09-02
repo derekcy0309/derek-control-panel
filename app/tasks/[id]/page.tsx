@@ -51,6 +51,7 @@ function TaskDetailContent() {
         currentUserId={data.currentUser.id}
         participants={data.participants}
         assignments={data.assignments}
+        taskFollowers={data.taskFollowers}
         handoffNotes={data.handoffNotes}
         allTasks={[data.task]}
         taskDependencies={data.taskDependencies}

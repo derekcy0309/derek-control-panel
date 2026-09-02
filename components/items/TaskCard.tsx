@@ -13,7 +13,7 @@ import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
-import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskRecurrenceRule } from "@/lib/types";
+import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskFollower, TaskRecurrenceRule } from "@/lib/types";
 
 export function TaskCard({
   task,
@@ -22,6 +22,7 @@ export function TaskCard({
   currentUserId,
   participants,
   assignments,
+  taskFollowers = [],
   handoffNotes,
   allTasks,
   taskDependencies,
@@ -36,6 +37,7 @@ export function TaskCard({
   currentUserId: string;
   participants: Array<{ user_id: string; display_name: string }>;
   assignments: Assignment[];
+  taskFollowers?: TaskFollower[];
   handoffNotes: HandoffNote[];
   allTasks: Task[];
   taskDependencies: TaskDependency[];
@@ -140,6 +142,7 @@ export function TaskCard({
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap gap-2">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{categoryLabel}</span>
+            {task.task_type_label ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">{task.task_type_label}</span> : null}
             <StatusBadge status={task.status} />
             <RiskBadge risk={task.risk} />
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
@@ -177,6 +180,7 @@ export function TaskCard({
         currentUserId={currentUserId}
         participants={participants}
         assignments={assignments}
+        taskFollowers={taskFollowers}
         notes={handoffNotes}
         onChanged={onChanged}
       />

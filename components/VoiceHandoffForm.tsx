@@ -5,10 +5,7 @@ import { Mic, MicOff, Save, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { isLikelyDuplicate, parseHandoffText, type HandoffPreview } from "@/lib/handoff-parser";
-import { taskTypeLabels } from "@/lib/workspace-role";
-import type { Task, WorkflowTaskType } from "@/lib/types";
-
-const taskTypes = Object.keys(taskTypeLabels) as WorkflowTaskType[];
+import type { Task } from "@/lib/types";
 
 export function VoiceHandoffForm({
   currentUserId,
@@ -218,7 +215,7 @@ export function VoiceHandoffForm({
         <label className="sm:col-span-2"><span className="label">下一步</span><textarea className="field mt-2 min-h-24" value={preview.nextAction} onChange={(event) => change("nextAction", event.target.value)} /></label>
         <label><span className="label">截止日期（可留空）</span><input className="field mt-2" type="date" value={preview.dueDate} onChange={(event) => change("dueDate", event.target.value)} /></label>
         <label><span className="label">由誰跟進</span><select className="field mt-2" value={preview.ownerId} onChange={(event) => { const person = people.find((item) => item.user_id === event.target.value); change("ownerId", event.target.value); change("ownerName", person?.display_name ?? ""); }}>{people.map((person) => <option key={person.user_id} value={person.user_id}>{person.user_id === currentUserId ? `我（${person.display_name}）` : person.display_name}</option>)}</select></label>
-        <label><span className="label">工作類別</span><select className="field mt-2" value={preview.taskType} onChange={(event) => change("taskType", event.target.value as WorkflowTaskType)}>{taskTypes.map((type) => <option key={type} value={type}>{taskTypeLabels[type]}</option>)}</select></label>
+        <label><span className="label">任務類型（可留空）</span><input className="field mt-2" value={preview.taskType} onChange={(event) => change("taskType", event.target.value)} placeholder="例如：行政、文件、家務" maxLength={120} /></label>
         <label><span className="label">需要誰決定／確認</span><select className="field mt-2" value={preview.needsDecisionFromId} onChange={(event) => { const person = people.find((item) => item.user_id === event.target.value); change("needsDecisionFromId", event.target.value); change("needsDecisionFromName", person?.display_name ?? ""); }}><option value="">不需要</option>{people.map((person) => <option key={person.user_id} value={person.user_id}>{person.display_name}</option>)}</select></label>
         <label><span className="label">優先程度</span><select className="field mt-2" value={preview.risk} onChange={(event) => change("risk", event.target.value as HandoffPreview["risk"])}><option value="low">一般</option><option value="medium">需要留意</option><option value="high">真正緊急／高風險</option></select></label>
       </div>

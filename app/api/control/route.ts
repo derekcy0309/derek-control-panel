@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients] =
+  const [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients, taskFollowers] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -66,10 +66,11 @@ export async function GET(request: NextRequest) {
         .select("id,target,account_email,calendar_id,calendar_name,status,last_error,last_synced_at")
         .eq("user_id", user.id)
         .order("target"),
-      client.from("task_notice_recipients").select("*")
+      client.from("task_notice_recipients").select("*"),
+      client.from("task_followers").select("*")
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients]
+  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients, taskFollowers]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -117,7 +118,8 @@ export async function GET(request: NextRequest) {
     activePushSubscriptionCount: pushSubscriptions.data?.length ?? 0,
     household: household.data ?? null,
     calendarConnections: calendarConnections.data ?? [],
-    taskNoticeRecipients: taskNoticeRecipients.data ?? []
+    taskNoticeRecipients: taskNoticeRecipients.data ?? [],
+    taskFollowers: taskFollowers.data ?? []
   }, { headers: privateHeaders() });
 }
 
@@ -158,7 +160,7 @@ async function taskDetail(
   if (task.error) return databaseError(task.error);
   if (!task.data) return jsonError("找不到任務或你沒有查看權限。", 404);
 
-  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs] = await Promise.all([
+  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers] = await Promise.all([
     client.from("user_profiles").select("display_name").eq("user_id", user.id).maybeSingle(),
     client.rpc("participant_profiles"),
     client.from("assignments")
@@ -185,9 +187,10 @@ async function taskDetail(
       .eq("resource_type", "task")
       .eq("resource_id", taskId)
       .order("created_at", { ascending: false })
-      .limit(100)
+      .limit(100),
+    client.from("task_followers").select("*").eq("task_id", taskId)
   ]);
-  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs]
+  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -203,7 +206,8 @@ async function taskDetail(
     handoffNotes: handoffNotes.data ?? [],
     taskDependencies: dependencies.data ?? [],
     taskRecurrenceRules: recurrenceRules.data ?? [],
-    activityLogs: activityLogs.data ?? []
+    activityLogs: activityLogs.data ?? [],
+    taskFollowers: taskFollowers.data ?? []
   }, { headers: privateHeaders() });
 }
 
@@ -1099,6 +1103,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
       "follow_up", "sop", "ai_document", "system_issue", "compliance",
       "training", "assessment", "family_conference"
     ] as const, "general"),
+    task_type_label: resourceText(body.taskType, 120),
     needs_decision_from_id: decisionTarget,
     decision_resolved_at: null,
     decision_resolved_by_id: null,
@@ -1125,6 +1130,11 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   if (noticeError) {
     await client.from("tasks").delete().eq("id", result.data.id);
     return noticeError;
+  }
+  const followerError = await syncTaskFollowers(client, result.data.id, body.followerUserIds);
+  if (followerError) {
+    await client.from("tasks").delete().eq("id", result.data.id);
+    return followerError;
   }
   let assignmentId: string | null = null;
   if (handoffTarget && handoffNote) {
@@ -1175,7 +1185,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
         .maybeSingle();
   if (activeHandler && activeHandler.error) return databaseError(activeHandler.error);
   const allowed = existing.data.owner_id === user.id
-    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","materials_required","rn_required","client_update_required"]
+    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","task_type_label","materials_required","rn_required","client_update_required"]
     : activeHandler && activeHandler.data
       ? ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at","due_date","follow_up_date"]
       : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
@@ -1192,11 +1202,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
     payload.visibility = access.visibility;
     payload.household_id = access.householdId;
   }
-  if (payload.task_type !== undefined && ![
-    "general", "intake", "scheduling", "materials", "rn_coordination",
-    "follow_up", "sop", "ai_document", "system_issue", "compliance",
-    "training", "assessment", "family_conference"
-  ].includes(stringValue(payload.task_type))) return jsonError("工作類別不正確。", 422);
+  if (payload.task_type_label !== undefined) payload.task_type_label = resourceText(payload.task_type_label, 120);
   if (payload.case_code !== undefined) payload.case_code = resourceText(payload.case_code, 80);
   if (payload.waiting_for !== undefined) payload.waiting_for = resourceText(payload.waiting_for, 200);
   if (payload.waiting_on !== undefined) payload.waiting_on = resourceText(payload.waiting_on, 1000);
@@ -1213,6 +1219,8 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   if (!result.data) return jsonError("更新被拒絕。", 403);
   const noticeError = await syncTaskNoticeRecipients(client, id, body.noticeUserIds);
   if (noticeError) return noticeError;
+  const followerError = await syncTaskFollowers(client, id, body.followerUserIds);
+  if (followerError) return followerError;
   await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
   return Response.json({ task: result.data }, { headers: privateHeaders() });
 }
@@ -2916,6 +2924,17 @@ async function syncTaskNoticeRecipients(client: SupabaseClient, taskId: string, 
   const result = await client.rpc("set_task_notice_recipients", {
     p_task_id: taskId,
     p_recipient_ids: recipients
+  });
+  return result.error ? databaseError(result.error) : null;
+}
+
+async function syncTaskFollowers(client: SupabaseClient, taskId: string, value: unknown) {
+  if (value === undefined) return null;
+  const followers = uuidArray(value);
+  if (followers instanceof Response) return followers;
+  const result = await client.rpc("set_task_followers", {
+    p_task_id: taskId,
+    p_follower_ids: followers
   });
   return result.error ? databaseError(result.error) : null;
 }

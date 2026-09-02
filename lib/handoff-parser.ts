@@ -9,11 +9,27 @@ export type HandoffPreview = {
   needsDecisionFromId: string;
   needsDecisionFromName: string;
   risk: Risk;
-  taskType: WorkflowTaskType;
+  taskType: string;
   originalText: string;
 };
 
 type Participant = { user_id: string; display_name: string };
+
+const inferredTaskTypeLabels: Record<WorkflowTaskType, string> = {
+  general: "一般工作",
+  intake: "待整理",
+  scheduling: "時間安排",
+  materials: "文件整理",
+  rn_coordination: "等待別人",
+  follow_up: "跟進",
+  sop: "工作流程",
+  ai_document: "文件草稿",
+  system_issue: "系統工作",
+  compliance: "檢查事項",
+  training: "學習及進修",
+  assessment: "等待覆核",
+  family_conference: "會議工作"
+};
 
 const weekDays: Record<string, number> = {
   日: 0, 天: 0, 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6
@@ -47,7 +63,7 @@ export function parseHandoffText(input: {
     needsDecisionFromId: decision?.user_id ?? "",
     needsDecisionFromName: decision?.display_name ?? "",
     risk,
-    taskType,
+    taskType: inferredTaskTypeLabels[taskType],
     originalText: text
   };
 }
@@ -111,7 +127,7 @@ function inferTaskType(text: string): WorkflowTaskType {
   return "general";
 }
 
-function inferTitle(text: string, taskType: WorkflowTaskType) {
+function inferTitle(text: string, taskType: string) {
   const first = text.split(/[。！？!?]/)[0].trim();
   if (first.length <= 80) return first;
   const fallback = taskType === "general" ? "工作交接" : "整理工作交接";

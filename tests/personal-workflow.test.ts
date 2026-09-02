@@ -4,18 +4,10 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { buildSukiFollowupSummary, taskFollowupCategories } from "../lib/suki-followups.ts";
-import { personalTaskTemplates } from "../lib/personal-task-templates.ts";
 import type { Task } from "../lib/types.ts";
 
 const here = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const read = (path: string) => readFileSync(resolve(here, `../${path}`), "utf8");
-
-test("personal work templates cover the requested common tasks without external AI", () => {
-  assert.deepEqual(personalTaskTemplates.map((template) => template.label), [
-    "會議後跟進", "等待文件", "等待別人決定", "每週行政工作", "每月財務檢查", "社交媒體出 Post", "個人學習及進修"
-  ]);
-  assert.doesNotMatch(read("lib/personal-task-templates.ts"), /openai|anthropic|patient|clinical/i);
-});
 
 test("Suki summary stays personal, neutral and bounded", () => {
   const task = {
@@ -91,13 +83,29 @@ test("PWA metadata describes personal work only", () => {
   assert.doesNotMatch(manifest, /公司日常作業系統|\"business\"/);
 });
 
-test("quick add keeps three primary inputs, templates and session draft recovery", () => {
+test("quick add keeps three primary inputs, multi-person follow-up and session draft recovery", () => {
   const form = read("components/forms/TaskForm.tsx");
   assert.match(form, /要做甚麼/);
   assert.match(form, /何時完成（可留空）/);
-  assert.match(form, /負責人/);
-  assert.match(form, /personalTaskTemplates/);
+  assert.match(form, /主要跟進人/);
+  assert.match(form, /共同跟進（可多選）/);
+  assert.doesNotMatch(form, /personalTaskTemplates|由個人工作範本開始/);
   assert.match(form, /sessionStorage/);
+});
+
+test("task type is free text and collaborators are separate from single-person handoff", () => {
+  const form = read("components/forms/TaskForm.tsx");
+  const voice = read("components/VoiceHandoffForm.tsx");
+  const api = read("app/api/control/route.ts");
+  const migration = read("supabase/migrations/20260902090000_task_free_type_and_collaborators.sql");
+  assert.match(form, /任務類型（可留空）/);
+  assert.match(voice, /任務類型（可留空）/);
+  assert.match(form, /followerUserIds/);
+  assert.match(api, /set_task_followers/);
+  assert.match(migration, /add column if not exists task_type_label/);
+  assert.match(migration, /create table if not exists public\.task_followers/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /TASK_FOLLOWER_FORBIDDEN/);
 });
 
 test("handoff supports accept, clarification, reschedule and transfer", () => {

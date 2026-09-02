@@ -81,6 +81,7 @@ export type Task = {
   household_id?: string | null;
   case_code?: string | null;
   task_type?: WorkflowTaskType;
+  task_type_label?: string | null;
   needs_decision_from_id?: string | null;
   decision_resolved_at?: string | null;
   decision_resolved_by_id?: string | null;
@@ -749,6 +750,16 @@ export type TaskNoticeRecipient = {
   created_at: string;
 };
 
+export type TaskFollower = {
+  task_id: string;
+  owner_id: string;
+  follower_id: string;
+  share_record_id: string | null;
+  owns_share: boolean;
+  previous_permission?: string | null;
+  created_at: string;
+};
+
 export type Reminder = {
   id: string;
   owner_id: string;
@@ -797,6 +808,7 @@ export type ControlData = AppData & {
   household: HouseholdContext | null;
   calendarConnections: GoogleCalendarConnection[];
   taskNoticeRecipients: TaskNoticeRecipient[];
+  taskFollowers: TaskFollower[];
 };
 
 export type TodayData = {
@@ -831,6 +843,7 @@ export type TaskDetailData = {
   taskDependencies: TaskDependency[];
   taskRecurrenceRules: TaskRecurrenceRule[];
   activityLogs: ActivityLog[];
+  taskFollowers: TaskFollower[];
 };
 
 export type ActivityLog = {

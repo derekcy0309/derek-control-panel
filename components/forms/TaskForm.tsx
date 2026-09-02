@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { TimeEstimateHint } from "@/components/TimeEstimateHint";
-import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
+import { riskOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
-import { personalTaskTemplates } from "@/lib/personal-task-templates";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
 
@@ -15,6 +14,7 @@ type TaskFormState = {
   area: string;
   task_category: TaskCategory;
   source_type: string;
+  task_type_label: string;
   title: string;
   owner: string;
   due_date: string;
@@ -47,6 +47,7 @@ type TaskFormState = {
   recurrence_night_shift_off_days: string;
   recurrence_cycle_anchor_date: string;
   notice_user_ids: string[];
+  follower_user_ids: string[];
 };
 
 const defaultState: TaskFormState = {
@@ -54,6 +55,7 @@ const defaultState: TaskFormState = {
   area: "personal",
   task_category: "personal",
   source_type: "follow_up",
+  task_type_label: "",
   title: "",
   owner: "",
   due_date: "",
@@ -85,13 +87,15 @@ const defaultState: TaskFormState = {
   recurrence_night_shift_on_days: "4",
   recurrence_night_shift_off_days: "2",
   recurrence_cycle_anchor_date: "",
-  notice_user_ids: []
+  notice_user_ids: [],
+  follower_user_ids: []
 };
 
 export function TaskForm({
   userId,
   initialTask,
   initialNoticeUserIds = [],
+  initialFollowerUserIds = [],
   preset,
   participants = [],
   projects = [],
@@ -102,6 +106,7 @@ export function TaskForm({
   userId: string;
   initialTask?: Task | null;
   initialNoticeUserIds?: string[];
+  initialFollowerUserIds?: string[];
   preset?: Partial<TaskFormState>;
   participants?: Array<{ user_id: string; display_name: string }>;
   projects?: OperatingItem[];
@@ -116,6 +121,7 @@ export function TaskForm({
           area: initialTask.area ?? (initialTask.scope === "company" ? "work" : "family"),
           task_category: taskCategoryFor(initialTask),
           source_type: initialTask.source_type,
+          task_type_label: initialTask.task_type_label ?? "",
           title: initialTask.title,
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
@@ -147,7 +153,8 @@ export function TaskForm({
           recurrence_night_shift_on_days: "4",
           recurrence_night_shift_off_days: "2",
           recurrence_cycle_anchor_date: "",
-          notice_user_ids: initialNoticeUserIds
+          notice_user_ids: initialNoticeUserIds,
+          follower_user_ids: initialFollowerUserIds
         }
       : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal" }
   );
@@ -200,19 +207,6 @@ export function TaskForm({
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function applyTemplate(templateId: string) {
-    const template = personalTaskTemplates.find((item) => item.id === templateId);
-    if (!template) return;
-    setForm((current) => ({
-      ...current,
-      title: template.title,
-      next_action: template.nextAction,
-      source_type: template.sourceType,
-      status: templateId.startsWith("waiting-") ? "waiting" : current.status,
-      waiting_on: templateId.startsWith("waiting-") ? template.title : current.waiting_on
-    }));
-  }
-
   function toggleRecurrenceWeekday(day: number) {
     setForm((current) => ({
       ...current,
@@ -230,7 +224,16 @@ export function TaskForm({
     }));
   }
 
-  function toggleNoticeRecipient(userId: string) {
+  function toggleFollower(userId: string) {
+    setForm((current) => ({
+      ...current,
+      follower_user_ids: current.follower_user_ids.includes(userId)
+        ? current.follower_user_ids.filter((id) => id !== userId)
+        : [...current.follower_user_ids, userId]
+    }));
+  }
+
+  function toggleNotice(userId: string) {
     setForm((current) => ({
       ...current,
       notice_user_ids: current.notice_user_ids.includes(userId)
@@ -286,6 +289,7 @@ export function TaskForm({
       area: form.area,
       taskCategory: form.task_category,
       sourceType: form.source_type,
+      taskType: form.task_type_label.trim() || null,
       title: form.title.trim(),
       dueDate: form.due_date || null,
       followUpDate: form.follow_up_date || null,
@@ -308,7 +312,8 @@ export function TaskForm({
       projectId: form.project_id || null,
       handoffToUserId: form.handoff_to_user_id || null,
       handoffNote: form.handoff_note.trim() || null,
-      noticeUserIds: form.notice_user_ids
+      noticeUserIds: form.notice_user_ids,
+      followerUserIds: form.follower_user_ids
     };
     try {
       if (initialTask) {
@@ -318,7 +323,8 @@ export function TaskForm({
           risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
           estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel, context: payload.context,
           definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
-          buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId
+          buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
+          task_type_label: payload.taskType
         } });
       } else {
         const created = await controlAction<{ task: Task }>("create_task", payload);
@@ -360,16 +366,6 @@ export function TaskForm({
           </div>
         </section>
       ) : null}
-      {!initialTask ? (
-        <details className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <summary className="min-h-11 cursor-pointer list-none font-extrabold text-slate-900">由個人工作範本開始（可選）</summary>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {personalTaskTemplates.map((template) => (
-              <button key={template.id} type="button" className="min-h-14 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-sm font-bold text-slate-700 hover:border-indigo-400" onClick={() => applyTemplate(template.id)}>{template.label}</button>
-            ))}
-          </div>
-        </details>
-      ) : null}
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">分類</span>
@@ -378,21 +374,15 @@ export function TaskForm({
           </select>
         </label>
         <label>
-          <span className="label">類型</span>
-          <select className="field mt-2" value={form.source_type} onChange={(event) => update("source_type", event.target.value)}>
-            {sourceTypeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <span className="label">任務類型（可留空）</span>
+          <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
         </label>
       </div> : null}
       {!compact && otherParticipants.length ? (
         <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-          <legend className="px-1 font-extrabold text-slate-900">俾邊個知道呢項任務？</legend>
+          <legend className="px-1 font-extrabold text-slate-900">由誰共同跟進？</legend>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            只會讓你勾選的人看到任務及收到私隱安全通知；未勾選就不會因這個設定分享。
+            可同時選擇多人。你仍是任務擁有者；被選的人可查看及更新進度。
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {otherParticipants.map((participant) => (
@@ -400,8 +390,27 @@ export function TaskForm({
                 <input
                   className="h-5 w-5 accent-indigo-600"
                   type="checkbox"
+                  checked={form.follower_user_ids.includes(participant.user_id)}
+                  onChange={() => toggleFollower(participant.user_id)}
+                />
+                {participant.display_name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+      {!compact && otherParticipants.length ? (
+        <fieldset className="rounded-2xl border border-slate-200 bg-white p-4">
+          <legend className="px-1 font-extrabold text-slate-900">通知誰（可選）</legend>
+          <p className="mt-1 text-sm leading-6 text-slate-600">只接收這項工作的提醒；不會取得更改工作內容的權限。</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {otherParticipants.map((participant) => (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 font-semibold text-slate-800" key={participant.user_id}>
+                <input
+                  className="h-5 w-5 accent-indigo-600"
+                  type="checkbox"
                   checked={form.notice_user_ids.includes(participant.user_id)}
-                  onChange={() => toggleNoticeRecipient(participant.user_id)}
+                  onChange={() => toggleNotice(participant.user_id)}
                 />
                 通知 {participant.display_name}
               </label>
@@ -416,9 +425,10 @@ export function TaskForm({
       {compact ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className="label">何時完成（可留空）</span><input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} /></label>
-          <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
+          <label><span className="label">主要跟進人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
         </div>
       ) : null}
+      {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
       {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
       {!initialTask && !compact ? (
         <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">

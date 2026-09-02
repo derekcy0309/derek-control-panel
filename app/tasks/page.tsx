@@ -64,6 +64,7 @@ function TasksContent() {
       currentUserId={data.currentUser.id}
       participants={data.participants}
       assignments={data.assignments}
+      taskFollowers={data.taskFollowers}
       handoffNotes={data.handoffNotes}
       allTasks={data.tasks}
       taskDependencies={data.taskDependencies}
@@ -142,7 +143,7 @@ function TasksContent() {
 
       {editingTask ? (
         <Modal title="修改任務" onClose={() => setEditingTask(null)}>
-          <TaskForm userId={data.currentUser.id} participants={data.participants} projects={data.operatingItems.filter((item) => item.item_type === "project")} initialTask={editingTask} initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)} onSaved={() => finish(reload, () => setEditingTask(null))} onCancel={() => setEditingTask(null)} />
+          <TaskForm userId={data.currentUser.id} participants={data.participants} projects={data.operatingItems.filter((item) => item.item_type === "project")} initialTask={editingTask} initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)} initialFollowerUserIds={data.taskFollowers.filter((follower) => follower.task_id === editingTask.id).map((follower) => follower.follower_id)} onSaved={() => finish(reload, () => setEditingTask(null))} onCancel={() => setEditingTask(null)} />
         </Modal>
       ) : null}
     </div>

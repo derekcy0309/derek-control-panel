@@ -5,7 +5,7 @@ import { ArrowRightLeft, CheckCircle2, CheckSquare2, Clock3, MessageSquareText }
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
-import type { Assignment, HandoffNote, Task } from "@/lib/types";
+import type { Assignment, HandoffNote, Task, TaskFollower } from "@/lib/types";
 
 type Participant = { user_id: string; display_name: string };
 type Resolution = "continue" | "return" | "close";
@@ -17,6 +17,7 @@ export function TaskHandoffControls({
   currentUserId,
   participants,
   assignments,
+  taskFollowers = [],
   notes,
   onChanged
 }: {
@@ -24,6 +25,7 @@ export function TaskHandoffControls({
   currentUserId: string;
   participants: Participant[];
   assignments: Assignment[];
+  taskFollowers?: TaskFollower[];
   notes: HandoffNote[];
   onChanged: () => void;
 }) {
@@ -38,6 +40,7 @@ export function TaskHandoffControls({
   );
   const active = taskAssignments.find((item) => activeStatuses.includes(item.status as (typeof activeStatuses)[number]));
   const taskNotes = notes.filter((item) => item.task_id === task.id).slice(0, 3);
+  const followers = taskFollowers.filter((item) => item.task_id === task.id);
   const otherParticipants = participants.filter((item) => item.user_id !== currentUserId);
   const selfParticipant = participants.find((item) => item.user_id === currentUserId) ?? {
     user_id: currentUserId,
@@ -102,6 +105,7 @@ export function TaskHandoffControls({
           <p className="mt-1 text-sm leading-6 text-slate-600">
             按另一位即可轉交；每次轉交都要寫 notes，舊紀錄及時間不會消失。
           </p>
+          {followers.length ? <p className="mt-2 text-sm font-semibold text-slate-700">共同跟進：{followers.map((follower) => participantName(participants, follower.follower_id)).join("、")}</p> : null}
         </div>
       </div>
 
