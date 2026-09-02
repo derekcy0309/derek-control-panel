@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
@@ -156,7 +155,6 @@ export function TaskForm({
         }
       : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal" }
   );
-  const [handoffOpen, setHandoffOpen] = useState(Boolean(form.handoff_to_user_id));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
@@ -377,9 +375,17 @@ export function TaskForm({
           <input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} />
         </label>
       </div> : null}
-      {!compact ? <label>
-        <span className="label">負責人（可留空）</span>
-        <input className="field mt-2" value={form.owner} onChange={(event) => update("owner", event.target.value)} placeholder="例如：Derek" />
+      {!compact && !initialTask ? <label>
+        <span className="label">負責人</span>
+        <select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}>
+          <option value="">我自己</option>
+          {otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}
+        </select>
+        <span className="mt-1 block text-xs leading-5 text-slate-600">選另一位會在建立後直接交給對方確認及跟進。</span>
+      </label> : null}
+      {!compact && !initialTask && form.handoff_to_user_id ? <label>
+        <span className="label">交接備註</span>
+        <textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="讓對方知道第一步要做甚麼" maxLength={500} required />
       </label> : null}
       {!compact && otherParticipants.length ? (
         <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -405,7 +411,7 @@ export function TaskForm({
       {compact ? (
         <div className="grid gap-4 sm:grid-cols-2">
           <label><span className="label">何時完成（可留空）</span><input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} /></label>
-          <label><span className="label">主要跟進人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
+          <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
         </div>
       ) : null}
       {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
@@ -493,97 +499,6 @@ export function TaskForm({
             </div>
           ) : null}
         </fieldset>
-      ) : null}
-      {!initialTask && !compact ? (
-        <details
-          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-          open={handoffOpen}
-          onToggle={(event) => setHandoffOpen(event.currentTarget.open)}
-        >
-          <summary className="cursor-pointer list-none font-extrabold text-slate-900">
-            <span className="inline-flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4 text-indigo-600" />
-              建立後由誰跟進（可選）
-            </span>
-            <span className="mt-1 block text-xs font-medium leading-5 text-slate-600">
-              預設由你自己跟進；只有真正要交接先需要打開。
-            </span>
-          </summary>
-          <div className="mt-4">
-          <div className="flex items-start gap-3">
-            <span className="rounded-xl bg-indigo-600 p-2 text-white" aria-hidden="true">
-              <ArrowRightLeft className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-lg font-extrabold text-slate-900">由誰跟進？</p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">保持「我」就唔會分享；選另一位先會正式交接。</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
-                  !form.handoff_to_user_id ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"
-                }`}>
-                  <input
-                    className="mt-1 h-5 w-5 accent-indigo-600"
-                    type="radio"
-                    name="new-task-handler"
-                    value=""
-                    checked={!form.handoff_to_user_id}
-                    onChange={() => update("handoff_to_user_id", "")}
-                  />
-                  <span>
-                    <span className="block font-extrabold text-slate-900">由我跟進</span>
-                    <span className="mt-1 block text-sm text-slate-600">任務留給目前登入的我。</span>
-                  </span>
-                </label>
-                {otherParticipants.map((participant) => (
-                  <label
-                    key={participant.user_id}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
-                      form.handoff_to_user_id === participant.user_id
-                        ? "border-indigo-600 ring-2 ring-indigo-100"
-                        : "border-slate-200"
-                    }`}
-                  >
-                    <input
-                      className="mt-1 h-5 w-5 accent-indigo-600"
-                      type="radio"
-                      name="new-task-handler"
-                      value={participant.user_id}
-                      checked={form.handoff_to_user_id === participant.user_id}
-                      onChange={() => update("handoff_to_user_id", participant.user_id)}
-                    />
-                    <span>
-                      <span className="block font-extrabold text-slate-900">由 {participant.display_name} 跟進</span>
-                      <span className="mt-1 block text-sm text-slate-600">建立後立即交給對方接手。</span>
-                    </span>
-                  </label>
-                ))}
-                {!otherParticipants.length ? (
-                  <div className="rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 sm:col-span-2">
-                    <p className="font-bold text-amber-900">Suki 選項暫時未能載入</p>
-                    <p className="mt-1 text-sm leading-6 text-amber-800">可先重新整理頁面；系統不會再把這個問題靜默隱藏。</p>
-                  </div>
-                ) : null}
-              </div>
-              {form.handoff_to_user_id ? (
-                <label className="mt-4 block">
-                  <span className="label">交接 notes</span>
-                  <textarea
-                    className="field mt-2 min-h-24 bg-white"
-                    value={form.handoff_note}
-                    onChange={(event) => update("handoff_note", event.target.value)}
-                    placeholder="例如：請先致電確認，再在 notes 更新結果。"
-                    maxLength={500}
-                    required
-                  />
-                  <span className="mt-1 block text-xs leading-5 text-slate-600">
-                    建立任務後會立即送俾對方接受；雙方都會永久看到這段 notes。
-                  </span>
-                </label>
-              ) : null}
-            </div>
-          </div>
-          </div>
-        </details>
       ) : null}
       {!compact ? <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
