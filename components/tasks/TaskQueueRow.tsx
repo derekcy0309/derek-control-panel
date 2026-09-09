@@ -8,7 +8,7 @@ import { formatDate } from "@/lib/date";
 import { undatedUrgencyFor } from "@/lib/task-queue";
 import type { Task } from "@/lib/types";
 
-type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent";
+type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent" | "semi" | "calm" | "waiting" | "blocked";
 
 export function TaskQueueRow({
   task,

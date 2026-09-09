@@ -14,35 +14,37 @@ import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
-type NavGroupData = { label: string; items: NavItem[] };
+type NavGroupData = { label: string; items: NavItem[]; defaultOpen?: boolean };
 
 const navGroups: NavGroupData[] = [
   {
-    label: "主要",
+    label: "每日使用",
+    defaultOpen: true,
     items: [
       { href: "/", label: "今日", icon: Sparkles },
-      { href: "/workspace/inbox", label: "收集箱", icon: Inbox },
-      { href: "/calendar", label: "日曆", icon: CalendarDays },
       { href: "/tasks", label: "任務", icon: CheckSquare2 },
-      { href: "/deadlines", label: "死線", icon: Clock3 }
+      { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
   },
   {
-    label: "工作",
+    label: "計劃與跟進",
     items: [
-      { href: "/workspace/project", label: "項目作戰室", icon: BriefcaseBusiness },
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
+      { href: "/workspace/project", label: "項目", icon: BriefcaseBusiness },
+      { href: "/deadlines", label: "死線", icon: Clock3 },
+      { href: "/calendar", label: "日曆", icon: CalendarDays },
       { href: "/request-duty", label: "Request Duty", icon: ClipboardCheck },
-      { href: "/body-double", label: "同步專注", icon: UsersRound },
+    ]
+  },
+  {
+    label: "協作與檢視",
+    items: [
+      { href: "/sharing", label: "交辦及分享", icon: Share2 },
       { href: "/weekly-review", label: "每週檢視", icon: ClipboardCheck },
-      { href: "/sharing", label: "交辦中心", icon: Share2 },
+      { href: "/body-double", label: "同步專注", icon: UsersRound },
       { href: "/workspace/decision", label: "決策紀錄", icon: Command },
       { href: "/workspace/sop", label: "SOP", icon: Archive }
     ]
-  },
-  {
-    label: "財務（獨立）",
-    items: [{ href: "/cashflow", label: "個人財務", icon: Landmark }]
   },
   {
     label: "家庭",
@@ -66,9 +68,9 @@ const navGroups: NavGroupData[] = [
     ]
   },
   {
-    label: "分享及系統",
+    label: "財務及系統",
     items: [
-      { href: "/sharing", label: "分享中心", icon: Share2 },
+      { href: "/cashflow", label: "個人財務", icon: Landmark },
       { href: "/search", label: "全域搜尋", icon: Search },
       { href: "/settings", label: "設定", icon: Settings }
     ]
@@ -224,7 +226,13 @@ function Brand({ displayName, compact = false }: { displayName: string; compact?
 }
 
 function NavGroup({ group, pathname, mobile = false }: { group: NavGroupData; pathname: string; mobile?: boolean }) {
-  const [open, setOpen] = useState(true);
+  const activeGroup = group.items.some((item) => isActive(pathname, item.href));
+  const [open, setOpen] = useState(Boolean(group.defaultOpen || activeGroup));
+
+  useEffect(() => {
+    setOpen(Boolean(group.defaultOpen || activeGroup));
+  }, [activeGroup, group.defaultOpen]);
+
   return (
     <section className={mobile ? "mb-4" : "nav-group"}>
       <button className="nav-group-title" onClick={() => setOpen((value) => !value)} aria-expanded={open}>

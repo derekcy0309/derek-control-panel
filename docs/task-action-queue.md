@@ -24,9 +24,13 @@ The page opens these sections by default and shows up to five tasks in each:
 
 Each group can expand to show all items. Day 8–14, day 15 onward, undated semi-urgent, undated non-urgent, Waiting, Blocked, and completed/cancelled sections start collapsed. Waiting and Blocked tasks are separated before date bucketing so that work outside the user's control never flashes as a runnable overdue task.
 
+All undated work is kept together near the top: Urgent appears in the primary action group, followed immediately by collapsed Semi-urgent and Non-urgent groups. Dated follow-up and status groups come afterwards. The due-task calendar is the final on-screen section, so it does not push actionable lists below the fold.
+
+Colour is functional as well as visual: overdue is rose, imminent work amber, 8–14 day work blue, undated urgency orange/violet/green, Waiting cyan, and Blocked slate. Personal, Family, SEC, and Wecare selectors use separate colour families. Animation remains limited to the overdue attention dot and respects reduced-motion preferences.
+
 ## Calendar boundary
 
-The due-task calendar is an internal view of unfinished tasks with `due_date`. It does not use AI `planned_date` and never syncs ordinary tasks to Google Calendar. The existing rule remains: only explicitly confirmed schedules can sync to a selected Google Calendar.
+The due-task calendar is the final section and is an internal view of unfinished tasks with `due_date`. It does not use AI `planned_date` and never syncs ordinary tasks to Google Calendar. The existing rule remains: only explicitly confirmed schedules can sync to a selected Google Calendar.
 
 ## Print
 

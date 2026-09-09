@@ -186,3 +186,5 @@ Capacity Overload Warning 的計算資料、buffer、低影響候選、確認邊
 Request Duty 專區、完成 checkbox、私隱及 migration 說明見 [`docs/request-duty.md`](docs/request-duty.md)。
 
 Task 分類、日期／urgency 分組、內部 Calendar 邊界及 A4 列印說明見 [`docs/task-action-queue.md`](docs/task-action-queue.md)。
+
+左側導航的每日入口、重複功能合併及低頻功能摺疊原則見 [`docs/navigation-simplification.md`](docs/navigation-simplification.md)。

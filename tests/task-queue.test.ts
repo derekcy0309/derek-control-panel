@@ -76,7 +76,7 @@ test("waiting and blocked tasks never flash as runnable overdue work", () => {
   assert.deepEqual(buckets.completed.map((item) => item.id), ["done"]);
 });
 
-test("task UI previews five priority items, folds the rest, renders a due calendar and prints A4", () => {
+test("task UI previews five priority items, puts undated work above the bottom calendar and prints A4", () => {
   const page = read("app/tasks/page.tsx");
   const form = read("components/forms/TaskForm.tsx");
   const section = read("components/tasks/TaskQueueSection.tsx");
@@ -87,6 +87,9 @@ test("task UI previews five priority items, folds the rest, renders a due calend
   assert.match(page, /defaultOpen previewLimit=\{primaryPreviewLimit\}/);
   assert.match(page, /第 8 至 14 日/);
   assert.match(page, /第 15 日以後/);
+  assert.ok(page.indexOf("Semi-urgent（無日期）") < page.indexOf("<TaskDueCalendar"));
+  assert.ok(page.indexOf("Non-urgent（無日期）") < page.indexOf("<TaskDueCalendar"));
+  assert.ok(page.indexOf("已完成／已取消") < page.indexOf("<TaskDueCalendar"));
   assert.match(section, /顯示全部（共 \$\{tasks\.length\} 項）/);
   assert.match(calendar, /另有 \+\{dayTasks\.length - 3\} 項/);
   assert.match(form, /到期日（可留空）/);
@@ -96,4 +99,17 @@ test("task UI previews five priority items, folds the rest, renders a due calend
   assert.match(form, /Non-urgent/);
   assert.match(styles, /@page \{ size: A4 portrait/);
   assert.match(styles, /animation: overdue-attention 1\.8s ease-out 3/);
+  assert.match(styles, /task-category-family/);
+  assert.match(styles, /task-queue-section-semi/);
+  assert.match(styles, /task-due-calendar-header/);
+});
+
+test("sidebar keeps the daily loop open and removes the duplicate sharing route", () => {
+  const shell = read("components/AppShell.tsx");
+  assert.match(shell, /label: "每日使用",\s*defaultOpen: true/);
+  assert.match(shell, /label: "計劃與跟進"/);
+  assert.match(shell, /label: "協作與檢視"/);
+  assert.equal((shell.match(/href: "\/sharing"/g) ?? []).length, 1);
+  assert.match(shell, /label: "交辦及分享"/);
+  assert.match(shell, /group\.defaultOpen \|\| activeGroup/);
 });

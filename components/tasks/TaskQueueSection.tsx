@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { TaskQueueRow } from "@/components/tasks/TaskQueueRow";
 import type { Task } from "@/lib/types";
 
-type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent";
+type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent" | "semi" | "calm" | "waiting" | "blocked";
 
 export function TaskQueueSection({
   title,

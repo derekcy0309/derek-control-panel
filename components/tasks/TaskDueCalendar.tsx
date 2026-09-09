@@ -36,8 +36,8 @@ export function TaskDueCalendar({ tasks, today }: { tasks: Task[]; today: string
   }
 
   return (
-    <section className="panel overflow-hidden">
-      <header className="flex items-center justify-between border-b border-slate-200 p-4">
+    <section className="task-due-calendar panel overflow-hidden">
+      <header className="task-due-calendar-header flex items-center justify-between border-b border-slate-200 p-4">
         <button type="button" className="icon-button" onClick={() => moveMonth(-1)} aria-label="上個月"><ChevronLeft className="h-5 w-5" /></button>
         <div className="text-center">
           <h2 className="font-extrabold text-slate-950">到期任務日曆</h2>
