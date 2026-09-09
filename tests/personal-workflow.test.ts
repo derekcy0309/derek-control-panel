@@ -51,16 +51,14 @@ test("task list cards keep key information visible and disclose details on deman
   assert.match(detailPage, /prominent/);
 });
 
-test("tasks keep work and family separate with family collapsed by default", () => {
+test("tasks select one private or shared category before showing the action queue", () => {
   const tasksPage = read("app/tasks/page.tsx");
-  assert.match(tasksPage, /const personalTasks = filteredTasks\.filter\(\(task\) => taskCategoryFor\(task\) === "personal"\)/);
-  assert.match(tasksPage, /const familyTasks = filteredTasks\.filter\(\(task\) => taskCategoryFor\(task\) === "family"\)/);
-  assert.match(tasksPage, /const \[familyExpanded, setFamilyExpanded\] = useState\(false\)/);
-  assert.match(tasksPage, /個人任務/);
-  assert.match(tasksPage, /家庭任務/);
-  assert.match(tasksPage, /SEC 任務/);
-  assert.match(tasksPage, /Wecare 任務/);
-  assert.match(tasksPage, /aria-expanded=\{isFamilyOpen\}/);
+  assert.match(tasksPage, /useState<TaskCategory>\("personal"\)/);
+  assert.match(tasksPage, /taskCategoryOptions\.map/);
+  assert.match(tasksPage, /aria-pressed=\{selected\}/);
+  assert.match(tasksPage, /taskCategoryFor\(task\) === selectedCategory/);
+  assert.match(tasksPage, /categoryCounts/);
+  assert.match(tasksPage, /項未完成/);
 });
 
 test("task categories use the existing area and scope fields without a database migration", () => {

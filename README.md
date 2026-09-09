@@ -10,6 +10,7 @@
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
 - 任務依賴與項目里程碑：明確的 blocked-by／blocks 關係、防循環檢查、Project War Room 里程碑，以及不會自動完成或改派的下一步提示
+- Task Action Queue：按個人／家庭／SEC／Wecare 分類，只先展開逾期、7 日內及無日期 Urgent 各五項；其餘摺起，並提供內部到期日曆及 A4 精簡列印
 - 重複工作：每日／每週／每月／自訂週期／夜更模式；只在完成當前任務後安全建立下一項，可隨時暫停
 - Body Double 同步專注：兩人各自選任務、ready 後同步開始；可個別暫停／離開／完成，結束前必須儲存自己的 checkpoint，沒有排名或自動改動任務
 - Task Resource Pack：任務可連結網址、文件、Supabase Storage、聯絡人及現有 Notes／SOP／Decision／Project／Waiting；逐項明確分享，Focus Mode 只顯示可開啟資源
@@ -183,3 +184,5 @@ Capacity Overload Warning 的計算資料、buffer、低影響候選、確認邊
 私人／家庭／工作權限、AI 內部計劃、Google Calendar 同步邊界及每日電郵資料流見 [`docs/life-os-v1-architecture.md`](docs/life-os-v1-architecture.md)。
 
 Request Duty 專區、完成 checkbox、私隱及 migration 說明見 [`docs/request-duty.md`](docs/request-duty.md)。
+
+Task 分類、日期／urgency 分組、內部 Calendar 邊界及 A4 列印說明見 [`docs/task-action-queue.md`](docs/task-action-queue.md)。

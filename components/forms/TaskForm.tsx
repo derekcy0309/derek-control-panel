@@ -20,6 +20,7 @@ type TaskFormState = {
   waiting_on: string;
   status: string;
   risk: string;
+  requested_priority: string;
   next_action: string;
   notes: string;
   estimated_minutes: string;
@@ -61,6 +62,7 @@ const defaultState: TaskFormState = {
   waiting_on: "",
   status: "not_started",
   risk: "low",
+  requested_priority: "3",
   next_action: "",
   notes: "",
   estimated_minutes: "",
@@ -127,6 +129,7 @@ export function TaskForm({
           waiting_on: initialTask.waiting_on ?? "",
           status: initialTask.status === "done" || initialTask.status === "cancelled" ? initialTask.status : "not_started",
           risk: initialTask.risk,
+          requested_priority: urgencyPriorityValue(initialTask.requested_priority),
           next_action: initialTask.next_action ?? "",
           notes: initialTask.notes ?? "",
           estimated_minutes: String(initialTask.estimated_minutes ?? ""),
@@ -153,7 +156,7 @@ export function TaskForm({
           notice_user_ids: initialNoticeUserIds,
           follower_user_ids: initialFollowerUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal" }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.task_category ?? (preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal") }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -294,6 +297,7 @@ export function TaskForm({
       status: form.status,
       nextAction: form.next_action.trim() || null,
       risk: form.risk,
+      requestedPriority: Number(form.requested_priority),
       notes: form.notes.trim() || null,
       owner: form.owner.trim() || null,
       completedAt,
@@ -317,6 +321,7 @@ export function TaskForm({
           title: payload.title, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           notes: payload.notes, completed_at: payload.completedAt,
+          requested_priority: payload.requestedPriority,
           estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel,
           buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
           task_type_label: payload.taskType
@@ -367,7 +372,7 @@ export function TaskForm({
       </label>
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <label>
-          <span className="label">到期日</span>
+          <span className="label">到期日（可留空）</span>
           <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
         </label>
         <label>
@@ -375,6 +380,7 @@ export function TaskForm({
           <input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} />
         </label>
       </div> : null}
+      {!compact && !form.due_date ? <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} /> : null}
       {!compact && !initialTask ? <label>
         <span className="label">負責人</span>
         <select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}>
@@ -414,6 +420,7 @@ export function TaskForm({
           <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
         </div>
       ) : null}
+      {compact && !form.due_date ? <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} /> : null}
       {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
       {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
       {!initialTask && !compact ? (
@@ -567,4 +574,35 @@ export function TaskForm({
       </div>
     </form>
   );
+}
+
+function UrgencyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const options = [
+    { value: "1", label: "Urgent", description: "需要盡快處理", className: "border-rose-300 bg-rose-50 text-rose-900" },
+    { value: "3", label: "Semi-urgent", description: "近期應推進", className: "border-amber-300 bg-amber-50 text-amber-950" },
+    { value: "5", label: "Non-urgent", description: "未有即時壓力", className: "border-slate-200 bg-slate-50 text-slate-800" }
+  ];
+  return (
+    <fieldset>
+      <legend className="label">沒有到期日：緊急程度</legend>
+      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+        {options.map((option) => {
+          const selected = value === option.value;
+          return (
+            <label key={option.value} className={`cursor-pointer rounded-xl border-2 p-3 ${option.className} ${selected ? "ring-2 ring-indigo-300 ring-offset-1" : "opacity-75"}`}>
+              <input className="sr-only" type="radio" name="task-urgency" value={option.value} checked={selected} onChange={() => onChange(option.value)} />
+              <span className="block font-extrabold">{option.label}</span>
+              <span className="mt-0.5 block text-xs font-semibold">{option.description}</span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function urgencyPriorityValue(value: number | undefined) {
+  if ((value ?? 3) <= 2) return "1";
+  if ((value ?? 3) <= 4) return "3";
+  return "5";
 }
