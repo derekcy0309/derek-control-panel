@@ -120,8 +120,15 @@ export async function GET(request: NextRequest) {
     household: household.data ?? null,
     calendarConnections: calendarConnections.data ?? [],
     taskNoticeRecipients: taskNoticeRecipients.data ?? [],
-    taskFollowers: taskFollowers.data ?? []
+    taskFollowers: taskFollowers.data ?? [],
+    showEncouragement: encouragementVisibleFor(user)
   }, { headers: privateHeaders() });
+}
+
+function encouragementVisibleFor(user: User) {
+  const configured = user.app_metadata?.show_encouragement;
+  if (typeof configured === "boolean") return configured;
+  return user.email?.trim().toLowerCase() === "derekcy0309@gmail.com";
 }
 
 async function archivedTransactions({ client, user }: RequestContext, searchParams: URLSearchParams) {

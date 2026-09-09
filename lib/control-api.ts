@@ -25,8 +25,24 @@ export async function loadControlData(): Promise<ControlData> {
   return controlRequest<ControlData>("/api/control?view=bootstrap", { method: "GET" });
 }
 
-export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser[]; truncated: boolean }> {
-  return controlRequest<{ users: AdminAccountUser[]; truncated: boolean }>("/api/admin/users", { method: "GET" });
+export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser[]; truncated: boolean; currentUserId: string }> {
+  return controlRequest<{ users: AdminAccountUser[]; truncated: boolean; currentUserId: string }>("/api/admin/users", { method: "GET" });
+}
+
+export async function updateAdminEncouragementVisibility(targetUserId: string, visible: boolean) {
+  return controlRequest<{ targetUserId: string; showEncouragement: boolean }>("/api/admin/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "set_encouragement_visibility", targetUserId, visible })
+  });
+}
+
+export async function deleteAdminAccount(targetUserId: string, confirmEmail: string) {
+  return controlRequest<{ deletedUserId: string }>("/api/admin/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete_account", targetUserId, confirmEmail })
+  });
 }
 
 export async function loadTodayData(): Promise<TodayData> {

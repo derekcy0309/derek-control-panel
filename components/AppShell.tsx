@@ -94,6 +94,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showEncouragement, setShowEncouragement] = useState(false);
   const systemGroup: NavGroupData = {
     label: "系統設定",
     tone: "system",
@@ -110,6 +111,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setCurrentUserId(data.currentUser.id);
         setMustChangePassword(Boolean(data.profile.must_change_password));
         setIsAdmin(Boolean(data.profile.is_admin && data.profile.active));
+        setShowEncouragement(Boolean(data.showEncouragement));
         if (data.settings) {
         const theme = data.settings.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.settings.theme;
         document.documentElement.dataset.theme = theme || "light";
@@ -165,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <main id="main-content" className="mx-auto w-full max-w-[90rem] px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">
           {children}
-          <EncouragementFooter pathname={pathname} />
+          {showEncouragement ? <EncouragementFooter pathname={pathname} /> : null}
         </main>
       </div>
 

@@ -40,6 +40,36 @@ test("account list is server-only and requires an active administrator", async (
   assert.match(route, /last_seen_at/);
   assert.match(route, /maxPages = 10/);
   assert.match(route, /perPage: pageSize/);
+  assert.match(route, /showEncouragement: encouragementVisibleFor\(user\)/);
+  assert.match(route, /user\.app_metadata\?\.show_encouragement/);
+  assert.match(route, /derekcy0309@gmail\.com/);
+});
+
+test("administrators can manage encouragement visibility and delete a confirmed non-current account", async () => {
+  const [route, panel, controlApi, shell, controlRoute] = await Promise.all([
+    source("../app/api/admin/users/route.ts"),
+    source("../components/AdminAccountActivityPanel.tsx"),
+    source("../lib/control-api.ts"),
+    source("../components/AppShell.tsx"),
+    source("../app/api/control/route.ts")
+  ]);
+
+  assert.match(route, /action === "set_encouragement_visibility"/);
+  assert.match(route, /admin\.auth\.admin\.updateUserById/);
+  assert.match(route, /app_metadata: \{ \.\.\.\(target\.app_metadata \?\? \{\}\), show_encouragement: body\.visible \}/);
+  assert.match(route, /action === "delete_account"/);
+  assert.match(route, /requestOrigin && requestOrigin !== request\.nextUrl\.origin/);
+  assert.match(route, /targetUserId === context\.user\.id/);
+  assert.match(route, /body\.confirmEmail\?\.trim\(\)\.toLowerCase\(\) !== targetEmail/);
+  assert.match(route, /不可刪除最後一個啟用中的管理員帳戶/);
+  assert.match(route, /admin\.auth\.admin\.deleteUser\(targetUserId\)/);
+  assert.match(panel, /每頁鼓勵句/);
+  assert.match(panel, /輸入完整電郵確認/);
+  assert.match(panel, /永久刪除帳戶/);
+  assert.match(controlApi, /set_encouragement_visibility/);
+  assert.match(controlApi, /delete_account/);
+  assert.match(shell, /showEncouragement \? <EncouragementFooter/);
+  assert.match(controlRoute, /showEncouragement: encouragementVisibleFor\(user\)/);
 });
 
 test("admin activity page, protected navigation, and use tracking are wired", async () => {

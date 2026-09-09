@@ -265,6 +265,7 @@ export type AdminAccountUser = {
   emailConfirmedAt: string | null;
   lastSignInAt: string | null;
   lastSeenAt: string | null;
+  showEncouragement: boolean;
 };
 
 export type OperatingItem = {
@@ -810,6 +811,7 @@ export type ControlData = AppData & {
   calendarConnections: GoogleCalendarConnection[];
   taskNoticeRecipients: TaskNoticeRecipient[];
   taskFollowers: TaskFollower[];
+  showEncouragement: boolean;
 };
 
 export type TodayData = {

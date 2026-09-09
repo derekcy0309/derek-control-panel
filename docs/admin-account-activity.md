@@ -1,11 +1,18 @@
 # 管理員帳戶活動
 
-`/admin/accounts` 只會向 `user_profiles.is_admin = true` 且啟用中的帳戶顯示。管理員可查看現有 Auth 帳戶的顯示名稱、電郵、帳戶狀態、建立日期、上次登入及上次使用。
+`/admin/accounts` 只會向 `user_profiles.is_admin = true` 且啟用中的帳戶顯示。管理員可查看現有 Auth 帳戶的顯示名稱、電郵、帳戶狀態、建立日期、上次登入及上次使用，亦可控制每個帳戶是否顯示每頁鼓勵句。
 
 - 上次登入：Supabase Auth 的 `last_sign_in_at`，由 server-only Admin API 讀取。
 - 上次使用：`user_profiles.last_seen_at`，每次完成認證的 Portal request 後最多每五分鐘更新一次。
 - 清單不會傳送或顯示密碼、refresh token、任務、健康、家庭或其他私人內容。
 - 瀏覽器只呼叫受管理員檢查保護的 `/api/admin/users`；`SUPABASE_SERVICE_ROLE_KEY` 只存在 server route。
+- 鼓勵句預設只向 `derekcy0309@gmail.com` 顯示；管理員的選擇保存於 Supabase Auth `app_metadata`，一般使用者不能自行修改。
+
+## 刪除帳戶
+
+管理員可以永久刪除其他帳戶，但不能刪除目前登入中的自己，亦不能刪除最後一個啟用中的管理員。畫面要求管理員輸入完整目標電郵才會啟用刪除按鈕；server 會再次核對同源 request、UUID、電郵、管理員數目及目前使用者。
+
+刪除使用 Supabase server-only Admin API。若目標仍擁有受保護的關聯資料或 Storage 檔案，操作會被拒絕，不會靜默留下半完成狀態。Supabase JWT 可能在原定有效期內維持密碼學上有效，但本系統每次 request 都會以 `auth.getUser()` 核對 Auth 帳戶，已刪除帳戶不能再通過應用程式認證。
 
 ## Migration 與回復
 
