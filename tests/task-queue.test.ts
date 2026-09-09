@@ -146,8 +146,8 @@ test("family overview explains sensitive school data and groups every item by ur
 });
 
 test("custom task status is bounded display metadata and never replaces workflow status", () => {
-  const migration = read("supabase/migrations/20260909170750_task_custom_status.sql");
-  const rollback = read("supabase/migrations/20260909170750_task_custom_status.rollback.sql");
+  const migration = read("supabase/migrations/20260909172149_task_custom_status.sql");
+  const rollback = read("supabase/migrations/20260909172149_task_custom_status.rollback.sql");
   const api = read("app/api/control/route.ts");
   assert.match(migration, /add column if not exists custom_status_label text/);
   assert.match(migration, /between 1 and 60/);
