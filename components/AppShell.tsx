@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
+  BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
   PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
 } from "lucide-react";
@@ -12,13 +12,16 @@ import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
+import { EncouragementFooter } from "@/components/EncouragementFooter";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
-type NavGroupData = { label: string; items: NavItem[]; defaultOpen?: boolean };
+type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
+type NavGroupData = { label: string; items: NavItem[]; defaultOpen?: boolean; tone: NavTone };
 
 const navGroups: NavGroupData[] = [
   {
     label: "每日使用",
+    tone: "daily",
     defaultOpen: true,
     items: [
       { href: "/", label: "今日", icon: Sparkles },
@@ -28,6 +31,7 @@ const navGroups: NavGroupData[] = [
   },
   {
     label: "計劃與跟進",
+    tone: "planning",
     items: [
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
       { href: "/workspace/project", label: "項目", icon: BriefcaseBusiness },
@@ -38,16 +42,17 @@ const navGroups: NavGroupData[] = [
   },
   {
     label: "協作與檢視",
+    tone: "collaboration",
     items: [
       { href: "/sharing", label: "交辦及分享", icon: Share2 },
       { href: "/weekly-review", label: "每週檢視", icon: ClipboardCheck },
       { href: "/body-double", label: "同步專注", icon: UsersRound },
-      { href: "/workspace/decision", label: "決策紀錄", icon: Command },
-      { href: "/workspace/sop", label: "SOP", icon: Archive }
+      { href: "/workspace/decision", label: "決策紀錄", icon: Command }
     ]
   },
   {
     label: "家庭",
+    tone: "family",
     items: [
       { href: "/workspace/family", label: "家庭總覽", icon: HeartHandshake },
       { href: "/workspace/school", label: "子女及學校", icon: UsersRound },
@@ -58,29 +63,22 @@ const navGroups: NavGroupData[] = [
   },
   {
     label: "個人",
+    tone: "personal",
     items: [
       { href: "/workspace/personal", label: "個人總覽", icon: CircleUserRound },
       { href: "/workspace/health", label: "健康行政", icon: HeartHandshake },
       { href: "/medications", label: "藥物紀錄", icon: Pill },
-      { href: "/workspace/document", label: "文件", icon: Archive },
       { href: "/workspace/vehicle", label: "車輛", icon: Home },
-      { href: "/workspace/note", label: "私人筆記", icon: Inbox }
-    ]
-  },
-  {
-    label: "財務及系統",
-    items: [
-      { href: "/cashflow", label: "個人財務", icon: Landmark },
-      { href: "/search", label: "全域搜尋", icon: Search },
-      { href: "/settings", label: "設定", icon: Settings }
+      { href: "/workspace/note", label: "私人筆記", icon: Inbox },
+      { href: "/cashflow", label: "個人財務", icon: Landmark }
     ]
   }
 ];
 
-const adminNavGroup: NavGroupData = {
-  label: "管理員",
-  items: [{ href: "/admin/accounts", label: "帳戶活動", icon: ShieldCheck }]
-};
+const systemItems: NavItem[] = [
+  { href: "/search", label: "全域搜尋", icon: Search },
+  { href: "/settings", label: "設定", icon: Settings }
+];
 
 const mobileNav = [
   { href: "/", label: "今日", icon: Sparkles },
@@ -96,6 +94,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const systemGroup: NavGroupData = {
+    label: "系統設定",
+    tone: "system",
+    items: isAdmin ? [...systemItems, { href: "/admin/accounts", label: "帳戶活動", icon: ShieldCheck }] : systemItems
+  };
 
   useEffect(() => {
     let active = true;
@@ -145,7 +148,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Brand displayName={displayName} />
         <div className="sidebar-scroll">
           {navGroups.map((group) => <NavGroup key={group.label} group={group} pathname={pathname} />)}
-          {isAdmin ? <NavGroup group={adminNavGroup} pathname={pathname} /> : null}
+          <NavGroup group={systemGroup} pathname={pathname} />
         </div>
         <button className="sidebar-signout" onClick={signOut}>登出</button>
       </aside>
@@ -160,7 +163,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:block lg:hidden" onClick={signOut}>登出</button>
           </div>
         </header>
-        <main id="main-content" className="mx-auto w-full max-w-[90rem] px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">{children}</main>
+        <main id="main-content" className="mx-auto w-full max-w-[90rem] px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:px-8 lg:pb-10">
+          {children}
+          <EncouragementFooter pathname={pathname} />
+        </main>
       </div>
 
       <nav className="mobile-nav lg:hidden" aria-label="手機導覽">
@@ -180,7 +186,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="max-h-[70vh] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {navGroups.slice(1).map((group) => <NavGroup key={group.label} group={group} pathname={pathname} mobile />)}
-              {isAdmin ? <NavGroup group={adminNavGroup} pathname={pathname} mobile /> : null}
+              <NavGroup group={systemGroup} pathname={pathname} mobile />
               <button className="mt-3 min-h-11 w-full rounded-xl px-3 text-left font-semibold text-slate-600 hover:bg-slate-100" onClick={signOut}>登出</button>
             </div>
           </section>
@@ -234,7 +240,7 @@ function NavGroup({ group, pathname, mobile = false }: { group: NavGroupData; pa
   }, [activeGroup, group.defaultOpen]);
 
   return (
-    <section className={mobile ? "mb-4" : "nav-group"}>
+    <section className={clsx(mobile ? "mb-4" : "nav-group", `nav-group-${group.tone}`)}>
       <button className="nav-group-title" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
         <span>{group.label}</span><ChevronDown className={clsx("h-4 w-4 transition", !open && "-rotate-90")} />
       </button>

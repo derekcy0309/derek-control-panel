@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
+import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { processInboxItem, undoLastInboxProcessing } from "@/lib/control-api";
 import type {
   InboxProcessingAction,
@@ -332,15 +333,7 @@ function ProcessingModal({
             </select>
           </label>
           {action !== "keep_note" ? (
-            <label>
-              <span className="label">日期／死線</span>
-              <input
-                className="field mt-2"
-                type="date"
-                value={form.dueDate}
-                onChange={(event) => onSet("dueDate", event.target.value)}
-              />
-            </label>
+            <DueDatePicker value={form.dueDate} label="日期／死線" onChange={(value) => onSet("dueDate", value)} />
           ) : null}
         </div>
 

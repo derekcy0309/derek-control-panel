@@ -5,6 +5,8 @@ import Link from "next/link";
 import { CalendarClock, Check, Pencil } from "lucide-react";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
+import { duePriorityBand } from "@/lib/due-priority";
+import { hkDateIso } from "@/lib/planning";
 import { undatedUrgencyFor } from "@/lib/task-queue";
 import type { Task } from "@/lib/types";
 
@@ -26,6 +28,7 @@ export function TaskQueueRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const urgency = !task.due_date ? undatedUrgencyFor(task) : null;
+  const datedPriority = duePriorityBand(task.due_date, hkDateIso());
 
   async function complete() {
     if (busy) return;
@@ -69,6 +72,8 @@ export function TaskQueueRow({
           ) : urgency ? (
             <span>{urgency === "urgent" ? "Urgent" : urgency === "semi_urgent" ? "Semi-urgent" : "Non-urgent"}</span>
           ) : null}
+          {datedPriority ? <span className={`priority-inline priority-inline-${datedPriority}`}>自動{datedPriority === "high" ? "高" : datedPriority === "medium" ? "中" : "低"} priority</span> : null}
+          {task.custom_status_label ? <span className="rounded-full bg-fuchsia-50 px-2 py-0.5 text-fuchsia-800">{task.custom_status_label}</span> : null}
           {task.status === "in_progress" ? <span className="text-indigo-700">進行中</span> : null}
           {completed ? <span>{task.status === "cancelled" ? "已取消" : "已完成"}</span> : null}
           {task.next_action ? <span className="hidden truncate sm:inline">下一步：{task.next_action}</span> : null}

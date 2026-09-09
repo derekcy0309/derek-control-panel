@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
+import { priorityValueForDueDate } from "@/lib/due-priority";
 
 export const dynamic = "force-dynamic";
 
@@ -1091,7 +1092,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     energy_level: enumValue(body.energyLevel, ["low", "medium", "high"], null),
     context: nullableText(body.context),
     risk: enumValue(body.risk, ["low", "medium", "high"], "low"),
-    requested_priority: integerValue(body.requestedPriority, 1, 5) ?? 3,
+    requested_priority: priorityValueForDueDate(dueDate, hkDateString()) ?? integerValue(body.requestedPriority, 1, 5) ?? 3,
     critical_path: Boolean(body.criticalPath),
     safety_impact: Boolean(body.safetyImpact),
     child_impact: Boolean(body.childImpact),
@@ -1107,6 +1108,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
       "training", "assessment", "family_conference"
     ] as const, "general"),
     task_type_label: resourceText(body.taskType, 120),
+    custom_status_label: resourceText(body.customStatusLabel, 60),
     needs_decision_from_id: decisionTarget,
     decision_resolved_at: null,
     decision_resolved_by_id: null,
@@ -1188,7 +1190,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
         .maybeSingle();
   if (activeHandler && activeHandler.error) return databaseError(activeHandler.error);
   const allowed = existing.data.owner_id === user.id
-    ? ["title","description","status","next_action","definition_of_done","due_date","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","task_type_label","materials_required","rn_required","client_update_required"]
+    ? ["title","description","status","custom_status_label","next_action","definition_of_done","due_date","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","task_type_label","materials_required","rn_required","client_update_required"]
     : activeHandler && activeHandler.data
       ? ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at","due_date","follow_up_date"]
       : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
@@ -1206,6 +1208,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
     payload.household_id = access.householdId;
   }
   if (payload.task_type_label !== undefined) payload.task_type_label = resourceText(payload.task_type_label, 120);
+  if (payload.custom_status_label !== undefined) payload.custom_status_label = resourceText(payload.custom_status_label, 60);
   if (payload.case_code !== undefined) payload.case_code = resourceText(payload.case_code, 80);
   if (payload.waiting_for !== undefined) payload.waiting_for = resourceText(payload.waiting_for, 200);
   if (payload.waiting_on !== undefined) payload.waiting_on = resourceText(payload.waiting_on, 1000);
@@ -1216,6 +1219,9 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
     return jsonError("開始任務前必須設定清晰的下一步。", 422);
   }
   if (payload.status === "done") payload.completed_at = new Date().toISOString();
+  const nextDueDate = "due_date" in payload ? dateValue(payload.due_date) : dateValue(existing.data.due_date);
+  const datedPriority = priorityValueForDueDate(nextDueDate, hkDateString());
+  if (datedPriority) payload.requested_priority = datedPriority;
   payload.last_progress_at = new Date().toISOString();
   const result = await client.from("tasks").update(payload).eq("id", id).select("*").maybeSingle();
   if (result.error) return databaseError(result.error);

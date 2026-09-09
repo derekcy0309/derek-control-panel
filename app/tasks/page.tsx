@@ -47,6 +47,7 @@ function TasksContent() {
 
   const categoryLabel = taskCategoryOptions.find((option) => option.value === selectedCategory)?.label ?? selectedCategory;
   const categoryFields = taskCategoryFields(selectedCategory);
+  const statusSuggestions = [...new Set(data.tasks.map((task) => task.custom_status_label?.trim()).filter((value): value is string => Boolean(value)))].sort();
   const datedTasks = tasksInCategory.filter((task) => task.due_date && task.status !== "done" && task.status !== "cancelled");
   const sectionProps = { onChanged: reload, onEdit: setEditingTask };
 
@@ -135,6 +136,7 @@ function TasksContent() {
               participants={data.participants}
               projects={data.operatingItems.filter((item) => item.item_type === "project")}
               preset={{ task_category: selectedCategory, area: categoryFields.area, scope: categoryFields.scope }}
+              statusSuggestions={statusSuggestions}
               onSaved={() => finish(reload, () => setIsAdding(false))}
               onCancel={() => setIsAdding(false)}
             />
@@ -150,6 +152,7 @@ function TasksContent() {
               initialTask={editingTask}
               initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)}
               initialFollowerUserIds={data.taskFollowers.filter((follower) => follower.task_id === editingTask.id).map((follower) => follower.follower_id)}
+              statusSuggestions={statusSuggestions}
               onSaved={() => finish(reload, () => setEditingTask(null))}
               onCancel={() => setEditingTask(null)}
             />

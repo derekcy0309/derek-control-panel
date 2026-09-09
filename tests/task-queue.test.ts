@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { taskQueueBuckets, undatedUrgencyFor } from "../lib/task-queue.ts";
+import { duePriorityBand, effectiveTaskPriority, operatingItemPriorityBand } from "../lib/due-priority.ts";
 import type { Task } from "../lib/types.ts";
 
 const here = resolve(fileURLToPath(new URL(".", import.meta.url)));
@@ -76,12 +77,24 @@ test("waiting and blocked tasks never flash as runnable overdue work", () => {
   assert.deepEqual(buckets.completed.map((item) => item.id), ["done"]);
 });
 
+test("dated priority upgrades automatically as the due date approaches", () => {
+  const today = "2026-09-10";
+  assert.equal(duePriorityBand("2026-09-09", today), "high");
+  assert.equal(duePriorityBand("2026-09-17", today), "high");
+  assert.equal(duePriorityBand("2026-09-18", today), "medium");
+  assert.equal(duePriorityBand("2026-10-01", today), "medium");
+  assert.equal(duePriorityBand("2026-10-02", today), "low");
+  assert.equal(effectiveTaskPriority(task("dated", { due_date: "2026-09-15", requested_priority: 5 }), today), 1);
+  assert.equal(operatingItemPriorityBand({ due_date: null, metadata: { manualUrgency: "medium" } }, today), "medium");
+});
+
 test("task UI previews five priority items, puts undated work above the bottom calendar and prints A4", () => {
   const page = read("app/tasks/page.tsx");
   const form = read("components/forms/TaskForm.tsx");
   const section = read("components/tasks/TaskQueueSection.tsx");
   const calendar = read("components/tasks/TaskDueCalendar.tsx");
   const styles = read("app/globals.css");
+  const duePicker = read("components/forms/DueDatePicker.tsx");
 
   assert.match(page, /const primaryPreviewLimit = 5/);
   assert.match(page, /defaultOpen previewLimit=\{primaryPreviewLimit\}/);
@@ -92,7 +105,8 @@ test("task UI previews five priority items, puts undated work above the bottom c
   assert.ok(page.indexOf("已完成／已取消") < page.indexOf("<TaskDueCalendar"));
   assert.match(section, /顯示全部（共 \$\{tasks\.length\} 項）/);
   assert.match(calendar, /另有 \+\{dayTasks\.length - 3\} 項/);
-  assert.match(form, /到期日（可留空）/);
+  assert.match(form, /<DueDatePicker/);
+  assert.match(duePicker, /到期日（可留空）/);
   assert.match(form, /requestedPriority: Number\(form\.requested_priority\)/);
   assert.match(form, /Urgent/);
   assert.match(form, /Semi-urgent/);
@@ -102,14 +116,43 @@ test("task UI previews five priority items, puts undated work above the bottom c
   assert.match(styles, /task-category-family/);
   assert.match(styles, /task-queue-section-semi/);
   assert.match(styles, /task-due-calendar-header/);
+  assert.match(duePicker, /const quickDates = \[7, 14, 21, 30\]/);
+  assert.match(duePicker, /\{days\} 日/);
+  assert.match(duePicker, /type="date"/);
+  assert.match(form, /自訂顯示狀態（可留空）/);
 });
 
 test("sidebar keeps the daily loop open and removes the duplicate sharing route", () => {
   const shell = read("components/AppShell.tsx");
-  assert.match(shell, /label: "每日使用",\s*defaultOpen: true/);
+  assert.match(shell, /label: "每日使用",[\s\S]*?defaultOpen: true/);
   assert.match(shell, /label: "計劃與跟進"/);
   assert.match(shell, /label: "協作與檢視"/);
   assert.equal((shell.match(/href: "\/sharing"/g) ?? []).length, 1);
   assert.match(shell, /label: "交辦及分享"/);
   assert.match(shell, /group\.defaultOpen \|\| activeGroup/);
+  assert.doesNotMatch(shell, /href: "\/workspace\/sop"/);
+  assert.doesNotMatch(shell, /href: "\/workspace\/document"/);
+  assert.ok(shell.indexOf('href: "/cashflow"') < shell.indexOf('label: "系統設定"'));
+  assert.match(shell, /EncouragementFooter/);
+});
+
+test("family overview explains sensitive school data and groups every item by urgency", () => {
+  const workspace = read("app/workspace/[view]/page.tsx");
+  assert.match(workspace, /高、中、低 urgency/);
+  assert.match(workspace, /operatingItemPriorityBand/);
+  assert.match(workspace, /學生姓名、班別／學號、聯絡資料、健康或特殊教育需要/);
+  assert.match(workspace, /身份文件、登入資料/);
+  assert.match(workspace, /自訂顯示狀態（可留空）/);
+});
+
+test("custom task status is bounded display metadata and never replaces workflow status", () => {
+  const migration = read("supabase/migrations/20260909170750_task_custom_status.sql");
+  const rollback = read("supabase/migrations/20260909170750_task_custom_status.rollback.sql");
+  const api = read("app/api/control/route.ts");
+  assert.match(migration, /add column if not exists custom_status_label text/);
+  assert.match(migration, /between 1 and 60/);
+  assert.doesNotMatch(migration, /drop constraint if exists tasks_status_check/i);
+  assert.match(api, /custom_status_label: resourceText\(body\.customStatusLabel, 60\)/);
+  assert.match(api, /payload\.custom_status_label = resourceText\(payload\.custom_status_label, 60\)/);
+  assert.match(rollback, /drop column if exists custom_status_label/);
 });

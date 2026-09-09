@@ -82,6 +82,7 @@ export type Task = {
   case_code?: string | null;
   task_type?: WorkflowTaskType;
   task_type_label?: string | null;
+  custom_status_label?: string | null;
   needs_decision_from_id?: string | null;
   decision_resolved_at?: string | null;
   decision_resolved_by_id?: string | null;

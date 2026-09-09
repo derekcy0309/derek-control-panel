@@ -13,6 +13,8 @@ import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
+import { duePriorityBand } from "@/lib/due-priority";
+import { hkDateIso } from "@/lib/planning";
 import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskFollower, TaskRecurrenceRule } from "@/lib/types";
 
 export function TaskCard({
@@ -63,6 +65,7 @@ export function TaskCard({
   const isOngoingRecurrence = Boolean(recurrenceRule?.is_active);
   const category = taskCategoryFor(task);
   const categoryLabel = taskCategoryOptions.find((option) => option.value === category)?.label ?? category;
+  const datedPriority = duePriorityBand(task.due_date, hkDateIso());
   async function updateTask(values: Partial<Task>) {
     if (actionBusy) return false;
     setActionBusy(true);
@@ -144,7 +147,9 @@ export function TaskCard({
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{categoryLabel}</span>
             {task.task_type_label ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">{task.task_type_label}</span> : null}
             <StatusBadge status={task.status} />
+            {task.custom_status_label ? <span className="rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-bold text-fuchsia-800">{task.custom_status_label}</span> : null}
             <RiskBadge risk={task.risk} />
+            {datedPriority ? <span className={`priority-inline priority-inline-${datedPriority}`}>自動{datedPriority === "high" ? "高" : datedPriority === "medium" ? "中" : "低"} priority</span> : null}
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
           </span>
           <span className="mt-3 block text-xl font-bold text-ink">{task.title}</span>

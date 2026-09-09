@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
+import { taskStatusOptions } from "@/lib/labels";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
 
@@ -19,6 +21,7 @@ type TaskFormState = {
   waiting_for: string;
   waiting_on: string;
   status: string;
+  custom_status_label: string;
   risk: string;
   requested_priority: string;
   next_action: string;
@@ -61,6 +64,7 @@ const defaultState: TaskFormState = {
   waiting_for: "",
   waiting_on: "",
   status: "not_started",
+  custom_status_label: "",
   risk: "low",
   requested_priority: "3",
   next_action: "",
@@ -99,6 +103,7 @@ export function TaskForm({
   participants = [],
   projects = [],
   compact = false,
+  statusSuggestions = [],
   onSaved,
   onCancel
 }: {
@@ -110,6 +115,7 @@ export function TaskForm({
   participants?: Array<{ user_id: string; display_name: string }>;
   projects?: OperatingItem[];
   compact?: boolean;
+  statusSuggestions?: string[];
   onSaved: () => void;
   onCancel?: () => void;
 }) {
@@ -127,7 +133,8 @@ export function TaskForm({
           follow_up_date: initialTask.follow_up_date ?? "",
           waiting_for: initialTask.waiting_for ?? "",
           waiting_on: initialTask.waiting_on ?? "",
-          status: initialTask.status === "done" || initialTask.status === "cancelled" ? initialTask.status : "not_started",
+          status: initialTask.status,
+          custom_status_label: initialTask.custom_status_label ?? "",
           risk: initialTask.risk,
           requested_priority: urgencyPriorityValue(initialTask.requested_priority),
           next_action: initialTask.next_action ?? "",
@@ -164,6 +171,7 @@ export function TaskForm({
   const [recurrenceWarning, setRecurrenceWarning] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const customStatusListId = useId();
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
@@ -295,6 +303,7 @@ export function TaskForm({
       waitingFor: form.waiting_for.trim() || null,
       waitingOn: form.waiting_on.trim() || null,
       status: form.status,
+      customStatusLabel: form.custom_status_label.trim() || null,
       nextAction: form.next_action.trim() || null,
       risk: form.risk,
       requestedPriority: Number(form.requested_priority),
@@ -320,6 +329,8 @@ export function TaskForm({
         await controlAction("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
           title: payload.title, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
+          status: payload.status, custom_status_label: payload.customStatusLabel,
+          next_action: payload.nextAction,
           notes: payload.notes, completed_at: payload.completedAt,
           requested_priority: payload.requestedPriority,
           estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel,
@@ -371,10 +382,11 @@ export function TaskForm({
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
       </label>
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
-        <label>
-          <span className="label">到期日（可留空）</span>
-          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
-        </label>
+        <DueDatePicker
+          value={form.due_date}
+          disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"}
+          onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))}
+        />
         <label>
           <span className="label">跟進日</span>
           <input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} />
@@ -416,11 +428,52 @@ export function TaskForm({
       ) : null}
       {compact ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          <label><span className="label">何時完成（可留空）</span><input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} /></label>
+          <DueDatePicker value={form.due_date} label="何時完成（可留空）" onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))} />
           <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
         </div>
       ) : null}
       {compact && !form.due_date ? <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} /> : null}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label>
+          <span className="label">系統狀態</span>
+          <select className="field mt-2" value={form.status} onChange={(event) => update("status", event.target.value)}>
+            {taskStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <span className="mt-1 block text-xs leading-5 text-slate-500">系統用這個狀態判斷 Today、Waiting、Blocked 及完成項目。</span>
+        </label>
+        <label>
+          <span className="label">自訂顯示狀態（可留空）</span>
+          <input className="field mt-2" list={customStatusListId} value={form.custom_status_label} onChange={(event) => update("custom_status_label", event.target.value)} placeholder="例如：等學校確認、準備文件中" maxLength={60} />
+          <datalist id={customStatusListId}>{statusSuggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>
+          <span className="mt-1 block text-xs leading-5 text-slate-500">只改顯示名稱；輸入過的名稱之後可再選。</span>
+        </label>
+      </div>
+      {form.status === "in_progress" ? (
+        <label>
+          <span className="label">下一個小步驟</span>
+          <input
+            className="field mt-2"
+            value={form.next_action}
+            onChange={(event) => update("next_action", event.target.value)}
+            placeholder="例如：打開申請表，先填第一頁"
+            maxLength={500}
+            required
+          />
+          <span className="mt-1 block text-xs leading-5 text-slate-500">只在「進行中」時需要，幫你中斷後毋須重新思考。</span>
+        </label>
+      ) : null}
+      {form.status === "waiting" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label>
+            <span className="label">等待誰</span>
+            <input className="field mt-2" value={form.waiting_for} onChange={(event) => update("waiting_for", event.target.value)} placeholder="例如：學校、會計師、Suki" maxLength={200} />
+          </label>
+          <label>
+            <span className="label">等待內容</span>
+            <input className="field mt-2" value={form.waiting_on} onChange={(event) => update("waiting_on", event.target.value)} placeholder="例如：確認日期、回覆文件" maxLength={300} />
+          </label>
+        </div>
+      ) : null}
       {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
       {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
       {!initialTask && !compact ? (
@@ -605,4 +658,8 @@ function urgencyPriorityValue(value: number | undefined) {
   if ((value ?? 3) <= 2) return "1";
   if ((value ?? 3) <= 4) return "3";
   return "5";
+}
+
+function priorityForBand(band: "high" | "medium" | "low") {
+  return band === "high" ? "1" : band === "medium" ? "3" : "5";
 }

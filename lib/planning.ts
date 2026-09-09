@@ -1,4 +1,5 @@
 import type { Assignment, CapacityCheckin, PlanningMetadata, Task, TaskDependency, UserSettings } from "./types.ts";
+import { effectiveTaskPriority } from "./due-priority.ts";
 
 const dayMs = 86_400_000;
 
@@ -142,7 +143,7 @@ export function recommendTodayTasks(input: {
     if (task.critical_path) { score += 600; reasons.push("關鍵路徑"); }
     if ((task.revenue_impact ?? 0) > 0) { score += Math.min(500, Number(task.revenue_impact) / 100); reasons.push("影響收入"); }
     if (task.status === "in_progress") { score += 240; reasons.push("已經開始"); }
-    score += (6 - (task.requested_priority ?? 3)) * 75;
+    score += (6 - effectiveTaskPriority(task, today)) * 75;
     const assignment = assignmentByResource.get(task.id);
     if (assignment?.assigned_to_id === input.currentUserId) { score += 160; reasons.push("已接受指派"); }
     if (task.recurrence_rule_id && task.planned_date && task.planned_date <= today) { score += 260; reasons.push("定期工作已到提示時段"); }

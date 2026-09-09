@@ -58,8 +58,9 @@ test("admin activity page, protected navigation, and use tracking are wired", as
   assert.match(panel, /loadAdminAccountUsers/);
   assert.match(page, /data\.profile\.is_admin/);
   assert.match(page, /data\.profile\.active/);
-  assert.match(shell, /adminNavGroup/);
+  assert.match(shell, /systemGroup/);
   assert.match(shell, /isAdmin/);
+  assert.match(shell, /isAdmin \? \[\.\.\.systemItems/);
   assert.match(shell, /帳戶活動/);
   assert.match(requestContext, /touch_current_user_last_seen/);
   assert.match(controlRoute, /touch_current_user_last_seen/);

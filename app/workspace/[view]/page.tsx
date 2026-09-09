@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, CalendarClock, Check, FileLock2, Filter, List, Plus, Search, Share2, Sparkles } from "lucide-react";
@@ -11,10 +11,13 @@ import { ProjectMilestonesPanel } from "@/components/projects/ProjectMilestonesP
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
+import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
 import { waitingAge } from "@/lib/planning";
+import { hkDateIso } from "@/lib/planning";
+import { operatingItemPriorityBand, type PriorityBand } from "@/lib/due-priority";
 import type { Area, OperatingItem } from "@/lib/types";
 import { useControlData } from "@/hooks/useControlData";
 import { useInboxProcessing } from "@/hooks/useInboxProcessing";
@@ -25,8 +28,8 @@ const views: Record<string, ViewConfig> = {
   waiting: { title: "等待中", eyebrow: "Waiting For", description: "把等待回覆變成有日期、有下一次跟進的閉環。", area: "work", itemType: "waiting", addLabel: "新增等待事項" },
   decision: { title: "決策紀錄", eyebrow: "Decision Log", description: "保留問題、選項、期限與最後理據，減少決策債。", area: "work", itemType: "decision", addLabel: "新增決策" },
   sop: { title: "SOP 範本", eyebrow: "Operations", description: "用清單、相對日期及證據要求把服務流程標準化。", area: "work", itemType: "sop", addLabel: "新增 SOP" },
-  family: { title: "家庭總覽", eyebrow: "Family OS", description: "家庭只是分類入口，不代表自動分享。所有項目仍然預設私人。", area: "family", addLabel: "新增家庭事項" },
-  school: { title: "子女及學校", eyebrow: "Family", description: "整理通告、簽署、繳費、活動及所需物品。敏感內容預設私人。", area: "family", itemType: "school", addLabel: "新增學校事項", sensitive: true },
+  family: { title: "家庭總覽", eyebrow: "Family OS", description: "按高、中、低 urgency 排列家庭事項；7 日內到期會自動升為高 priority。家庭分類不代表自動分享。", area: "family", addLabel: "新增家庭事項" },
+  school: { title: "子女及學校", eyebrow: "Family", description: "整理通告、簽署、繳費、活動及物品。敏感資料包括可辨識小朋友身份、健康、學習或登入資料的內容；預設私人。", area: "family", itemType: "school", addLabel: "新增學校事項", sensitive: true },
   pet: { title: "寵物照護", eyebrow: "Family", description: "管理疫苗、防蟲、覆診、藥物、補給及週期照護。", area: "family", itemType: "pet", addLabel: "新增寵物事項" },
   household: { title: "家居管理", eyebrow: "Family", description: "跟進維修、保養、家電、保養期及供應商。", area: "family", itemType: "household", addLabel: "新增家居事項" },
   shopping: { title: "家庭購物", eyebrow: "Family", description: "按商店、分類及負責人整理採購，完成後保留紀錄。", area: "family", itemType: "shopping", addLabel: "加入購物項目" },
@@ -54,6 +57,7 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
   const [status, setStatus] = useState("active");
   const [editing, setEditing] = useState<OperatingItem | null>(null);
   const [adding, setAdding] = useState(false);
+  const today = hkDateIso();
 
   const items = useMemo(() => {
     if (!data) return [];
@@ -64,18 +68,28 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
       if (status !== "all" && status !== "active" && item.status !== status) return false;
       if (query && !`${item.title} ${item.description || ""} ${item.next_action || ""}`.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
-    });
-  }, [config, data, query, status]);
+    }).sort((left, right) => priorityRank(operatingItemPriorityBand(left, today)) - priorityRank(operatingItemPriorityBand(right, today))
+      || (left.due_date ?? "9999-12-31").localeCompare(right.due_date ?? "9999-12-31")
+      || left.title.localeCompare(right.title));
+  }, [config, data, query, status, today]);
 
   if (loading || error || !data) return <LoadingState error={error} />;
   async function update(item: OperatingItem, changes: Record<string, unknown>) { await controlAction("update_item", { id: item.id, changes }); await reload(); }
+  const customStatusSuggestions = [...new Set(data.operatingItems.map((item) => customStatusForItem(item)).filter((value): value is string => Boolean(value)))].sort();
+  const familyPriorityView = config.area === "family" && !config.itemType;
 
   return <div className="space-y-5">
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title mt-1">{config.title}</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">{config.description}</p></div><Button onClick={() => setAdding(true)}><Plus className="h-5 w-5" />{config.addLabel}</Button></section>
     {config.itemType === "project" ? <ProjectMilestonesPanel projects={items} milestones={data.projectMilestones} tasks={data.tasks} onChanged={() => void reload()} /> : null}
     <section className="panel flex flex-col gap-3 p-3 sm:flex-row"><label className="relative flex-1"><span className="sr-only">搜尋此頁</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋標題、內容或下一步" /></label><label className="relative sm:w-48"><span className="sr-only">狀態</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><select className="field pl-10" value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="all">全部</option></select></label></section>
-    <section className="grid gap-3 xl:grid-cols-2">{items.length ? items.map((item) => <ItemCard key={item.id} item={item} currentUserId={data.currentUser.id} onEdit={() => setEditing(item)} onComplete={() => update(item, { status: "completed" })} onArchive={() => update(item, { archived_at: new Date().toISOString() })} />) : <div className="panel col-span-full p-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><Plus className="h-5 w-5" /></div><h2 className="mt-4 text-lg font-bold">目前沒有{config.title}項目</h2><p className="muted mt-2 text-sm">你可以新增第一項，或調整上方篩選。</p><Button className="mt-5" onClick={() => setAdding(true)}>{config.addLabel}</Button></div>}</section>
-    {adding || editing ? <ItemModal config={config} item={editing} currentUserId={data.currentUser.id} onClose={() => { setAdding(false); setEditing(null); }} onSaved={() => { setAdding(false); setEditing(null); void reload(); }} /> : null}
+    {familyPriorityView && items.length ? (
+      <section className="grid gap-4">
+        {(["high", "medium", "low"] as const).map((band) => (
+          <PriorityItemSection key={band} band={band} items={items.filter((item) => operatingItemPriorityBand(item, today) === band)} currentUserId={data.currentUser.id} onEdit={setEditing} onUpdate={update} />
+        ))}
+      </section>
+    ) : <section className="grid gap-3 xl:grid-cols-2">{items.length ? items.map((item) => <ItemCard key={item.id} item={item} today={today} currentUserId={data.currentUser.id} onEdit={() => setEditing(item)} onComplete={() => update(item, { status: "completed" })} onArchive={() => update(item, { archived_at: new Date().toISOString() })} />) : <div className="panel col-span-full p-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><Plus className="h-5 w-5" /></div><h2 className="mt-4 text-lg font-bold">目前沒有{config.title}項目</h2><p className="muted mt-2 text-sm">你可以新增第一項，或調整上方篩選。</p><Button className="mt-5" onClick={() => setAdding(true)}>{config.addLabel}</Button></div>}</section>}
+    {adding || editing ? <ItemModal config={config} item={editing} customStatusSuggestions={customStatusSuggestions} currentUserId={data.currentUser.id} onClose={() => { setAdding(false); setEditing(null); }} onSaved={() => { setAdding(false); setEditing(null); void reload(); }} /> : null}
   </div>;
 }
 
@@ -251,13 +265,36 @@ function InboxWorkspace() {
   );
 }
 
-function ItemCard({ item, currentUserId, onEdit, onComplete, onArchive }: { item: OperatingItem; currentUserId: string; onEdit: () => void; onComplete: () => void; onArchive: () => void }) {
+function PriorityItemSection({ band, items, currentUserId, onEdit, onUpdate }: {
+  band: PriorityBand;
+  items: OperatingItem[];
+  currentUserId: string;
+  onEdit: (item: OperatingItem) => void;
+  onUpdate: (item: OperatingItem, changes: Record<string, unknown>) => Promise<void>;
+}) {
+  const today = hkDateIso();
+  const label = band === "high" ? "高 urgency" : band === "medium" ? "中 urgency" : "低 urgency";
+  const description = band === "high" ? "已逾期或 7 日內需要處理" : band === "medium" ? "第 8 至 21 日需要處理" : "22 日後或沒有日期的低壓力事項";
+  return (
+    <section className={`family-priority-section family-priority-${band}`}>
+      <header className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+        <div><h2 className="font-extrabold text-slate-950">{label}</h2><p className="mt-0.5 text-xs font-semibold text-slate-600">{description}</p></div>
+        <span className="rounded-full bg-white/80 px-2.5 py-1 text-xs font-extrabold text-slate-700">{items.length}</span>
+      </header>
+      {items.length ? <div className="grid gap-3 border-t border-black/5 p-3 xl:grid-cols-2">{items.map((item) => <ItemCard key={item.id} item={item} today={today} currentUserId={currentUserId} onEdit={() => onEdit(item)} onComplete={() => onUpdate(item, { status: "completed" })} onArchive={() => onUpdate(item, { archived_at: new Date().toISOString() })} />)}</div> : <p className="border-t border-black/5 px-5 py-4 text-sm font-semibold text-slate-500">暫時沒有項目。</p>}
+    </section>
+  );
+}
+
+function ItemCard({ item, today = hkDateIso(), currentUserId, onEdit, onComplete, onArchive }: { item: OperatingItem; today?: string; currentUserId: string; onEdit: () => void; onComplete: () => void; onArchive: () => void }) {
   const owner = item.owner_id === currentUserId;
   const age = item.item_type === "waiting" && typeof item.metadata.lastContactDate === "string" ? waitingAge(item.metadata.lastContactDate) : null;
   const mobileCapture = item.metadata.mobileCapture;
   const hasPrivateCaptureFile = owner
     && item.item_type === "inbox"
     && Boolean(mobileCapture && typeof mobileCapture === "object" && !Array.isArray(mobileCapture) && (mobileCapture as Record<string, unknown>).hasAttachment === true);
+  const priorityBand = operatingItemPriorityBand(item, today);
+  const customStatus = customStatusForItem(item);
 
   return (
     <article className="panel p-4 sm:p-5">
@@ -270,10 +307,11 @@ function ItemCard({ item, currentUserId, onEdit, onComplete, onArchive }: { item
           </div>
           <h2 className="mt-3 break-words text-lg font-bold">{item.title}</h2>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.status === "blocked" ? "bg-red-50 text-red-700" : item.status === "waiting" ? "bg-amber-50 text-amber-700" : item.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{statusLabel[item.status]}</span>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${item.status === "blocked" ? "bg-red-50 text-red-700" : item.status === "waiting" ? "bg-amber-50 text-amber-700" : item.status === "completed" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{customStatus || statusLabel[item.status]}</span>
       </div>
       {item.description ? <p className="muted mt-3 line-clamp-3 text-sm leading-6">{item.description}</p> : null}
       <div className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+        <p><span className={`priority-inline priority-inline-${priorityBand}`}>自動{priorityBand === "high" ? "高" : priorityBand === "medium" ? "中" : "低"} priority</span></p>
         {item.next_action ? <p><span className="font-semibold">下一步：</span>{item.next_action}</p> : null}
         {item.due_date ? <p className="flex items-center gap-1.5"><CalendarClock className="h-4 w-4 text-slate-400" />{formatDate(item.due_date)}</p> : null}
         {age ? <p className="text-amber-700">已等待 {age.days} 日 · {age.band}</p> : null}
@@ -284,12 +322,131 @@ function ItemCard({ item, currentUserId, onEdit, onComplete, onArchive }: { item
   );
 }
 
-function ItemModal({ config, item, onClose, onSaved }: { config: ViewConfig; item: OperatingItem | null; currentUserId: string; onClose: () => void; onSaved: () => void }) {
-  const [form, setForm] = useState({ title: item?.title ?? "", description: item?.description ?? "", dueDate: item?.due_date ?? "", nextAction: item?.next_action ?? "", status: item?.status ?? (config.itemType === "inbox" ? "inbox" : "active"), sensitive: item?.sensitive ?? Boolean(config.sensitive), monthlyRevenue: String(item?.metadata.monthlyRevenue ?? ""), conversionProbability: String(item?.metadata.conversionProbability ?? ""), person: String(item?.metadata.person ?? ""), lastContactDate: String(item?.metadata.lastContactDate ?? ""), store: String(item?.metadata.store ?? "") });
-  const [saving, setSaving] = useState(false); const [error, setError] = useState("");
-  function set(name: keyof typeof form, value: string | boolean) { setForm((current) => ({ ...current, [name]: value })); }
-  async function save(event: React.FormEvent) { event.preventDefault(); setSaving(true); setError(""); const metadata: Record<string, unknown> = { ...(item?.metadata ?? {}) }; if (config.itemType === "waiting") { metadata.person = form.person; metadata.lastContactDate = form.lastContactDate; } if (config.itemType === "shopping") metadata.store = form.store; try { if (item) await controlAction("update_item", { id: item.id, changes: { title: form.title, description: form.description || null, due_date: form.dueDate || null, next_action: form.nextAction || null, status: form.status, metadata } }); else await controlAction("create_item", { itemType: config.itemType || (config.area === "family" ? "event" : "note"), title: form.title, description: form.description, dueDate: form.dueDate, nextAction: form.nextAction, status: form.status, area: config.area, sensitive: form.sensitive, metadata }); onSaved(); } catch (caught) { setError(caught instanceof Error ? caught.message : "未能儲存。"); } finally { setSaving(false); } }
-  return <Modal title={item ? `修改${config.title}項目` : config.addLabel} onClose={onClose}><form className="grid gap-4" onSubmit={save}><label><span className="label">名稱</span><input className="field mt-2" value={form.title} onChange={(event) => set("title", event.target.value)} autoFocus required /></label>{config.itemType !== "inbox" ? <><label><span className="label">內容</span><textarea className="field mt-2 min-h-28" value={form.description} onChange={(event) => set("description", event.target.value)} /></label><div className="grid gap-4 sm:grid-cols-2"><label><span className="label">日期／死線</span><input className="field mt-2" type="date" value={form.dueDate} onChange={(event) => set("dueDate", event.target.value)} /></label><label><span className="label">狀態</span><select className="field mt-2" value={form.status} onChange={(event) => set("status", event.target.value as typeof form.status)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></label></div><label><span className="label">清晰下一步</span><input className="field mt-2" value={form.nextAction} onChange={(event) => set("nextAction", event.target.value)} placeholder="例如：打開表格，列出尚欠資料" /></label></> : null}{config.itemType === "waiting" ? <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">等待誰</span><input className="field mt-2" value={form.person} onChange={(event) => set("person", event.target.value)} /></label><label><span className="label">上次聯絡</span><input className="field mt-2" type="date" value={form.lastContactDate} onChange={(event) => set("lastContactDate", event.target.value)} /></label></div> : null}{config.itemType === "client" ? <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">預計每月收入（HKD）</span><input className="field mt-2" type="number" min="0" value={form.monthlyRevenue} onChange={(event) => set("monthlyRevenue", event.target.value)} /></label><label><span className="label">成交機會（%）</span><input className="field mt-2" type="number" min="0" max="100" value={form.conversionProbability} onChange={(event) => set("conversionProbability", event.target.value)} /></label></div> : null}{config.itemType === "shopping" ? <label><span className="label">商店</span><input className="field mt-2" value={form.store} onChange={(event) => set("store", event.target.value)} /></label> : null}<label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 p-3"><input type="checkbox" checked={form.sensitive} onChange={(event) => set("sensitive", event.target.checked)} /><span><span className="block font-semibold">敏感資料</span><span className="muted block text-xs">附件及 linked document 不會預設分享</span></span></label>{error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}<div className="flex flex-wrap gap-2"><Button type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存"}</Button><Button type="button" variant="secondary" onClick={onClose}>取消</Button></div></form></Modal>;
+function ItemModal({ config, item, customStatusSuggestions = [], onClose, onSaved }: {
+  config: ViewConfig;
+  item: OperatingItem | null;
+  currentUserId: string;
+  customStatusSuggestions?: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const statusListId = useId();
+  const [form, setForm] = useState({
+    title: item?.title ?? "",
+    description: item?.description ?? "",
+    dueDate: item?.due_date ?? "",
+    nextAction: item?.next_action ?? "",
+    status: item?.status ?? (config.itemType === "inbox" ? "inbox" : "active"),
+    customStatusLabel: customStatusForItem(item),
+    manualUrgency: item ? operatingItemPriorityBand(item, hkDateIso()) : "low" as PriorityBand,
+    sensitive: item?.sensitive ?? Boolean(config.sensitive),
+    monthlyRevenue: String(item?.metadata.monthlyRevenue ?? ""),
+    conversionProbability: String(item?.metadata.conversionProbability ?? ""),
+    person: String(item?.metadata.person ?? ""),
+    lastContactDate: String(item?.metadata.lastContactDate ?? ""),
+    store: String(item?.metadata.store ?? "")
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function set(name: keyof typeof form, value: string | boolean) {
+    setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    const metadata: Record<string, unknown> = { ...(item?.metadata ?? {}), manualUrgency: form.manualUrgency };
+    const customStatus = form.customStatusLabel.trim();
+    if (customStatus) metadata.customStatusLabel = customStatus;
+    else delete metadata.customStatusLabel;
+    if (config.itemType === "waiting") {
+      metadata.person = form.person;
+      metadata.lastContactDate = form.lastContactDate;
+    }
+    if (config.itemType === "client") {
+      metadata.monthlyRevenue = Number(form.monthlyRevenue || 0);
+      metadata.conversionProbability = Number(form.conversionProbability || 0);
+    }
+    if (config.itemType === "shopping") metadata.store = form.store;
+    try {
+      if (item) {
+        await controlAction("update_item", { id: item.id, changes: { title: form.title, description: form.description || null, due_date: form.dueDate || null, next_action: form.nextAction || null, status: form.status, metadata } });
+      } else {
+        await controlAction("create_item", { itemType: config.itemType || (config.area === "family" ? "event" : "note"), title: form.title, description: form.description, dueDate: form.dueDate, nextAction: form.nextAction, status: form.status, area: config.area, sensitive: form.sensitive, metadata });
+      }
+      onSaved();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "未能儲存。");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={item ? `修改${config.title}項目` : config.addLabel} onClose={onClose}>
+      <form className="grid gap-4" onSubmit={save}>
+        <label><span className="label">名稱</span><input className="field mt-2" value={form.title} onChange={(event) => set("title", event.target.value)} autoFocus required /></label>
+        {config.itemType !== "inbox" ? (
+          <>
+            <label><span className="label">內容</span><textarea className="field mt-2 min-h-28" value={form.description} onChange={(event) => set("description", event.target.value)} /></label>
+            <DueDatePicker value={form.dueDate} label="日期／死線" onChange={(value) => set("dueDate", value)} />
+            {!form.dueDate ? <ItemUrgencyPicker value={form.manualUrgency} onChange={(value) => set("manualUrgency", value)} /> : null}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label>
+                <span className="label">系統狀態</span>
+                <select className="field mt-2" value={form.status} onChange={(event) => set("status", event.target.value as typeof form.status)}>
+                  <option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="cancelled">已取消</option>
+                </select>
+              </label>
+              <label>
+                <span className="label">自訂顯示狀態（可留空）</span>
+                <input className="field mt-2" list={statusListId} value={form.customStatusLabel} onChange={(event) => set("customStatusLabel", event.target.value)} placeholder="例如：等學校確認" maxLength={60} />
+                <datalist id={statusListId}>{customStatusSuggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>
+                <span className="mt-1 block text-xs text-slate-500">只改顯示；系統流程仍以上方狀態運作。</span>
+              </label>
+            </div>
+            <label><span className="label">清晰下一步</span><input className="field mt-2" value={form.nextAction} onChange={(event) => set("nextAction", event.target.value)} placeholder="例如：打開表格，列出尚欠資料" /></label>
+          </>
+        ) : null}
+        {config.itemType === "waiting" ? <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">等待誰</span><input className="field mt-2" value={form.person} onChange={(event) => set("person", event.target.value)} /></label><label><span className="label">上次聯絡</span><input className="field mt-2" type="date" value={form.lastContactDate} onChange={(event) => set("lastContactDate", event.target.value)} /></label></div> : null}
+        {config.itemType === "client" ? <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">預計每月收入（HKD）</span><input className="field mt-2" type="number" min="0" value={form.monthlyRevenue} onChange={(event) => set("monthlyRevenue", event.target.value)} /></label><label><span className="label">成交機會（%）</span><input className="field mt-2" type="number" min="0" max="100" value={form.conversionProbability} onChange={(event) => set("conversionProbability", event.target.value)} /></label></div> : null}
+        {config.itemType === "shopping" ? <label><span className="label">商店</span><input className="field mt-2" value={form.store} onChange={(event) => set("store", event.target.value)} /></label> : null}
+        <label className="flex min-h-11 items-start gap-3 rounded-xl border border-slate-200 p-3">
+          <input className="mt-1 h-5 w-5" type="checkbox" checked={form.sensitive} onChange={(event) => set("sensitive", event.target.checked)} />
+          <span><span className="block font-semibold">敏感資料</span><span className="muted block text-xs leading-5">{sensitiveHelp(config.itemType)}</span></span>
+        </label>
+        {error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
+        <div className="flex flex-wrap gap-2"><Button type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存"}</Button><Button type="button" variant="secondary" onClick={onClose}>取消</Button></div>
+      </form>
+    </Modal>
+  );
+}
+
+function ItemUrgencyPicker({ value, onChange }: { value: PriorityBand; onChange: (value: PriorityBand) => void }) {
+  return (
+    <fieldset>
+      <legend className="label">沒有日期：urgency</legend>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        {(["high", "medium", "low"] as const).map((band) => <button key={band} type="button" className={`item-urgency-button item-urgency-${band} ${value === band ? "is-selected" : ""}`} onClick={() => onChange(band)}>{band === "high" ? "高" : band === "medium" ? "中" : "低"}</button>)}
+      </div>
+    </fieldset>
+  );
+}
+
+function customStatusForItem(item: OperatingItem | null | undefined) {
+  const value = item?.metadata.customStatusLabel;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function sensitiveHelp(itemType?: string) {
+  if (itemType === "school") return "包括學生姓名、班別／學號、聯絡資料、健康或特殊教育需要、成績／評估、住址、身份文件、登入資料，以及任何可辨識小朋友的附件。標示後不會預設分享附件或 linked document。";
+  return "包括身份、健康、財務、法律、登入或其他不適合在通知／分享預覽顯示的資料；附件及 linked document 不會預設分享。";
+}
+
+function priorityRank(band: PriorityBand) {
+  return band === "high" ? 0 : band === "medium" ? 1 : 2;
 }
 
 function Metric({ label, value }: { label: string; value: string }) { return <div className="panel p-4"><p className="muted text-xs font-bold uppercase tracking-[.1em]">{label}</p><p className="mt-2 text-xl font-bold">{value}</p></div>; }

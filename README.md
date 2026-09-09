@@ -188,3 +188,5 @@ Request Duty 專區、完成 checkbox、私隱及 migration 說明見 [`docs/req
 Task 分類、日期／urgency 分組、內部 Calendar 邊界及 A4 列印說明見 [`docs/task-action-queue.md`](docs/task-action-queue.md)。
 
 左側導航的每日入口、重複功能合併及低頻功能摺疊原則見 [`docs/navigation-simplification.md`](docs/navigation-simplification.md)。
+
+7／14／21／30 日快速選擇、每日自動 priority、家庭 urgency 分組、自訂顯示狀態及學校敏感資料定義見 [`docs/due-priority-and-custom-status.md`](docs/due-priority-and-custom-status.md)。
