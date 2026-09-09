@@ -24,6 +24,7 @@
 - ChatGPT Task Analysis：系統遮罩敏感資料及寫好 Prompt；一鍵複製並開啟 ChatGPT，回覆可從剪貼簿貼回、驗證及預覽，使用者確認後才更新完成標準、Next Action 及估時
 - Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步，工作帳戶固定為 `info@wecarenursing.com.hk`
 - 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項亦提供無壓力確認
+- Request Duty 提示：只輸入提醒日期及事項；完成 request 後剔選即完成原有 Task，並沿用私人權限、三日到期電郵及完成紀錄
 - Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -77,6 +78,8 @@ supabase/migrations/20260725235900_offline_write_queue.sql
 supabase/migrations/20260726003000_backup_restore.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.sql
+supabase/migrations/20260726122000_fix_family_visibility_record_shape.sql
+supabase/migrations/20260909120022_request_duty.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -106,6 +109,8 @@ supabase/migrations/20260725235900_offline_write_queue.rollback.sql
 supabase/migrations/20260726003000_backup_restore.rollback.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.rollback.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.rollback.sql
+supabase/migrations/20260726122000_fix_family_visibility_record_shape.rollback.sql
+supabase/migrations/20260909120022_request_duty.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -160,3 +165,5 @@ Backup／Restore 的匯出範圍、預覽、只新增 transaction、RLS 及 roll
 Capacity Overload Warning 的計算資料、buffer、低影響候選、確認邊界及私隱說明見 [`docs/capacity-overload-warning.md`](docs/capacity-overload-warning.md)。
 
 私人／家庭／工作權限、AI 內部計劃、Google Calendar 同步邊界及每日電郵資料流見 [`docs/life-os-v1-architecture.md`](docs/life-os-v1-architecture.md)。
+
+Request Duty 專區、完成 checkbox、私隱及 migration 說明見 [`docs/request-duty.md`](docs/request-duty.md)。

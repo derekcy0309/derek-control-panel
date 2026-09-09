@@ -19,7 +19,8 @@ export const scopeLabels: Record<Scope, string> = {
 export const sourceTypeLabels: Record<SourceType, string> = {
   meeting_action: "會後工作",
   deadline: "死線",
-  follow_up: "跟進"
+  follow_up: "跟進",
+  duty_request: "Request Duty"
 };
 
 export const taskStatusLabels: Record<TaskStatus, string> = {
@@ -92,7 +93,8 @@ export const scopeOptions = [
 export const sourceTypeOptions = [
   { value: "meeting_action", label: "會後工作" },
   { value: "deadline", label: "死線" },
-  { value: "follow_up", label: "跟進" }
+  { value: "follow_up", label: "跟進" },
+  { value: "duty_request", label: "Request Duty" }
 ] as const;
 
 export const taskStatusOptions = [

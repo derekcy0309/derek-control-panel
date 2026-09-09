@@ -14,7 +14,7 @@ create table if not exists public.tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   scope text not null check (scope in ('home', 'company')),
-  source_type text not null check (source_type in ('meeting_action', 'deadline', 'follow_up')),
+  source_type text not null check (source_type in ('meeting_action', 'deadline', 'follow_up', 'duty_request')),
   title text not null,
   owner text,
   due_date date,

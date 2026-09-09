@@ -852,6 +852,9 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const nextAction = nullableText(body.nextAction);
   if (status === "in_progress" && !nextAction) return jsonError("開始任務前必須設定清晰的下一步。", 422);
   const area = enumValue(body.area, ["work", "family", "personal"] as const, "personal");
+  const sourceType = enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up", "duty_request"] as const, "follow_up");
+  const dueDate = dateValue(body.dueDate);
+  if (sourceType === "duty_request" && !dueDate) return jsonError("請輸入 Request Duty 提醒日期。", 422);
   const access = await defaultResourceAccess(client, user.id, area);
   if (access instanceof Response) return access;
   const payload = {
@@ -862,10 +865,10 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     household_id: access.householdId,
     scope: area === "work" ? "company" : "home",
     area,
-    source_type: enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up"], "follow_up"),
+    source_type: sourceType,
     title,
     description: nullableText(body.description),
-    due_date: dateValue(body.dueDate),
+    due_date: dueDate,
     follow_up_date: dateValue(body.followUpDate),
     planned_date: dateValue(body.plannedDate),
     status,
@@ -2218,7 +2221,7 @@ function recurrenceTemplate(task: Record<string, unknown>) {
   return {
     scope: area === "work" ? "company" : "home",
     area,
-    sourceType: enumValue(task.source_type, ["meeting_action", "deadline", "follow_up"] as const, "follow_up"),
+    sourceType: enumValue(task.source_type, ["meeting_action", "deadline", "follow_up", "duty_request"] as const, "follow_up"),
     title: stringValue(task.title).trim().slice(0, 500),
     description: nullableText(task.description),
     nextAction: nullableText(task.next_action),

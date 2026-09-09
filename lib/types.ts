@@ -1,5 +1,5 @@
 export type Scope = "home" | "company";
-export type SourceType = "meeting_action" | "deadline" | "follow_up";
+export type SourceType = "meeting_action" | "deadline" | "follow_up" | "duty_request";
 export type TaskStatus =
   | "not_started"
   | "in_progress"
