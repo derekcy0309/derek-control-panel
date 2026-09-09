@@ -8,6 +8,21 @@ export type TaskStatus =
   | "blocked"
   | "cancelled";
 export type Risk = "low" | "medium" | "high";
+export type WorkspaceRole = "general" | "derek" | "suki" | "amigo";
+export type WorkflowTaskType =
+  | "general"
+  | "intake"
+  | "scheduling"
+  | "materials"
+  | "rn_coordination"
+  | "follow_up"
+  | "sop"
+  | "ai_document"
+  | "system_issue"
+  | "compliance"
+  | "training"
+  | "assessment"
+  | "family_conference";
 export type TransactionType = "income" | "expense";
 export type Frequency = "monthly" | "one_time" | "irregular";
 export type IncomeStatus = "expected" | "received" | "delayed" | "problem" | "cancelled";
@@ -24,6 +39,8 @@ export type Task = {
   owner: string | null;
   due_date: string | null;
   follow_up_date: string | null;
+  waiting_for?: string | null;
+  waiting_on?: string | null;
   status: TaskStatus;
   next_action: string | null;
   risk: Risk;
@@ -62,6 +79,16 @@ export type Task = {
   project_id?: string | null;
   recurrence_rule_id?: string | null;
   household_id?: string | null;
+  case_code?: string | null;
+  task_type?: WorkflowTaskType;
+  task_type_label?: string | null;
+  needs_decision_from_id?: string | null;
+  decision_resolved_at?: string | null;
+  decision_resolved_by_id?: string | null;
+  materials_required?: string | null;
+  rn_required?: boolean;
+  client_update_required?: boolean;
+  client_request_id?: string | null;
 };
 
 export type Transaction = {
@@ -80,6 +107,9 @@ export type Transaction = {
   owner: string | null;
   proof_url: string | null;
   notes: string | null;
+  recurring_expense_rule_id?: string | null;
+  recurring_income_rule_id?: string | null;
+  payment_month?: string | null;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -178,9 +208,63 @@ export type UserProfile = {
   active: boolean;
   is_admin: boolean;
   must_change_password: boolean;
+  personal_calendar_email: string | null;
+  last_seen_at: string | null;
+  workspace_role?: WorkspaceRole;
+};
+
+export type RecurringExpenseRule = {
+  id: string;
+  user_id: string;
+  scope: Scope;
+  item: string;
+  category: string | null;
+  amount: number;
+  payment_method: string | null;
+  owner: string | null;
+  proof_url: string | null;
+  notes: string | null;
+  start_month: string;
+  last_payment_month: string | null;
+  is_active: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RecurringIncomeRule = {
+  id: string;
+  user_id: string;
+  scope: Scope;
+  item: string;
+  category: string | null;
+  amount: number;
+  payment_method: string | null;
+  owner: string | null;
+  proof_url: string | null;
+  notes: string | null;
+  start_month: string;
+  last_receipt_month: string | null;
+  is_active: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CurrentUser = { id: string; email: string; displayName: string };
+
+export type AdminAccountUser = {
+  id: string;
+  email: string;
+  displayName: string;
+  active: boolean;
+  isAdmin: boolean;
+  mustChangePassword: boolean;
+  createdAt: string;
+  emailConfirmedAt: string | null;
+  lastSignInAt: string | null;
+  lastSeenAt: string | null;
+};
 
 export type OperatingItem = {
   id: string;
@@ -345,6 +429,7 @@ export type TaskRecurrenceRule = {
   seed_task_id: string;
   owner_id: string;
   created_by_id: string;
+  deadline_mode: "scheduled" | "none";
   frequency: RecurrenceFrequency;
   weekdays: number[];
   custom_interval_days: number | null;
@@ -632,6 +717,10 @@ export type NotificationPreferences = {
   email_digest_days: number;
   email_digest_time: string;
   private_on_lock_screen: boolean;
+  reminder_enabled: boolean;
+  task_notice_enabled: boolean;
+  recurrence_enabled: boolean;
+  quiet_mode_until?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -647,7 +736,42 @@ export type NotificationKind =
   | "handover_completed"
   | "focus_complete"
   | "daily_shutdown"
+  | "task_notice"
+  | "recurrence_reminder"
+  | "reminder"
   | "test";
+
+export type TaskNoticeRecipient = {
+  task_id: string;
+  owner_id: string;
+  recipient_id: string;
+  share_record_id: string | null;
+  owns_share: boolean;
+  created_at: string;
+};
+
+export type TaskFollower = {
+  task_id: string;
+  owner_id: string;
+  follower_id: string;
+  share_record_id: string | null;
+  owns_share: boolean;
+  previous_permission?: string | null;
+  created_at: string;
+};
+
+export type Reminder = {
+  id: string;
+  owner_id: string;
+  title: string;
+  notes: string | null;
+  starts_at: string;
+  remind_at: string;
+  timezone: string;
+  created_at: string;
+  updated_at: string;
+  recipient_user_ids: string[];
+};
 
 export type NotificationDelivery = {
   id: string;
@@ -683,6 +807,8 @@ export type ControlData = AppData & {
   activePushSubscriptionCount: number;
   household: HouseholdContext | null;
   calendarConnections: GoogleCalendarConnection[];
+  taskNoticeRecipients: TaskNoticeRecipient[];
+  taskFollowers: TaskFollower[];
 };
 
 export type TodayData = {
@@ -690,6 +816,7 @@ export type TodayData = {
   profile: UserProfile;
   settings: UserSettings;
   tasks: Task[];
+  taskCatalog: Task[];
   shares: ShareRecord[];
   assignments: Assignment[];
   planning: PlanningMetadata[];
@@ -698,11 +825,42 @@ export type TodayData = {
   taskDependencies: TaskDependency[];
   capacityCommitments: Array<Pick<OperatingItem, "id" | "item_type" | "area" | "due_date" | "status">>;
   weeklyAvailableMinutes: number | null;
+  reminders: Reminder[];
+  notificationPreferences: NotificationPreferences | null;
+  cashflowHint: {
+    receivedIncome: number;
+    unpaidExpenses: number;
+    projectedBalance: number;
+  } | null;
+};
+
+export type TaskDetailData = {
+  currentUser: CurrentUser;
+  task: Task;
+  participants: Array<{ user_id: string; display_name: string }>;
+  assignments: Assignment[];
+  handoffNotes: HandoffNote[];
+  taskDependencies: TaskDependency[];
+  taskRecurrenceRules: TaskRecurrenceRule[];
+  activityLogs: ActivityLog[];
+  taskFollowers: TaskFollower[];
+};
+
+export type ActivityLog = {
+  id: string;
+  resource_type: string;
+  resource_id: string;
+  actor_id: string;
+  action: string;
+  summary: string | null;
+  created_at: string;
 };
 
 export type AppData = {
   tasks: Task[];
   transactions: Transaction[];
+  recurringExpenseRules: RecurringExpenseRule[];
+  recurringIncomeRules: RecurringIncomeRule[];
   meetings: Meeting[];
   balances: Balance[];
   settings: UserSettings | null;

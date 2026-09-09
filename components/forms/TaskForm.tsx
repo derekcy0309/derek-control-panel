@@ -1,21 +1,23 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { TimeEstimateHint } from "@/components/TimeEstimateHint";
-import { riskOptions, sourceTypeOptions, taskStatusOptions } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
+import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
 
 type TaskFormState = {
   scope: string;
   area: string;
+  task_category: TaskCategory;
   source_type: string;
+  task_type_label: string;
   title: string;
   owner: string;
   due_date: string;
   follow_up_date: string;
+  waiting_for: string;
+  waiting_on: string;
   status: string;
   risk: string;
   next_action: string;
@@ -32,6 +34,7 @@ type TaskFormState = {
   handoff_to_user_id: string;
   handoff_note: string;
   recurrence_enabled: boolean;
+  recurrence_deadline_mode: "scheduled" | "none";
   recurrence_frequency: string;
   recurrence_weekdays: number[];
   recurrence_custom_interval_days: string;
@@ -40,16 +43,22 @@ type TaskFormState = {
   recurrence_night_shift_on_days: string;
   recurrence_night_shift_off_days: string;
   recurrence_cycle_anchor_date: string;
+  notice_user_ids: string[];
+  follower_user_ids: string[];
 };
 
 const defaultState: TaskFormState = {
   scope: "home",
   area: "personal",
+  task_category: "personal",
   source_type: "follow_up",
+  task_type_label: "",
   title: "",
   owner: "",
   due_date: "",
   follow_up_date: "",
+  waiting_for: "",
+  waiting_on: "",
   status: "not_started",
   risk: "low",
   next_action: "",
@@ -66,6 +75,7 @@ const defaultState: TaskFormState = {
   handoff_to_user_id: "",
   handoff_note: "",
   recurrence_enabled: false,
+  recurrence_deadline_mode: "scheduled",
   recurrence_frequency: "weekly",
   recurrence_weekdays: [],
   recurrence_custom_interval_days: "7",
@@ -73,12 +83,16 @@ const defaultState: TaskFormState = {
   recurrence_night_shift_pattern: false,
   recurrence_night_shift_on_days: "4",
   recurrence_night_shift_off_days: "2",
-  recurrence_cycle_anchor_date: ""
+  recurrence_cycle_anchor_date: "",
+  notice_user_ids: [],
+  follower_user_ids: []
 };
 
 export function TaskForm({
   userId,
   initialTask,
+  initialNoticeUserIds = [],
+  initialFollowerUserIds = [],
   preset,
   participants = [],
   projects = [],
@@ -88,6 +102,8 @@ export function TaskForm({
 }: {
   userId: string;
   initialTask?: Task | null;
+  initialNoticeUserIds?: string[];
+  initialFollowerUserIds?: string[];
   preset?: Partial<TaskFormState>;
   participants?: Array<{ user_id: string; display_name: string }>;
   projects?: OperatingItem[];
@@ -100,11 +116,15 @@ export function TaskForm({
       ? {
           scope: initialTask.scope,
           area: initialTask.area ?? (initialTask.scope === "company" ? "work" : "family"),
+          task_category: taskCategoryFor(initialTask),
           source_type: initialTask.source_type,
+          task_type_label: initialTask.task_type_label ?? "",
           title: initialTask.title,
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
           follow_up_date: initialTask.follow_up_date ?? "",
+          waiting_for: initialTask.waiting_for ?? "",
+          waiting_on: initialTask.waiting_on ?? "",
           status: initialTask.status === "done" || initialTask.status === "cancelled" ? initialTask.status : "not_started",
           risk: initialTask.risk,
           next_action: initialTask.next_action ?? "",
@@ -121,6 +141,7 @@ export function TaskForm({
           handoff_to_user_id: "",
           handoff_note: "",
           recurrence_enabled: false,
+          recurrence_deadline_mode: "scheduled",
           recurrence_frequency: "weekly",
           recurrence_weekdays: [],
           recurrence_custom_interval_days: "7",
@@ -128,16 +149,55 @@ export function TaskForm({
           recurrence_night_shift_pattern: false,
           recurrence_night_shift_on_days: "4",
           recurrence_night_shift_off_days: "2",
-          recurrence_cycle_anchor_date: ""
+          recurrence_cycle_anchor_date: "",
+          notice_user_ids: initialNoticeUserIds,
+          follower_user_ids: initialFollowerUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal" }
   );
-  const [handoffOpen, setHandoffOpen] = useState(Boolean(form.handoff_to_user_id));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null);
   const [recurrenceWarning, setRecurrenceWarning] = useState("");
+  const [draftReady, setDraftReady] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
+  const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
+  const draftEligible = !initialTask;
+
+  function setTaskCategory(category: TaskCategory) {
+    const fields = taskCategoryFields(category);
+    setForm((current) => ({ ...current, task_category: category, area: fields.area, scope: fields.scope }));
+  }
+
+  useEffect(() => {
+    if (!draftEligible) { setDraftReady(true); return; }
+    try {
+      const saved = sessionStorage.getItem(draftKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<TaskFormState>;
+        if (parsed.title || parsed.next_action || parsed.notes || parsed.handoff_note) {
+          setForm((current) => ({ ...current, ...parsed }));
+          setDraftRestored(true);
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(draftKey);
+    } finally {
+      setDraftReady(true);
+    }
+  }, [draftEligible, draftKey]);
+
+  useEffect(() => {
+    if (!draftEligible || !draftReady) return;
+    const hasContent = Boolean(form.title.trim() || form.next_action.trim() || form.notes.trim() || form.handoff_note.trim());
+    try {
+      if (hasContent) sessionStorage.setItem(draftKey, JSON.stringify(form));
+      else sessionStorage.removeItem(draftKey);
+    } catch {
+      // The form stays usable when private browsing blocks session storage.
+    }
+  }, [draftEligible, draftKey, draftReady, form]);
 
   function update(name: keyof TaskFormState, value: string | boolean) {
     setForm((current) => ({ ...current, [name]: value }));
@@ -152,9 +212,36 @@ export function TaskForm({
     }));
   }
 
+  function setRecurrenceDeadlineMode(mode: "scheduled" | "none") {
+    setForm((current) => ({
+      ...current,
+      recurrence_deadline_mode: mode,
+      due_date: mode === "none" ? "" : current.due_date
+    }));
+  }
+
+  function toggleFollower(userId: string) {
+    setForm((current) => ({
+      ...current,
+      follower_user_ids: current.follower_user_ids.includes(userId)
+        ? current.follower_user_ids.filter((id) => id !== userId)
+        : [...current.follower_user_ids, userId]
+    }));
+  }
+
+  function toggleNotice(userId: string) {
+    setForm((current) => ({
+      ...current,
+      notice_user_ids: current.notice_user_ids.includes(userId)
+        ? current.notice_user_ids.filter((id) => id !== userId)
+        : [...current.notice_user_ids, userId]
+    }));
+  }
+
   function recurrencePayload(taskId: string) {
     return {
       taskId,
+      deadlineMode: form.recurrence_deadline_mode,
       frequency: form.recurrence_frequency,
       weekdays: form.recurrence_weekdays,
       customIntervalDays: Number(form.recurrence_custom_interval_days),
@@ -196,10 +283,14 @@ export function TaskForm({
 
     const payload = {
       area: form.area,
+      taskCategory: form.task_category,
       sourceType: form.source_type,
+      taskType: form.task_type_label.trim() || null,
       title: form.title.trim(),
       dueDate: form.due_date || null,
       followUpDate: form.follow_up_date || null,
+      waitingFor: form.waiting_for.trim() || null,
+      waitingOn: form.waiting_on.trim() || null,
       status: form.status,
       nextAction: form.next_action.trim() || null,
       risk: form.risk,
@@ -216,19 +307,23 @@ export function TaskForm({
       criticalPath: form.critical_path,
       projectId: form.project_id || null,
       handoffToUserId: form.handoff_to_user_id || null,
-      handoffNote: form.handoff_note.trim() || null
+      handoffNote: form.handoff_note.trim() || null,
+      noticeUserIds: form.notice_user_ids,
+      followerUserIds: form.follower_user_ids
     };
     try {
       if (initialTask) {
-        await controlAction("update_task", { id: initialTask.id, changes: {
-          title: payload.title, status: payload.status, next_action: payload.nextAction, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
-          risk: payload.risk, notes: payload.notes, completed_at: payload.completedAt,
-          estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel, context: payload.context,
-          definition_of_done: payload.definitionOfDone, estimated_duration_days: payload.estimatedDurationDays,
-          buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId
+        await controlAction("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
+          title: payload.title, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
+          waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
+          notes: payload.notes, completed_at: payload.completedAt,
+          estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel,
+          buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
+          task_type_label: payload.taskType
         } });
       } else {
         const created = await controlAction<{ task: Task }>("create_task", payload);
+        sessionStorage.removeItem(draftKey);
         if (form.recurrence_enabled) {
           try {
             await controlAction("save_task_recurrence", recurrencePayload(created.task.id));
@@ -246,12 +341,16 @@ export function TaskForm({
       return;
     }
     setSaving(false);
-    if (!initialTask) setForm(defaultState);
+    if (!initialTask) {
+      sessionStorage.removeItem(draftKey);
+      setForm(defaultState);
+    }
     onSaved();
   }
 
   return (
     <form className="grid gap-4" onSubmit={save}>
+      {draftRestored ? <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" role="status">已恢復上次未送出的任務草稿；成功儲存前會繼續自動保留。</p> : null}
       {createdTaskId ? (
         <section className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4" aria-live="polite">
           <p className="font-extrabold text-amber-950">任務已建立，但重複工作尚未設定。</p>
@@ -262,29 +361,62 @@ export function TaskForm({
           </div>
         </section>
       ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label>
-          <span className="label">範圍</span>
-          <select className="field mt-2" value={form.area} onChange={(event) => update("area", event.target.value)}>
-            <option value="work">工作</option><option value="family">家庭</option><option value="personal">個人</option>
-          </select>
-        </label>
-        <label>
-          <span className="label">類型</span>
-          <select className="field mt-2" value={form.source_type} onChange={(event) => update("source_type", event.target.value)}>
-            {sourceTypeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
       <label>
-        <span className="label">任務標題</span>
-        <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} required />
+        <span className="label">任務名稱</span>
+        <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
       </label>
-      {!initialTask ? (
+      {!compact ? <div className="grid gap-4 sm:grid-cols-2">
+        <label>
+          <span className="label">到期日</span>
+          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"} />
+        </label>
+        <label>
+          <span className="label">跟進日</span>
+          <input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} />
+        </label>
+      </div> : null}
+      {!compact && !initialTask ? <label>
+        <span className="label">負責人</span>
+        <select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}>
+          <option value="">我自己</option>
+          {otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}
+        </select>
+        <span className="mt-1 block text-xs leading-5 text-slate-600">選另一位會在建立後直接交給對方確認及跟進。</span>
+      </label> : null}
+      {!compact && !initialTask && form.handoff_to_user_id ? <label>
+        <span className="label">交接備註</span>
+        <textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="讓對方知道第一步要做甚麼" maxLength={500} required />
+      </label> : null}
+      {!compact && otherParticipants.length ? (
+        <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <legend className="px-1 font-extrabold text-slate-900">由誰共同跟進？</legend>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            可同時選擇多人。你仍是任務擁有者；被選的人可查看及更新進度。
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {otherParticipants.map((participant) => (
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 font-semibold text-slate-800" key={participant.user_id}>
+                <input
+                  className="h-5 w-5 accent-indigo-600"
+                  type="checkbox"
+                  checked={form.follower_user_ids.includes(participant.user_id)}
+                  onChange={() => toggleFollower(participant.user_id)}
+                />
+                {participant.display_name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
+      {compact ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label><span className="label">何時完成（可留空）</span><input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} /></label>
+          <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
+        </div>
+      ) : null}
+      {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
+      {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
+      {!initialTask && !compact ? (
         <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
           <label className="flex cursor-pointer items-start gap-3">
             <input
@@ -309,6 +441,21 @@ export function TaskForm({
                   <option value="custom">自訂相隔日數</option>
                 </select>
               </label>
+              <fieldset>
+                <legend className="label">每次是否有期限</legend>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_deadline_mode === "scheduled" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-deadline-mode" checked={form.recurrence_deadline_mode === "scheduled"} onChange={() => setRecurrenceDeadlineMode("scheduled")} />
+                    <span className="font-bold text-slate-900">每次有到期日</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">下一次的週期日期會當作到期日。</span>
+                  </label>
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_deadline_mode === "none" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-deadline-mode" checked={form.recurrence_deadline_mode === "none"} onChange={() => setRecurrenceDeadlineMode("none")} />
+                    <span className="font-bold text-slate-900">沒有期限，只按週期提示</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">不會顯示逾期；到每個時段會提示，並保留今次工作直至你按「今次已完成」。</span>
+                  </label>
+                </div>
+              </fieldset>
               {form.recurrence_frequency === "weekly" ? (
                 <div>
                   <p className="label">每星期哪一天</p>
@@ -353,198 +500,61 @@ export function TaskForm({
           ) : null}
         </fieldset>
       ) : null}
-      {projects.length ? (
-        <label>
-          <span className="label">所屬項目（可選）</span>
-          <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
-            <option value="">不連結項目</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-          </select>
-          <span className="mt-1 block text-xs text-slate-600">連結只用作規劃；不會自動分享任務或改變現有權限。</span>
-        </label>
-      ) : null}
-      <label>
-        <span className="label">下一步</span>
-        <input
-          className="field mt-2"
-          value={form.next_action}
-          onChange={(event) => update("next_action", event.target.value)}
-          placeholder="可選填，例如：打開文件，寫第一句摘要"
-        />
-      </label>
-      {!initialTask ? (
-        <details
-          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
-          open={handoffOpen}
-          onToggle={(event) => setHandoffOpen(event.currentTarget.open)}
-        >
-          <summary className="cursor-pointer list-none font-extrabold text-slate-900">
-            <span className="inline-flex items-center gap-2">
-              <ArrowRightLeft className="h-4 w-4 text-indigo-600" />
-              建立後由誰跟進（可選）
-            </span>
-            <span className="mt-1 block text-xs font-medium leading-5 text-slate-600">
-              預設由你自己跟進；只有真正要交接先需要打開。
-            </span>
-          </summary>
-          <div className="mt-4">
-          <div className="flex items-start gap-3">
-            <span className="rounded-xl bg-indigo-600 p-2 text-white" aria-hidden="true">
-              <ArrowRightLeft className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-lg font-extrabold text-slate-900">由誰跟進？</p>
-              <p className="mt-1 text-sm leading-6 text-slate-600">保持「我」就唔會分享；選另一位先會正式交接。</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
-                  !form.handoff_to_user_id ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"
-                }`}>
-                  <input
-                    className="mt-1 h-5 w-5 accent-indigo-600"
-                    type="radio"
-                    name="new-task-handler"
-                    value=""
-                    checked={!form.handoff_to_user_id}
-                    onChange={() => update("handoff_to_user_id", "")}
-                  />
-                  <span>
-                    <span className="block font-extrabold text-slate-900">由我跟進</span>
-                    <span className="mt-1 block text-sm text-slate-600">任務留給目前登入的我。</span>
-                  </span>
-                </label>
-                {otherParticipants.map((participant) => (
-                  <label
-                    key={participant.user_id}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 bg-white p-4 ${
-                      form.handoff_to_user_id === participant.user_id
-                        ? "border-indigo-600 ring-2 ring-indigo-100"
-                        : "border-slate-200"
-                    }`}
-                  >
-                    <input
-                      className="mt-1 h-5 w-5 accent-indigo-600"
-                      type="radio"
-                      name="new-task-handler"
-                      value={participant.user_id}
-                      checked={form.handoff_to_user_id === participant.user_id}
-                      onChange={() => update("handoff_to_user_id", participant.user_id)}
-                    />
-                    <span>
-                      <span className="block font-extrabold text-slate-900">由 {participant.display_name} 跟進</span>
-                      <span className="mt-1 block text-sm text-slate-600">建立後立即交給對方接手。</span>
-                    </span>
-                  </label>
-                ))}
-                {!otherParticipants.length ? (
-                  <div className="rounded-xl border-2 border-dashed border-amber-300 bg-amber-50 p-4 sm:col-span-2">
-                    <p className="font-bold text-amber-900">Suki 選項暫時未能載入</p>
-                    <p className="mt-1 text-sm leading-6 text-amber-800">可先重新整理頁面；系統不會再把這個問題靜默隱藏。</p>
-                  </div>
-                ) : null}
-              </div>
-              {form.handoff_to_user_id ? (
-                <label className="mt-4 block">
-                  <span className="label">交接 notes</span>
-                  <textarea
-                    className="field mt-2 min-h-24 bg-white"
-                    value={form.handoff_note}
-                    onChange={(event) => update("handoff_note", event.target.value)}
-                    placeholder="例如：請先致電確認，再在 notes 更新結果。"
-                    maxLength={500}
-                    required
-                  />
-                  <span className="mt-1 block text-xs leading-5 text-slate-600">
-                    建立任務後會立即送俾對方接受；雙方都會永久看到這段 notes。
-                  </span>
-                </label>
-              ) : null}
-            </div>
-          </div>
-          </div>
-        </details>
-      ) : null}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label>
-          <span className="label">到期日</span>
-          <input className="field mt-2" type="date" value={form.due_date} onChange={(event) => update("due_date", event.target.value)} />
-        </label>
-        <label>
-          <span className="label">跟進日</span>
-          <input
-            className="field mt-2"
-            type="date"
-            value={form.follow_up_date}
-            onChange={(event) => update("follow_up_date", event.target.value)}
-          />
-        </label>
-      </div>
-      <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
+      {!compact ? <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
         {initialTask ? <label><span className="label">實際時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.actual_minutes} onChange={(event) => update("actual_minutes", event.target.value)} /><span className="mt-1 block text-xs text-slate-500">只用於你自己的估時學習</span></label> : null}
         <label><span className="label">能量</span><select className="field mt-2" value={form.energy_level} onChange={(event) => update("energy_level", event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
-        <label><span className="label">情境</span><select className="field mt-2" value={form.context} onChange={(event) => update("context", event.target.value)}><option value="mobile">手機</option><option value="computer">電腦</option><option value="home">家中</option><option value="office">辦公室</option><option value="phone">電話</option><option value="night_shift">夜更可做</option></select></label>
-      </div>
-      <TimeEstimateHint sourceType={form.source_type} context={form.context} energyLevel={form.energy_level} estimatedMinutes={form.estimated_minutes} onUse={(minutes) => update("estimated_minutes", String(minutes))} />
+      </div> : null}
       {!compact ? (
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
             更多選項
-            <span className="ml-2 text-xs font-medium text-slate-500">風險、備註、完成定義、工期同關鍵路徑</span>
+            <span className="ml-2 text-xs font-medium text-slate-500">分類、類型、項目、備註及通知</span>
           </summary>
           <div className="mt-4 grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <label>
-              <span className="label">負責人</span>
-              <input className="field mt-2" value={form.owner} onChange={(event) => update("owner", event.target.value)} />
-            </label>
-            <label>
-              <span className="label">狀態</span>
-              <select className="field mt-2" value={form.status} onChange={(event) => update("status", event.target.value)}>
-                {taskStatusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
+              <span className="label">分類</span>
+              <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory)}>
+                {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <label>
-              <span className="label">風險</span>
-              <select className="field mt-2" value={form.risk} onChange={(event) => update("risk", event.target.value)}>
-                {riskOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <span className="label">任務類型（可留空）</span>
+              <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
             </label>
           </div>
+          {projects.length ? (
+            <label>
+              <span className="label">所屬項目（可選）</span>
+              <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
+                <option value="">不連結項目</option>
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
+              </select>
+            </label>
+          ) : null}
           <label>
             <span className="label">備註</span>
             <textarea className="field mt-2 min-h-28" value={form.notes} onChange={(event) => update("notes", event.target.value)} />
           </label>
-          <label><span className="label">完成定義</span><input className="field mt-2" value={form.definition_of_done} onChange={(event) => update("definition_of_done", event.target.value)} placeholder="怎樣才算真正完成？" /></label>
-          <div className="grid gap-4 sm:grid-cols-2"><label><span className="label">預計工期（日）</span><input className="field mt-2" type="number" min="0" value={form.estimated_duration_days} onChange={(event) => update("estimated_duration_days", event.target.value)} /></label><label><span className="label">緩衝（日）</span><input className="field mt-2" type="number" min="0" value={form.buffer_days} onChange={(event) => update("buffer_days", event.target.value)} /></label></div>
-          <label className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-4 ${form.critical_path ? "border-amber-400 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
-            <input
-              className="mt-1 h-5 w-5 shrink-0 accent-amber-600"
-              type="checkbox"
-              checked={form.critical_path}
-              onChange={(event) => update("critical_path", event.target.checked)}
-            />
-            <span>
-              <span className="block font-bold text-slate-900">這項任務會卡住後續工作</span>
-              <span className="mt-1 block text-sm leading-6 text-slate-600">
-                即「關鍵路徑」：只有遲咗會令整個項目或死線一齊延遲先剔。系統會把它排得更優先；一般任務不用剔。
-              </span>
-              <span className="mt-1 block text-sm font-semibold text-amber-800">
-                例：必須先簽好合約，其他人先可以正式開工。
-              </span>
-            </span>
-          </label>
+          {otherParticipants.length ? (
+            <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <legend className="px-1 text-sm font-extrabold text-slate-900">通知誰（可選）</legend>
+              <p className="text-sm leading-6 text-slate-600">只接收提醒，不會取得更改內容的權限。</p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {otherParticipants.map((participant) => (
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}>
+                    <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.notice_user_ids.includes(participant.user_id)} onChange={() => toggleNotice(participant.user_id)} />
+                    通知 {participant.display_name}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          ) : null}
           </div>
         </details>
       ) : null}
-      {error ? <p className="rounded-lg bg-red-50 p-3 text-base font-semibold text-red-700">{error}</p> : null}
+      {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900">{error}</p> : null}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={saving || Boolean(createdTaskId)}>
           {saving ? "儲存中..." : initialTask ? "儲存修改" : "新增任務"}

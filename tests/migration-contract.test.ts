@@ -49,6 +49,8 @@ const offlineQueueMigration = readFileSync(resolve(here, "../supabase/migrations
 const offlineQueueRollback = readFileSync(resolve(here, "../supabase/migrations/20260725235900_offline_write_queue.rollback.sql"), "utf8").toLowerCase();
 const backupRestoreMigration = readFileSync(resolve(here, "../supabase/migrations/20260726003000_backup_restore.sql"), "utf8").toLowerCase();
 const backupRestoreRollback = readFileSync(resolve(here, "../supabase/migrations/20260726003000_backup_restore.rollback.sql"), "utf8").toLowerCase();
+const dynamicHandoffMigration = readFileSync(resolve(here, "../supabase/migrations/20260729090000_dynamic_handoff_and_calendar_accounts.sql"), "utf8").toLowerCase();
+const dynamicHandoffRollback = readFileSync(resolve(here, "../supabase/migrations/20260729090000_dynamic_handoff_and_calendar_accounts.rollback.sql"), "utf8").toLowerCase();
 const controlRoute = readFileSync(resolve(here, "../app/api/control/route.ts"), "utf8").toLowerCase();
 const quickCaptureRoute = readFileSync(resolve(here, "../app/api/quick-capture/route.ts"), "utf8").toLowerCase();
 const notificationRoute = readFileSync(resolve(here, "../app/api/cron/notifications/route.ts"), "utf8").toLowerCase();
@@ -160,7 +162,8 @@ test("handoff picker exposes only explicit trusted connections", () => {
 });
 
 test("new tasks can start a trusted handoff from every task form", () => {
-  assert.match(taskForm, /建立後由誰跟進/);
+  assert.match(taskForm, /負責人/);
+  assert.match(taskForm, /建立後直接交給對方確認及跟進/);
   assert.match(taskForm, /handoff_to_user_id/);
   assert.match(taskForm, /handoff_note/);
   assert.match(controlRoute, /body\.handoffToUserId/i);
@@ -175,8 +178,8 @@ test("the current recipient can visibly return a task to the previous handler", 
 });
 
 test("both participants can visibly choose the current task handler", () => {
-  assert.match(taskForm, /由我跟進/);
-  assert.match(taskForm, /由.*display_name.*跟進/);
+  assert.match(taskForm, /我自己/);
+  assert.match(taskForm, /participant\.display_name/);
   assert.match(handoffControls, /目前負責人/);
   assert.match(handoffControls, /由我跟進/);
   assert.match(handoffControls, /handoff_reclaim/);
@@ -745,4 +748,15 @@ test("Capacity overload uses owner-scoped commitments and only offers confirmed 
   assert.match(capacityOverloadPanel, /onpostpone\(task\)/);
   assert.match(capacityOverloadPanel, /onhandoff\(assessment\.handoffcandidates\[0\]\)/);
   assert.doesNotMatch(capacityOverloadPanel, /controlaction\(|fetch\(/);
+});
+
+test("dynamic handoff choices include only active enabled real profiles", () => {
+  assert.match(dynamicHandoffMigration, /add column if not exists handoff_enabled boolean not null default true/);
+  assert.match(dynamicHandoffMigration, /lower\(account\.email\) = 'derek_msc@hotmail\.com'/);
+  assert.match(dynamicHandoffMigration, /profile\.active\s+and profile\.handoff_enabled/);
+  assert.match(dynamicHandoffMigration, /personal_calendar_email = 'derekcy0309@gmail\.com'/);
+  assert.match(dynamicHandoffMigration, /personal_calendar_email = 'love29suki@gmail\.com'/);
+  assert.doesNotMatch(dynamicHandoffMigration, /insert into auth\.users/);
+  assert.match(dynamicHandoffRollback, /user_handoff_connections/);
+  assert.match(dynamicHandoffRollback, /drop column if exists handoff_enabled/);
 });

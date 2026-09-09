@@ -5,11 +5,11 @@ import { ArrowRightLeft, CheckCircle2, CheckSquare2, Clock3, MessageSquareText }
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
-import type { Assignment, HandoffNote, Task } from "@/lib/types";
+import type { Assignment, HandoffNote, Task, TaskFollower } from "@/lib/types";
 
 type Participant = { user_id: string; display_name: string };
 type Resolution = "continue" | "return" | "close";
-type HandlerSwitchMode = "assign" | "return" | "reclaim";
+type HandlerSwitchMode = "assign" | "return" | "reclaim" | "transfer";
 const activeStatuses = ["pending_acceptance", "accepted", "in_progress", "waiting", "blocked"] as const;
 
 export function TaskHandoffControls({
@@ -17,6 +17,7 @@ export function TaskHandoffControls({
   currentUserId,
   participants,
   assignments,
+  taskFollowers = [],
   notes,
   onChanged
 }: {
@@ -24,6 +25,7 @@ export function TaskHandoffControls({
   currentUserId: string;
   participants: Participant[];
   assignments: Assignment[];
+  taskFollowers?: TaskFollower[];
   notes: HandoffNote[];
   onChanged: () => void;
 }) {
@@ -38,6 +40,7 @@ export function TaskHandoffControls({
   );
   const active = taskAssignments.find((item) => activeStatuses.includes(item.status as (typeof activeStatuses)[number]));
   const taskNotes = notes.filter((item) => item.task_id === task.id).slice(0, 3);
+  const followers = taskFollowers.filter((item) => item.task_id === task.id);
   const otherParticipants = participants.filter((item) => item.user_id !== currentUserId);
   const selfParticipant = participants.find((item) => item.user_id === currentUserId) ?? {
     user_id: currentUserId,
@@ -58,18 +61,31 @@ export function TaskHandoffControls({
     if (closed || targetUserId === currentHandlerId) return null;
     if (!active) return isOwner && targetUserId !== currentUserId ? "assign" : null;
     if (isSender && targetUserId === active.assigned_by_id) return "reclaim";
-    if (isRecipient && active.status !== "pending_acceptance" && targetUserId === active.assigned_by_id) return "return";
+    if (isRecipient && active.status !== "pending_acceptance") {
+      return targetUserId === active.assigned_by_id ? "return" : "transfer";
+    }
     return null;
   }
 
-  async function respond(response: "accept" | "decline") {
+  async function respond(response: "accept" | "decline" | "clarification" | "alternative_date") {
     if (!active) return;
+    const reason = response === "decline"
+      ? "暫時未能處理"
+      : response === "clarification"
+        ? window.prompt("請寫低需要對方補充甚麼資料")
+        : undefined;
+    if (response === "clarification" && !reason?.trim()) return;
+    const proposedDate = response === "alternative_date"
+      ? window.prompt("請輸入建議日期，例如 2026-08-10")
+      : undefined;
+    if (response === "alternative_date" && !proposedDate) return;
     setError("");
     try {
       await controlAction("assignment_response", {
         id: active.id,
         response,
-        reason: response === "decline" ? "暫時未能處理" : undefined
+        reason,
+        proposedDate
       });
       onChanged();
     } catch (caught) {
@@ -89,6 +105,7 @@ export function TaskHandoffControls({
           <p className="mt-1 text-sm leading-6 text-slate-600">
             按另一位即可轉交；每次轉交都要寫 notes，舊紀錄及時間不會消失。
           </p>
+          {followers.length ? <p className="mt-2 text-sm font-semibold text-slate-700">共同跟進：{followers.map((follower) => participantName(participants, follower.follower_id)).join("、")}</p> : null}
         </div>
       </div>
 
@@ -118,7 +135,7 @@ export function TaskHandoffControls({
             >
               <span className="flex items-center gap-2 font-extrabold text-slate-900">
                 {selected ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <ArrowRightLeft className="h-5 w-5 text-indigo-600" />}
-                {isSelf ? "由我跟進" : `由 ${participant.display_name} 跟進`}
+                {selected ? (isSelf ? "由我跟進" : `由 ${participant.display_name} 跟進`) : isSelf ? "改由我跟進" : `轉交 ${participant.display_name}`}
               </span>
               <span className="mt-1 block text-sm leading-5 text-slate-600">
                 {selected
@@ -161,7 +178,9 @@ export function TaskHandoffControls({
             {isRecipient && active.status === "pending_acceptance" ? (
               <>
                 <Button onClick={() => respond("accept")}>接受跟進</Button>
-                <Button variant="secondary" onClick={() => respond("decline")}>暫不接手</Button>
+                <Button variant="secondary" onClick={() => respond("clarification")}>要求補充</Button>
+                <Button variant="secondary" onClick={() => respond("alternative_date")}>建議改期</Button>
+                <Button variant="ghost" onClick={() => respond("decline")}>暫不接手</Button>
               </>
             ) : null}
             {isRecipient && active.status !== "pending_acceptance" ? (
@@ -199,7 +218,7 @@ export function TaskHandoffControls({
         </div>
       ) : null}
 
-      {error ? <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
+      {error ? <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">{error}</p> : null}
       {handlerSwitch ? (
         <SwitchHandlerModal
           task={task}
@@ -275,10 +294,17 @@ function SwitchHandlerModal({
           nextStep: "",
           waitingUntil: ""
         });
-      } else {
+      } else if (mode === "reclaim") {
         await controlAction("handoff_reclaim", {
           assignmentId: assignment!.id,
           note
+        });
+      } else {
+        await controlAction("handoff_transfer", {
+          assignmentId: assignment!.id,
+          targetUserId: target.user_id,
+          note,
+          dueDate
         });
       }
       onSaved();
@@ -310,22 +336,22 @@ function SwitchHandlerModal({
             required
           />
         </label>
-        {mode === "assign" ? (
+        {mode === "assign" || mode === "transfer" ? (
           <label>
             <span className="label">今次跟進期限（可留空）</span>
             <input className="field mt-2" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
           </label>
         ) : null}
         <p className="text-sm leading-6 text-slate-600">
-          {mode === "assign"
-            ? "對方接受後負責跟進；任務及舊紀錄會繼續保留。"
+          {mode === "assign" || mode === "transfer"
+            ? "對方接受後負責跟進；只可選擇系統內現有並已連接的帳戶，任務及舊紀錄會繼續保留。"
             : "確認後會立即改變目前跟進者，並保留全部 notes、操作者及日期時間。"}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={saving}>{saving ? "更改中…" : "確認更改跟進者"}</Button>
           <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
         </div>
-        {error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
+        {error ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">{error}</p> : null}
       </form>
     </Modal>
   );
@@ -374,7 +400,7 @@ function ProgressModal({
   }
 
   return (
-    <Modal title="更新個案進度" onClose={onClose}>
+    <Modal title="更新工作進度" onClose={onClose}>
       <form className="grid gap-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <label>
@@ -386,7 +412,7 @@ function ProgressModal({
             </select>
           </label>
           <label>
-            <span className="label">個案進度：{progress}%</span>
+            <span className="label">工作進度：{progress}%</span>
             <input className="mt-4 w-full accent-indigo-600" type="range" min={0} max={100} step={5} value={progress} onChange={(event) => setProgress(Number(event.target.value))} />
           </label>
         </div>
@@ -408,7 +434,7 @@ function ProgressModal({
           <Button type="submit" disabled={saving}>{saving ? "儲存中…" : "儲存進度"}</Button>
           <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
         </div>
-        {error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
+        {error ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">{error}</p> : null}
       </form>
     </Modal>
   );
@@ -436,7 +462,7 @@ function ResolveStepModal({
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (resolution === "close" && !window.confirm("這會把整個個案標記為已完成。確定完全結案？")) return;
+    if (resolution === "close" && !window.confirm("這會把整項工作標記為已完成。確定完全完成？")) return;
     setSaving(true);
     setError("");
     try {
@@ -459,7 +485,7 @@ function ResolveStepModal({
     <Modal title="完成這一步後怎樣處理？" onClose={onClose}>
       <form className="grid gap-4" onSubmit={submit}>
         <fieldset>
-          <legend className="label">個案去向</legend>
+          <legend className="label">工作去向</legend>
           <div className="mt-2 grid gap-2">
             <ResolutionOption
               checked={resolution === "continue"}
@@ -476,8 +502,8 @@ function ResolveStepModal({
             <ResolutionOption
               checked={resolution === "close"}
               onChange={() => setResolution("close")}
-              title="完全結案"
-              detail="只有確定整個個案已完成才選擇；這會把任務進度設為 100%。"
+              title="完全完成工作"
+              detail="只有確定整項工作已完成才選擇；這會把任務進度設為 100%。"
             />
           </div>
         </fieldset>
@@ -510,7 +536,7 @@ function ResolveStepModal({
           </Button>
           <Button type="button" variant="secondary" onClick={onClose}>取消</Button>
         </div>
-        {error ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{error}</p> : null}
+        {error ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">{error}</p> : null}
       </form>
     </Modal>
   );
@@ -575,6 +601,6 @@ const assignmentStatusLabel: Record<Assignment["status"], string> = {
   blocked: "遇到阻礙",
   completed: "已完成",
   returned: "已交回上一手",
-  closed: "已完全結案",
+  closed: "已完全完成",
   cancelled: "已取消"
 };

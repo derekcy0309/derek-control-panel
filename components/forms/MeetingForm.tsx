@@ -88,7 +88,7 @@ export function MeetingForm({
           className="field mt-2 min-h-32"
           value={form.raw_notes}
           onChange={(event) => update("raw_notes", event.target.value)}
-          placeholder="直接貼上會議重點、承諾事項、客戶要求"
+          placeholder="直接貼上會議重點、承諾事項及需要跟進的工作"
         />
       </label>
       {!compact ? (

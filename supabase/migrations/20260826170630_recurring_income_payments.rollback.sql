@@ -1,0 +1,10 @@
+drop trigger if exists set_recurring_income_rules_updated_at on public.recurring_income_rules;
+drop policy if exists recurring_income_rules_select_own on public.recurring_income_rules;
+drop policy if exists recurring_income_rules_insert_own on public.recurring_income_rules;
+drop policy if exists recurring_income_rules_update_own on public.recurring_income_rules;
+drop policy if exists recurring_income_rules_delete_own on public.recurring_income_rules;
+drop index if exists public.transactions_recurring_income_month_unique;
+drop index if exists public.recurring_income_rules_user_active_month_idx;
+drop index if exists public.transactions_recurring_income_lookup_idx;
+alter table public.transactions drop column if exists recurring_income_rule_id;
+drop table if exists public.recurring_income_rules;

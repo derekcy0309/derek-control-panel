@@ -13,7 +13,7 @@ import type {
 
 export const scopeLabels: Record<Scope, string> = {
   home: "家庭",
-  company: "公司"
+  company: "工作"
 };
 
 export const sourceTypeLabels: Record<SourceType, string> = {
@@ -24,20 +24,20 @@ export const sourceTypeLabels: Record<SourceType, string> = {
 };
 
 export const taskStatusLabels: Record<TaskStatus, string> = {
-  not_started: "未完成",
-  in_progress: "未完成",
-  waiting: "未完成",
+  not_started: "今日處理",
+  in_progress: "進行中",
+  waiting: "等待別人",
   done: "已完成",
-  blocked: "未完成",
+  blocked: "需要重新安排",
   cancelled: "已取消"
 };
 
 export const taskStatusDetailLabels: Record<TaskStatus, string> = {
-  not_started: "未開始",
+  not_started: "今日處理",
   in_progress: "進行中",
-  waiting: "等待中",
+  waiting: "等待別人",
   done: "已完成",
-  blocked: "有問題",
+  blocked: "需要重新安排",
   cancelled: "已取消"
 };
 
@@ -87,7 +87,7 @@ export const reminderDayLabels: Record<ReminderDays, string> = {
 
 export const scopeOptions = [
   { value: "home", label: "家庭" },
-  { value: "company", label: "公司" }
+  { value: "company", label: "工作" }
 ] as const;
 
 export const sourceTypeOptions = [
@@ -98,16 +98,20 @@ export const sourceTypeOptions = [
 ] as const;
 
 export const taskStatusOptions = [
-  { value: "not_started", label: "未完成" },
+  { value: "not_started", label: "今日處理" },
   { value: "in_progress", label: "進行中" },
-  { value: "waiting", label: "等待中" },
-  { value: "blocked", label: "受阻" },
+  { value: "waiting", label: "等待別人" },
+  { value: "blocked", label: "需要重新安排" },
   { value: "done", label: "已完成" },
   { value: "cancelled", label: "已取消" }
 ] as const;
 
 export const taskStatusFilterOptions = [
   { value: "unfinished", label: "未完成" },
+  { value: "not_started", label: "今日處理" },
+  { value: "in_progress", label: "進行中" },
+  { value: "waiting", label: "等待別人" },
+  { value: "blocked", label: "需要重新安排" },
   { value: "done", label: "已完成" },
   { value: "cancelled", label: "已取消" }
 ] as const;

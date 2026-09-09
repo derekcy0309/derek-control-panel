@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { googleAccountHint } from "../lib/integrations/google-calendar.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const migration = readFileSync(
@@ -17,12 +18,17 @@ const familyVisibilityHotfix = readFileSync(
   resolve(here, "../supabase/migrations/20260726122000_fix_family_visibility_record_shape.sql"),
   "utf8"
 ).toLowerCase();
+const emailDigestRecipientPreference = readFileSync(
+  resolve(here, "../supabase/migrations/20260726220808_email_digest_recipient_preference.sql"),
+  "utf8"
+).toLowerCase();
 const planRoute = readFileSync(resolve(here, "../app/api/ai/plan-day/route.ts"), "utf8");
 const taskRoute = readFileSync(resolve(here, "../app/api/ai/analyze-task/route.ts"), "utf8");
 const manualChatGPTRoute = readFileSync(
   resolve(here, "../app/api/chatgpt/task-assistant/route.ts"),
   "utf8"
 );
+const manualChatGPT = readFileSync(resolve(here, "../lib/ai/manual-chatgpt.ts"), "utf8");
 const manualChatGPTPanel = readFileSync(
   resolve(here, "../components/TaskAIAnalysisPanel.tsx"),
   "utf8"
@@ -31,6 +37,14 @@ const cronRoute = readFileSync(resolve(here, "../app/api/cron/due-email/route.ts
 const calendarSync = readFileSync(resolve(here, "../lib/integrations/google-calendar.ts"), "utf8");
 const calendarConnectRoute = readFileSync(
   resolve(here, "../app/api/integrations/google-calendar/connect/route.ts"),
+  "utf8"
+);
+const calendarCallbackRoute = readFileSync(
+  resolve(here, "../app/api/integrations/google-calendar/callback/route.ts"),
+  "utf8"
+);
+const calendarSettings = readFileSync(
+  resolve(here, "../components/GoogleCalendarSettings.tsx"),
   "utf8"
 );
 
@@ -80,7 +94,8 @@ test("daily planner is free, ChatGPT imports are bound, and accepted plans stay 
   assert.doesNotMatch(taskRoute, /generateText|Output\.object/);
   assert.doesNotMatch(taskRoute, /\.from\("tasks"\)\.update/);
   assert.match(manualChatGPTRoute, /authenticateRequest/);
-  assert.match(manualChatGPTRoute, /redactSensitiveText/);
+  assert.match(manualChatGPTRoute, /redactManualTaskForChatGPT/);
+  assert.match(manualChatGPT, /redactSensitiveText/);
   assert.match(manualChatGPTRoute, /parseManualChatGPTTaskResponse/);
   assert.match(manualChatGPTRoute, /model: "chatgpt-manual"/);
   assert.doesNotMatch(manualChatGPTRoute, /\.from\("tasks"\)\.update/);
@@ -98,4 +113,26 @@ test("daily email uses an authenticated cron claim and exact three-day horizon",
   assert.match(migration, /greatest\(coalesce\(preference\.email_digest_days, 3\), 1\) - 1/);
   assert.match(cronRoute, /isAuthorizedCronRequest/);
   assert.match(cronRoute, /idempotencyKey/);
+});
+
+test("Calendar account hints provide defaults without restricting the user's Google choice", () => {
+  assert.equal(googleAccountHint("personal", "kwok_cy@wecarenursing.com.hk", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
+  assert.equal(googleAccountHint("family", "derek_msc@hotmail.com", "derekcy0309@gmail.com"), "derekcy0309@gmail.com");
+  assert.equal(googleAccountHint("personal", "love29suki@gmail.com", "love29suki@gmail.com"), "love29suki@gmail.com");
+  assert.equal(googleAccountHint("family", "new-user@example.com"), "new-user@example.com");
+  assert.equal(googleAccountHint("work", "love29suki@gmail.com"), "info@wecarenursing.com.hk");
+  assert.match(calendarSync, /select_account consent/);
+  assert.doesNotMatch(calendarSync, /expectedgoogleaccount/);
+  assert.match(calendarCallbackRoute, /googleAccountEmail/);
+  assert.doesNotMatch(calendarCallbackRoute, /accountEmail\s*!==/);
+  assert.match(calendarSettings, /更換帳戶/);
+});
+
+test("due digest follows active user preferences and skips empty emails", () => {
+  assert.match(emailDigestRecipientPreference, /where profile\.active/);
+  assert.match(emailDigestRecipientPreference, /coalesce\(preference\.email_digest_enabled, true\)/);
+  assert.match(emailDigestRecipientPreference, /where jsonb_array_length\(candidate\.items\) > 0/);
+  assert.doesNotMatch(emailDigestRecipientPreference, /derekcy0309@gmail\.com/);
+  assert.match(emailDigestRecipientPreference, /notification_dispatch_authorized/);
+  assert.match(emailDigestRecipientPreference, /revoke all on function public\.claim_due_email_digests/);
 });

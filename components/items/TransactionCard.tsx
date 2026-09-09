@@ -1,9 +1,9 @@
 "use client";
 
-import { Copy, FilePenLine } from "lucide-react";
+import { FilePenLine, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScopeBadge, StatusBadge } from "@/components/ui/Badge";
-import { formatCurrency, formatDate, nextMonthDate } from "@/lib/date";
+import { formatCurrency, formatDate } from "@/lib/date";
 import { frequencyLabels, transactionTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import type { Transaction } from "@/lib/types";
@@ -12,11 +12,15 @@ export function TransactionCard({
   transaction,
   onChanged,
   onEdit,
+  onRestore,
+  archived = false,
   highlight = false
 }: {
   transaction: Transaction;
   onChanged: () => void;
   onEdit?: (transaction: Transaction) => void;
+  onRestore?: (transaction: Transaction) => Promise<void>;
+  archived?: boolean;
   highlight?: boolean;
 }) {
   async function updateTransaction(values: Partial<Transaction>) {
@@ -24,28 +28,10 @@ export function TransactionCard({
     onChanged();
   }
 
-  async function copyToNextMonth() {
-    const payload = {
-      user_id: transaction.user_id,
-      scope: transaction.scope,
-      type: transaction.type,
-      item: transaction.item,
-      category: transaction.category,
-      amount: transaction.amount,
-      expected_date: nextMonthDate(transaction.expected_date),
-      actual_date: null,
-      frequency: transaction.frequency,
-      status: transaction.type === "income" ? "expected" : "unpaid",
-      payment_method: transaction.payment_method,
-      owner: transaction.owner,
-      proof_url: transaction.proof_url,
-      notes: transaction.notes
-    };
-    await controlAction("save_transaction", payload);
-    onChanged();
-  }
-
   const isIncome = transaction.type === "income";
+  // Keep a selected monthly item in that month when it is marked received/paid.
+  // Falling back to today is only for legacy records without any date.
+  const settlementDate = transaction.actual_date ?? transaction.expected_date ?? new Date().toISOString().slice(0, 10);
 
   return (
     <article className={highlight ? "rounded-xl border-2 border-orange-200 bg-orange-50 p-4 shadow-soft" : "panel-soft p-4"}>
@@ -69,14 +55,24 @@ export function TransactionCard({
       </div>
       <div className="mt-4 grid gap-2 text-base text-slate-700 sm:grid-cols-2">
         <p className="text-xl font-bold">{formatCurrency(Number(transaction.amount))}</p>
-        <p>預計日期：{formatDate(transaction.expected_date)}</p>
-        <p>實際日期：{formatDate(transaction.actual_date)}</p>
+        <p>實際日期：{formatDate(transaction.actual_date ?? transaction.expected_date)}</p>
         <p>分類：{transaction.category || "未設定"}</p>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        {isIncome ? (
+      {archived ? (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-600">這項記錄已封存，不會計入目前的收入、支出或付款提醒。</p>
+          {onRestore ? (
+            <Button variant="secondary" onClick={() => void onRestore(transaction)}>
+              <RotateCcw className="h-5 w-5" />
+              還原到現金流
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {isIncome ? (
           <>
-            <Button variant="success" onClick={() => updateTransaction({ status: "received", actual_date: new Date().toISOString().slice(0, 10) })}>
+            <Button variant="success" onClick={() => updateTransaction({ status: "received", actual_date: settlementDate })}>
               已收到
             </Button>
             <Button variant="secondary" onClick={() => updateTransaction({ status: "delayed" })}>
@@ -89,11 +85,17 @@ export function TransactionCard({
               取消
             </Button>
           </>
-        ) : (
+          ) : (
           <>
-            <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: new Date().toISOString().slice(0, 10) })}>
-              已付款
-            </Button>
+            {transaction.status === "paid" ? (
+              <Button variant="secondary" onClick={() => updateTransaction({ status: "unpaid", actual_date: null })}>
+                改回未付款
+              </Button>
+            ) : (
+              <Button variant="success" onClick={() => updateTransaction({ status: "paid", actual_date: settlementDate })}>
+                已付款
+              </Button>
+            )}
             <Button variant="danger" onClick={() => updateTransaction({ status: "problem" })}>
               有問題
             </Button>
@@ -104,15 +106,12 @@ export function TransactionCard({
               取消
             </Button>
           </>
-        )}
-        <Button variant="secondary" onClick={copyToNextMonth}>
-          <Copy className="h-5 w-5" />
-          複製到下月
-        </Button>
-        <Button variant="ghost" onClick={() => updateTransaction({ archived_at: new Date().toISOString() })}>
-          封存
-        </Button>
-      </div>
+          )}
+          <Button variant="ghost" onClick={() => updateTransaction({ archived_at: new Date().toISOString() })}>
+            封存
+          </Button>
+        </div>
+      )}
     </article>
   );
 }

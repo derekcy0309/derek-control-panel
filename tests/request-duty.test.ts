@@ -23,7 +23,7 @@ test("request duty extends the existing task model without a duplicate data tabl
 test("request duty creation requires a date and uses the existing private-by-default task access", () => {
   assert.match(controlRoute, /sourceType === "duty_request" && !dueDate/);
   assert.match(controlRoute, /defaultResourceAccess\(client, user\.id, area\)/);
-  assert.match(page, /area: "work"/);
+  assert.match(page, /taskCategory: "sec"/);
   assert.match(page, /sourceType: "duty_request"/);
   assert.match(page, /dueDate: date/);
 });

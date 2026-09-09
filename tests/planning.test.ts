@@ -85,6 +85,22 @@ test("auto plan stays inside capacity and reserves buffer", () => {
   assert.ok(result.estimatedTotalMinutes + result.bufferMinutes <= 60);
   assert.equal(result.hasCapacityOverflow, true);
 });
+test("a no-deadline recurring prompt stays recommendable after its planned date without overdue risk", () => {
+  const result = recommendTodayTasks({
+    tasks: [
+      { ...baseTask, id: "routine", recurrence_rule_id: "rule", due_date: null, planned_date: "2026-07-20", estimated_minutes: 10 },
+      { ...baseTask, id: "ordinary", due_date: null, planned_date: null, estimated_minutes: 10 }
+    ],
+    assignments: [],
+    currentUserId: "derek",
+    settings,
+    capacity: null,
+    today: "2026-07-22"
+  });
+  assert.equal(result.primary?.task.id, "routine");
+  assert.equal(result.primary?.risk, "normal");
+  assert.ok(result.primary?.reasons.includes("定期工作已到提示時段"));
+});
 test("minimum day returns one core and no more than two very short extras", () => {
   const result = recommendTodayTasks({
     tasks: [

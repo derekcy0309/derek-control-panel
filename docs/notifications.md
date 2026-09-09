@@ -6,6 +6,10 @@
 
 可選提醒包括 Today 第一項、deadline、Waiting 跟進、handover、Focus timer 完成及每日收尾。通知內容只使用一般文字，例如「一項工作限期接近」，不會包含 task 標題、筆記、健康、家庭、兒童、金額或聯絡資料。
 
+Suki 可在首頁啟用臨時安靜模式。期間只保留同時屬於高風險及 safety impact 的真正緊急工作；一般 Today、交接及待確認摘要會收起，資料及其他帳戶完全不受影響。`quiet_mode_until` 只屬於目前登入帳戶。
+
+每日電郵使用 `20260804200000_personal_work_queue.sql` 的個人工作摘要，只合併今日工作、接近期限、已逾期、等待回覆及新交接。`email_digest_deliveries` 的 `(user_id, digest_date)` 唯一約束保證每個帳戶每天最多一封；只讀取該帳戶原本有權查看的工作，不會讀取獨立財務資料，沒有項目時不寄出。
+
 ## 資料與權限
 
 Migration `20260724162344_notification_system.sql` 新增：

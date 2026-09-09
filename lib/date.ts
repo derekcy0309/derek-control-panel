@@ -1,7 +1,14 @@
-import { addDays, differenceInCalendarDays, format, isBefore, parseISO, startOfDay } from "date-fns";
+import { addDays, addMonths, differenceInCalendarDays, format, getDate, isBefore, parseISO, startOfDay, startOfMonth } from "date-fns";
 
 export const todayIso = () => format(new Date(), "yyyy-MM-dd");
 export const currentMonth = () => format(new Date(), "yyyy-MM-01");
+
+// From the 27th onward, personal finance opens the next month's planning view.
+// The supplied date keeps the boundary deterministic in tests.
+export function cashflowDefaultMonth(now = new Date()) {
+  const target = getDate(now) >= 27 ? addMonths(now, 1) : now;
+  return format(startOfMonth(target), "yyyy-MM-01");
+}
 
 export function formatDate(value: string | null | undefined) {
   if (!value) return "未設定";

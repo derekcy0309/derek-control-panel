@@ -51,7 +51,9 @@ function RequestDutyContent() {
     try {
       await controlAction("create_task", {
         area: "work",
+        taskCategory: "sec",
         sourceType: "duty_request",
+        taskType: "Request Duty",
         title: item.trim(),
         dueDate: date,
         status: "not_started",
@@ -118,7 +120,7 @@ function RequestDutyContent() {
       <section className="panel p-4 sm:p-5">
         <div className="mb-4">
           <h2 className="section-title">新增提示</h2>
-          <p className="muted mt-1 text-sm">Request Duty 預設屬於工作範圍並保持私人。</p>
+          <p className="muted mt-1 text-sm">Request Duty 預設歸入 SEC 工作並保持私人。</p>
         </div>
         <form className="grid gap-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto] sm:items-end" onSubmit={createRequest}>
           <label>

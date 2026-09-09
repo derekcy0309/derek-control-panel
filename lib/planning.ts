@@ -117,7 +117,8 @@ export function recommendTodayTasks(input: {
     if (personal?.hidden_from_today) return false;
     if (personal?.snoozed_until && personal.snoozed_until > nowIso) return false;
     if (task.snoozed_until && task.snoozed_until > nowIso) return false;
-    if (wipLimitReached && task.status !== "in_progress" && assignment?.status !== "in_progress") return false;
+    const recurrencePromptReady = Boolean(task.recurrence_rule_id && task.planned_date && task.planned_date <= today);
+    if (wipLimitReached && task.status !== "in_progress" && assignment?.status !== "in_progress" && !recurrencePromptReady) return false;
     return true;
   });
   const energy = input.capacity?.energy_level;
@@ -144,7 +145,8 @@ export function recommendTodayTasks(input: {
     score += (6 - (task.requested_priority ?? 3)) * 75;
     const assignment = assignmentByResource.get(task.id);
     if (assignment?.assigned_to_id === input.currentUserId) { score += 160; reasons.push("已接受指派"); }
-    if (task.planned_date === today || personal?.planned_date === today) { score += 260; reasons.push("已安排今日"); }
+    if (task.recurrence_rule_id && task.planned_date && task.planned_date <= today) { score += 260; reasons.push("定期工作已到提示時段"); }
+    else if (task.planned_date === today || personal?.planned_date === today) { score += 260; reasons.push("已安排今日"); }
     if (personal) score += (6 - personal.personal_priority) * 35;
     if (energy && task.energy_level === energy) { score += 130; reasons.push("配合今日能量"); }
     if (energy === "low" && minutes <= 15) { score += 220; reasons.push("低阻力小步驟"); }

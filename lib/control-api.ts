@@ -2,14 +2,17 @@
 
 import type {
   BodyDoubleData,
+  AdminAccountUser,
   ControlData,
   FocusSession,
   InboxCaptureFile,
   InboxProcessingBundle,
   InboxProcessingEvent,
   TaskCheckpointBundle,
+  TaskDetailData,
   TaskResourceBundle,
   TimeEstimateSuggestion,
+  Transaction,
   TodayData,
   WeeklyReview,
   WeeklyReviewSummary
@@ -22,8 +25,26 @@ export async function loadControlData(): Promise<ControlData> {
   return controlRequest<ControlData>("/api/control?view=bootstrap", { method: "GET" });
 }
 
+export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser[]; truncated: boolean }> {
+  return controlRequest<{ users: AdminAccountUser[]; truncated: boolean }>("/api/admin/users", { method: "GET" });
+}
+
 export async function loadTodayData(): Promise<TodayData> {
   return controlRequest<TodayData>("/api/control?view=today", { method: "GET" });
+}
+
+export async function loadTaskDetail(taskId: string): Promise<TaskDetailData> {
+  return controlRequest<TaskDetailData>(
+    `/api/control?view=task_detail&taskId=${encodeURIComponent(taskId)}`,
+    { method: "GET" }
+  );
+}
+
+export async function loadArchivedTransactions(page = 1) {
+  return controlRequest<{ transactions: Transaction[]; page: number; hasMore: boolean }>(
+    `/api/control?view=archived_transactions&page=${encodeURIComponent(String(page))}`,
+    { method: "GET" }
+  );
 }
 
 export async function searchControlData(query: string) {
@@ -110,6 +131,14 @@ export async function controlAction<T = Record<string, unknown>>(action: string,
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action, ...payload })
+  });
+}
+
+export async function invitePortalUser(payload: { email: string; displayName: string }) {
+  return controlRequest<{ userId: string }>("/api/admin/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
   });
 }
 

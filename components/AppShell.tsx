@@ -6,14 +6,17 @@ import { useEffect, useState } from "react";
 import {
   Archive, BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  PlusCircle, Settings, Share2, Sparkles, UsersRound, X
+  PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 
-const navGroups = [
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+type NavGroupData = { label: string; items: NavItem[] };
+
+const navGroups: NavGroupData[] = [
   {
     label: "主要",
     items: [
@@ -34,10 +37,12 @@ const navGroups = [
       { href: "/weekly-review", label: "每週檢視", icon: ClipboardCheck },
       { href: "/sharing", label: "交辦中心", icon: Share2 },
       { href: "/workspace/decision", label: "決策紀錄", icon: Command },
-      { href: "/workspace/client", label: "客戶流程", icon: UsersRound },
-      { href: "/workspace/sop", label: "SOP", icon: Archive },
-      { href: "/cashflow", label: "財務", icon: Landmark }
+      { href: "/workspace/sop", label: "SOP", icon: Archive }
     ]
+  },
+  {
+    label: "財務（獨立）",
+    items: [{ href: "/cashflow", label: "個人財務", icon: Landmark }]
   },
   {
     label: "家庭",
@@ -54,6 +59,7 @@ const navGroups = [
     items: [
       { href: "/workspace/personal", label: "個人總覽", icon: CircleUserRound },
       { href: "/workspace/health", label: "健康行政", icon: HeartHandshake },
+      { href: "/medications", label: "藥物紀錄", icon: Pill },
       { href: "/workspace/document", label: "文件", icon: Archive },
       { href: "/workspace/vehicle", label: "車輛", icon: Home },
       { href: "/workspace/note", label: "私人筆記", icon: Inbox }
@@ -67,7 +73,12 @@ const navGroups = [
       { href: "/settings", label: "設定", icon: Settings }
     ]
   }
-] as const;
+];
+
+const adminNavGroup: NavGroupData = {
+  label: "管理員",
+  items: [{ href: "/admin/accounts", label: "帳戶活動", icon: ShieldCheck }]
+};
 
 const mobileNav = [
   { href: "/", label: "今日", icon: Sparkles },
@@ -82,6 +93,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +104,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setDisplayName(data.currentUser.displayName);
         setCurrentUserId(data.currentUser.id);
         setMustChangePassword(Boolean(data.profile.must_change_password));
+        setIsAdmin(Boolean(data.profile.is_admin && data.profile.active));
         if (data.settings) {
         const theme = data.settings.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.settings.theme;
         document.documentElement.dataset.theme = theme || "light";
@@ -110,7 +123,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     const response = await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" });
-    if (response.ok && currentUserId) await clearOfflineWrites(currentUserId).catch(() => undefined);
+    if (response.ok && currentUserId) {
+      await clearOfflineWrites(currentUserId).catch(() => undefined);
+      try {
+        sessionStorage.removeItem(`dcp:voice-handoff-draft:v1:${currentUserId}`);
+        sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:new`);
+        sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:waiting`);
+      } catch {
+        // Sign-out must still complete if browser storage is unavailable.
+      }
+    }
     window.location.reload();
   }
 
@@ -121,6 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Brand displayName={displayName} />
         <div className="sidebar-scroll">
           {navGroups.map((group) => <NavGroup key={group.label} group={group} pathname={pathname} />)}
+          {isAdmin ? <NavGroup group={adminNavGroup} pathname={pathname} /> : null}
         </div>
         <button className="sidebar-signout" onClick={signOut}>登出</button>
       </aside>
@@ -155,6 +178,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="max-h-[70vh] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               {navGroups.slice(1).map((group) => <NavGroup key={group.label} group={group} pathname={pathname} mobile />)}
+              {isAdmin ? <NavGroup group={adminNavGroup} pathname={pathname} mobile /> : null}
               <button className="mt-3 min-h-11 w-full rounded-xl px-3 text-left font-semibold text-slate-600 hover:bg-slate-100" onClick={signOut}>登出</button>
             </div>
           </section>
@@ -199,7 +223,7 @@ function Brand({ displayName, compact = false }: { displayName: string; compact?
   );
 }
 
-function NavGroup({ group, pathname, mobile = false }: { group: (typeof navGroups)[number]; pathname: string; mobile?: boolean }) {
+function NavGroup({ group, pathname, mobile = false }: { group: NavGroupData; pathname: string; mobile?: boolean }) {
   const [open, setOpen] = useState(true);
   return (
     <section className={mobile ? "mb-4" : "nav-group"}>
@@ -211,7 +235,7 @@ function NavGroup({ group, pathname, mobile = false }: { group: (typeof navGroup
   );
 }
 
-function NavLink({ item, active }: { item: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }; active: boolean }) {
+function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
   return <Link href={item.href} className={clsx("sidebar-link", active && "is-active")}><Icon className="h-[1.1rem] w-[1.1rem]" /><span>{item.label}</span></Link>;
 }

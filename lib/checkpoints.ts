@@ -41,6 +41,23 @@ export function hasCheckpointContent(form: CheckpointForm) {
   );
 }
 
+// Focus actions may happen immediately after a user finishes typing. Keep the
+// text that is already in the live form and only use these values when a field
+// is genuinely empty. This avoids replacing a just-entered note with a generic
+// completion message while React is still rendering the last keystroke.
+export function checkpointWithFallbacks(
+  form: CheckpointForm,
+  fallbacks: Partial<CheckpointForm>
+): CheckpointForm {
+  return {
+    ...form,
+    completedSummary: form.completedSummary.trim() ? form.completedSummary : fallbacks.completedSummary ?? "",
+    currentPosition: form.currentPosition.trim() ? form.currentPosition : fallbacks.currentPosition ?? "",
+    nextMinimumStep: form.nextMinimumStep.trim() ? form.nextMinimumStep : fallbacks.nextMinimumStep ?? "",
+    blockedReason: form.blockedReason.trim() ? form.blockedReason : fallbacks.blockedReason ?? ""
+  };
+}
+
 export function parseCheckpointResources(input: string): {
   resources: TaskCheckpointResource[];
   error: string | null;

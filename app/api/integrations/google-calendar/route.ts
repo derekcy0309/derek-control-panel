@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {
   decryptCalendarToken,
-  expectedGoogleAccount,
+  googleAccountHint,
   getValidGoogleAccessToken,
   listWritableGoogleCalendars,
   revokeGoogleToken,
@@ -21,15 +21,18 @@ export async function GET(request: NextRequest) {
     .eq("user_id", context.user.id)
     .order("target");
   if (connections.error) return privateJson({ error: connections.error.message }, 500);
+  const profile = await context.client.from("user_profiles").select("personal_calendar_email").eq("user_id", context.user.id).maybeSingle();
+  if (profile.error) return privateJson({ error: profile.error.message }, 500);
+  const personalCalendarEmail = profile.data?.personal_calendar_email;
 
   const target = request.nextUrl.searchParams.get("calendars") as ConnectedCalendarTarget | null;
   if (!target) {
     return privateJson({
       connections: connections.data ?? [],
-      expectedAccounts: {
-        personal: expectedGoogleAccount("personal", context.user.email ?? ""),
-        family: expectedGoogleAccount("family", context.user.email ?? ""),
-        work: expectedGoogleAccount("work", context.user.email ?? "")
+      accountHints: {
+        personal: googleAccountHint("personal", context.user.email ?? "", personalCalendarEmail),
+        family: googleAccountHint("family", context.user.email ?? "", personalCalendarEmail),
+        work: googleAccountHint("work", context.user.email ?? "", personalCalendarEmail)
       }
     });
   }

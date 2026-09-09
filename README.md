@@ -1,6 +1,6 @@
 # Derek Control Panel
 
-私人優先、雙帳戶獨立的 ADHD-friendly 生活與工作控制台。登入後標題會按帳戶顯示為 `{displayName} Panel`；所有記錄預設私人，只有明確分享、接受指派或接受共同擁有後才可見。
+私人優先、供 Derek、Suki 及 Amigo 使用的低認知負荷個人工作控制台。登入後標題會按帳戶顯示為 `{displayName} Panel`；所有記錄預設私人，只有明確分享、接受指派或接受共同擁有後才可見。財務保留在獨立頁面；系統不再提供營運或 CRM 新增流程。
 
 ## 主要能力
 
@@ -22,10 +22,12 @@
 - Life OS 權限分層：個人及工作預設私人；只有已接受家庭連結的 `family + household` 項目會共同可見，未整理 Inbox 永遠先保持私人
 - 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI
 - ChatGPT Task Analysis：系統遮罩敏感資料及寫好 Prompt；一鍵複製並開啟 ChatGPT，回覆可從剪貼簿貼回、驗證及預覽，使用者確認後才更新完成標準、Next Action 及估時
-- Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步，工作帳戶固定為 `info@wecarenursing.com.hk`
-- 每日電郵：各自寄去登入電郵，列出今日起三個曆日內到期事項；私人內容不會交叉寄送，沒有到期事項亦提供無壓力確認
+- Google Calendar 多帳戶：每日內部計劃永遠只留在系統；只有 Confirmed Schedule 才按 Personal、Family 或 Work 目標同步。Derek 的 Personal／Family 固定使用 `derekcy0309@gmail.com`，Suki 固定使用 `love29suki@gmail.com`，工作帳戶固定為 `info@wecarenursing.com.hk`
+- 三角色個人首頁：每人最多三項可立即開始的工作；Derek、Suki、Amigo 只看到適合自己的摘要，沒有個人表現排名
+- 個人工作範本：會議後跟進、等待文件、等待別人決定、每週行政、每月財務檢查、社交媒體及個人學習
+- 每日綜合提醒：今日工作、等待別人、接近期限及需要重新安排事項合併成每人每天最多一封；不混入財務或已停用營運資料
 - Request Duty 提示：只輸入提醒日期及事項；完成 request 後剔選即完成原有 Task，並沿用私人權限、三日到期電郵及完成紀錄
-- Inbox、Projects、Waiting、Decisions、Clients、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
+- Inbox、Projects、統一 Task Waiting、Decisions、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
 - Cashflow、Meetings、Calendar、全域搜尋、個人設定及安全匯出
@@ -79,6 +81,12 @@ supabase/migrations/20260726003000_backup_restore.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.sql
 supabase/migrations/20260726122000_fix_family_visibility_record_shape.sql
+supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.sql
+supabase/migrations/20260803100000_admin_account_activity.sql
+supabase/migrations/20260804100000_three_role_daily_workflow.sql
+supabase/migrations/20260804130000_recurring_no_deadline_reminders.sql
+supabase/migrations/20260804160000_suki_workflow_followups.sql
+supabase/migrations/20260804200000_personal_work_queue.sql
 supabase/migrations/20260909120022_request_duty.sql
 ```
 
@@ -110,6 +118,12 @@ supabase/migrations/20260726003000_backup_restore.rollback.sql
 supabase/migrations/20260726120000_life_os_ai_calendar_email.rollback.sql
 supabase/migrations/20260726121000_life_os_boundary_hardening.rollback.sql
 supabase/migrations/20260726122000_fix_family_visibility_record_shape.rollback.sql
+supabase/migrations/20260728100000_home_reminders_task_notices_user_invites.rollback.sql
+supabase/migrations/20260803100000_admin_account_activity.rollback.sql
+supabase/migrations/20260804100000_three_role_daily_workflow.rollback.sql
+supabase/migrations/20260804130000_recurring_no_deadline_reminders.rollback.sql
+supabase/migrations/20260804160000_suki_workflow_followups.rollback.sql
+supabase/migrations/20260804200000_personal_work_queue.rollback.sql
 supabase/migrations/20260909120022_request_duty.rollback.sql
 ```
 
@@ -135,6 +149,8 @@ Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 
 Life OS v1 升級另需設定 Google OAuth、token encryption、Resend 及 `NEXT_PUBLIC_APP_URL`；ChatGPT 手動分析不需要 API key 或 AI Gateway。每日三日到期電郵由 `vercel.json` 在香港時間約 08:30 呼叫 `/api/cron/due-email`；Google OAuth callback 是 `/api/integrations/google-calendar/callback`。完整上線步驟、帳戶限制及驗證清單見 [`docs/life-os-v1-setup.md`](docs/life-os-v1-setup.md)。
 
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
+
+管理員帳戶活動清單的可見範圍、最後登入／使用時間與 rollback 說明見 [`docs/admin-account-activity.md`](docs/admin-account-activity.md)。
 
 Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback 說明見 [`docs/inbox-processing.md`](docs/inbox-processing.md)。
 

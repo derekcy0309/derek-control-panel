@@ -1,0 +1,142 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { buildSukiFollowupSummary, taskFollowupCategories } from "../lib/suki-followups.ts";
+import type { Task } from "../lib/types.ts";
+
+const here = resolve(fileURLToPath(new URL(".", import.meta.url)));
+const read = (path: string) => readFileSync(resolve(here, `../${path}`), "utf8");
+
+test("Suki summary stays personal, neutral and bounded", () => {
+  const task = {
+    id: "00000000-0000-4000-8000-000000000001",
+    title: "等待文件覆核",
+    description: null,
+    next_action: "星期三再問 Amigo",
+    due_date: "2026-08-01",
+    follow_up_date: "2026-08-02",
+    planned_date: null,
+    status: "waiting",
+    deleted_at: null,
+    archived_at: null
+  } as Task;
+  assert.deepEqual(taskFollowupCategories(task, "2026-08-04"), ["overdue", "waiting"]);
+  const summary = buildSukiFollowupSummary([task], "2026-08-04");
+  assert.equal(summary.totalTasks, 1);
+  assert.equal(summary.counts.waiting, 1);
+  assert.doesNotMatch(read("components/RoleDailyDashboard.tsx"), /case_code|rn_required|materials_required|client_update_required/);
+});
+
+test("home cards are progressive and waiting work cannot occupy the top three", () => {
+  const dashboard = read("components/RoleDailyDashboard.tsx");
+  assert.match(dashboard, /filter\(todayEligible\)\.slice\(0, 3\)/);
+  assert.match(dashboard, /!\["waiting", "blocked"\]\.includes\(task\.status\)/);
+  assert.match(dashboard, /下一步：/);
+  assert.match(dashboard, /截止：/);
+  assert.match(dashboard, /優先：/);
+  assert.doesNotMatch(dashboard, /cashflowHint|WrittenCommunicationAssistant/);
+});
+
+test("task list cards keep key information visible and disclose details on demand", () => {
+  const taskCard = read("components/items/TaskCard.tsx");
+  const detailPage = read("app/tasks/[id]/page.tsx");
+  assert.match(taskCard, /useState\(prominent\)/);
+  assert.match(taskCard, /aria-expanded=\{expanded\}/);
+  assert.match(taskCard, /到期：\{formatDate\(task\.due_date\)\}/);
+  assert.match(taskCard, /展開詳情/);
+  assert.match(taskCard, /收起詳情/);
+  assert.match(taskCard, /\{expanded \? \(/);
+  assert.match(detailPage, /prominent/);
+});
+
+test("tasks keep work and family separate with family collapsed by default", () => {
+  const tasksPage = read("app/tasks/page.tsx");
+  assert.match(tasksPage, /const personalTasks = filteredTasks\.filter\(\(task\) => taskCategoryFor\(task\) === "personal"\)/);
+  assert.match(tasksPage, /const familyTasks = filteredTasks\.filter\(\(task\) => taskCategoryFor\(task\) === "family"\)/);
+  assert.match(tasksPage, /const \[familyExpanded, setFamilyExpanded\] = useState\(false\)/);
+  assert.match(tasksPage, /個人任務/);
+  assert.match(tasksPage, /家庭任務/);
+  assert.match(tasksPage, /SEC 任務/);
+  assert.match(tasksPage, /Wecare 任務/);
+  assert.match(tasksPage, /aria-expanded=\{isFamilyOpen\}/);
+});
+
+test("task categories use the existing area and scope fields without a database migration", () => {
+  const categories = read("lib/task-categories.ts");
+  const form = read("components/forms/TaskForm.tsx");
+  const api = read("app/api/control/route.ts");
+  assert.match(categories, /"personal" \| "family" \| "sec" \| "wecare"/);
+  assert.match(categories, /case "sec": return \{ area: "work", scope: "home" \}/);
+  assert.match(categories, /case "wecare": return \{ area: "work", scope: "company" \}/);
+  assert.match(form, /taskCategory: form\.task_category/);
+  assert.match(api, /taskCategoryValue\(body\.taskCategory\)/);
+  assert.doesNotMatch(categories, /supabase|migration/i);
+});
+
+test("PWA metadata describes personal work only", () => {
+  const manifest = read("app/manifest.ts");
+  const layout = read("app/layout.tsx");
+  assert.match(manifest, /個人工作管理系統/);
+  assert.match(layout, /個人工作管理系統/);
+  assert.doesNotMatch(manifest, /公司日常作業系統|\"business\"/);
+});
+
+test("task form starts with a clear task name and keeps follow-up simple", () => {
+  const form = read("components/forms/TaskForm.tsx");
+  assert.match(form, /任務名稱/);
+  assert.match(form, /何時完成（可留空）/);
+  assert.match(form, /負責人/);
+  assert.match(form, /共同跟進（可多選）/);
+  assert.ok(form.indexOf("任務名稱") < form.indexOf("由誰共同跟進？"));
+  assert.ok(form.indexOf("負責人") < form.indexOf("由誰共同跟進？"));
+  assert.match(form, /建立後直接交給對方確認及跟進/);
+  assert.doesNotMatch(form, /<span className="label">下一步<\/span>/);
+  assert.doesNotMatch(form, /<span className="label">情境<\/span>/);
+  assert.doesNotMatch(form, /<span className="label">完成定義<\/span>/);
+  assert.doesNotMatch(form, /<span className="label">預計工期（日）<\/span>/);
+  assert.doesNotMatch(form, /personalTaskTemplates|由個人工作範本開始/);
+  assert.match(form, /sessionStorage/);
+});
+
+test("task type is free text and collaborators are separate from single-person handoff", () => {
+  const form = read("components/forms/TaskForm.tsx");
+  const voice = read("components/VoiceHandoffForm.tsx");
+  const api = read("app/api/control/route.ts");
+  const migration = read("supabase/migrations/20260902090000_task_free_type_and_collaborators.sql");
+  assert.match(form, /任務類型（可留空）/);
+  assert.match(voice, /任務類型（可留空）/);
+  assert.match(form, /followerUserIds/);
+  assert.match(api, /set_task_followers/);
+  assert.match(migration, /add column if not exists task_type_label/);
+  assert.match(migration, /create table if not exists public\.task_followers/);
+  assert.match(migration, /enable row level security/);
+  assert.match(migration, /TASK_FOLLOWER_FORBIDDEN/);
+});
+
+test("handoff supports accept, clarification, reschedule and transfer", () => {
+  const handoff = read("components/items/TaskHandoffControls.tsx");
+  assert.match(handoff, /接受跟進/);
+  assert.match(handoff, /要求補充/);
+  assert.match(handoff, /建議改期/);
+  assert.match(handoff, /handoff_transfer/);
+  assert.doesNotMatch(handoff, /更新個案進度|個案去向|完全結案/);
+});
+
+test("personal work queue migration is additive, indexed and leaves finance out of the digest", () => {
+  const migration = read("supabase/migrations/20260804200000_personal_work_queue.sql").toLowerCase();
+  const rollback = read("supabase/migrations/20260804200000_personal_work_queue.rollback.sql").toLowerCase();
+  assert.match(migration, /add column if not exists waiting_for/);
+  assert.match(migration, /add column if not exists waiting_on/);
+  assert.match(migration, /tasks_waiting_follow_up_idx/);
+  assert.match(migration, /notification_dispatch_authorized/);
+  assert.match(migration, /on conflict \(user_id, digest_date\)/);
+  assert.doesNotMatch(migration, /from public\.transactions/);
+  assert.match(migration, /revoke all on function public\.claim_due_email_digests\([\s\S]*from public, anon, authenticated/);
+  assert.match(migration, /grant execute on function public\.claim_due_email_digests\([\s\S]*to service_role/);
+  assert.doesNotMatch(migration, /to anon, service_role/);
+  assert.match(read("app/api/cron/due-email/route.ts"), /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(migration, /drop table|delete from/);
+  assert.match(rollback, /personal_work_queue_rollback_requires_waiting_data_export/);
+});

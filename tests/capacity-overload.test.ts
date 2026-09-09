@@ -57,3 +57,11 @@ test("WIP at the personal limit creates a gentle signal without changing any tas
   assert.equal(result.needsAttention, true);
   assert.ok(result.reasons.some((reason) => reason.includes("進行中工作")));
 });
+
+test("a due recurring prompt remains in today's capacity until this occurrence is completed", () => {
+  const result = assessCapacityOverload({
+    tasks: [{ ...baseTask, due_date: null, recurrence_rule_id: "rule", planned_date: "2026-07-23", estimated_minutes: 20 }],
+    assignments: [], currentUserId: "derek", settings, capacity, today
+  });
+  assert.equal(result.today.committedMinutes, 20);
+});
