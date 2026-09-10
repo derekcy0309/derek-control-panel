@@ -1321,6 +1321,13 @@ async function saveTaskRecurrence({ client, user }: RequestContext, body: Record
   if (["done", "cancelled"].includes(task.data.status)) {
     return jsonError("請在未完成的任務上設定重複工作。", 422);
   }
+  const taskDueDate = dateValue(task.data.due_date);
+  if (recurrence.frequency === "interval" && !taskDueDate) {
+    return jsonError("Routine 工作需要先設定首次到期日。", 422);
+  }
+  if (recurrence.endsOn && taskDueDate && recurrence.endsOn < taskDueDate) {
+    return jsonError("Routine 結束日期不可早過首次到期日。", 422);
+  }
 
   const payload = {
     seed_task_id: taskId,
@@ -1330,6 +1337,9 @@ async function saveTaskRecurrence({ client, user }: RequestContext, body: Record
     frequency: recurrence.frequency,
     weekdays: recurrence.weekdays,
     custom_interval_days: recurrence.customIntervalDays,
+    interval_value: recurrence.intervalValue,
+    interval_unit: recurrence.intervalUnit,
+    ends_on: recurrence.endsOn,
     business_days_only: recurrence.businessDaysOnly,
     night_shift_pattern: recurrence.nightShiftPattern,
     night_shift_on_days: recurrence.nightShiftOnDays,
@@ -2828,9 +2838,12 @@ function nextMonthIso(monthStart: string) {
 
 type RecurrenceOptions = {
   deadlineMode: "scheduled" | "none";
-  frequency: "daily" | "weekly" | "monthly" | "custom";
+  frequency: "daily" | "weekly" | "monthly" | "custom" | "interval";
   weekdays: number[];
   customIntervalDays: number | null;
+  intervalValue: number | null;
+  intervalUnit: "day" | "month" | "year" | null;
+  endsOn: string | null;
   businessDaysOnly: boolean;
   nightShiftPattern: boolean;
   nightShiftOnDays: number | null;
@@ -2840,7 +2853,7 @@ type RecurrenceOptions = {
 
 function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | Response {
   const deadlineMode = enumValue(body.deadlineMode, ["scheduled", "none"] as const, "scheduled")!;
-  const frequency = enumValue(body.frequency, ["daily", "weekly", "monthly", "custom"] as const, null);
+  const frequency = enumValue(body.frequency, ["daily", "weekly", "monthly", "custom", "interval"] as const, null);
   if (!frequency) return jsonError("請選擇有效的重複方式。", 422);
   const rawWeekdays = body.weekdays === undefined ? [] : body.weekdays;
   if (!Array.isArray(rawWeekdays) || rawWeekdays.length > 7) return jsonError("重複日子不正確。", 422);
@@ -2854,6 +2867,19 @@ function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | R
     : null;
   if (frequency === "custom" && customIntervalDays === null) {
     return jsonError("自訂週期請填寫 1 至 3650 日。", 422);
+  }
+  const intervalValue = frequency === "interval" ? integerValue(body.intervalValue, 1, 3650) : null;
+  const intervalUnit = frequency === "interval"
+    ? enumValue(body.intervalUnit, ["day", "month", "year"] as const, null)
+    : null;
+  if (frequency === "interval" && (intervalValue === null || !intervalUnit)) {
+    return jsonError("Routine 工作請填寫有效的相隔時間及日／月／年。", 422);
+  }
+  const rawEndsOn = stringValue(body.endsOn);
+  const endsOn = rawEndsOn ? dateValue(rawEndsOn) : null;
+  if (rawEndsOn && !endsOn) return jsonError("Routine 結束日期不正確。", 422);
+  if (frequency === "interval" && deadlineMode !== "scheduled") {
+    return jsonError("Routine 工作必須使用原定到期日計算。", 422);
   }
   const nightShiftPattern = typeof body.nightShiftPattern === "boolean" ? body.nightShiftPattern : false;
   const businessDaysOnly = typeof body.businessDaysOnly === "boolean" ? body.businessDaysOnly : false;
@@ -2871,6 +2897,9 @@ function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | R
     frequency,
     weekdays: frequency === "weekly" ? validWeekdays : [],
     customIntervalDays,
+    intervalValue,
+    intervalUnit,
+    endsOn: frequency === "interval" ? endsOn : null,
     businessDaysOnly,
     nightShiftPattern,
     nightShiftOnDays,

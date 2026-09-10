@@ -6,13 +6,11 @@ import path from "node:path";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
-test("recurring task form offers an explicit no-deadline mode and keeps a schedule prompt", () => {
-  const form = read("components/forms/TaskForm.tsx");
-  assert.match(form, /recurrence_deadline_mode: "scheduled" \| "none"/);
-  assert.match(form, /沒有期限，只按週期提示/);
-  assert.match(form, /保留今次工作直至你按「今次已完成」/);
-  assert.match(form, /deadlineMode: form\.recurrence_deadline_mode/);
-  assert.match(form, /due_date: mode === "none" \? ""/);
+test("legacy no-deadline routines remain manageable from the task card", () => {
+  const card = read("components/items/TaskCard.tsx");
+  assert.match(card, /沒有期限，只提示/);
+  assert.match(card, /保留，直至你完成、延後或暫停重複工作/);
+  assert.match(card, /set_task_recurrence_deadline_mode/);
 });
 
 test("owners can change an existing recurring rule without changing authorization", () => {

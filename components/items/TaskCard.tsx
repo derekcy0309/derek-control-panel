@@ -351,6 +351,11 @@ function TaskRecurrencePanel({
 }
 
 function recurrenceSummary(rule: TaskRecurrenceRule) {
+  if (rule.frequency === "interval") {
+    const unit = rule.interval_unit === "year" ? "年" : rule.interval_unit === "month" ? "月" : "日";
+    const ending = rule.ends_on ? `，至 ${formatDate(rule.ends_on)}` : "，無限期";
+    return `每隔 ${rule.interval_value ?? 0} ${unit}${ending}；按原定到期日計算`;
+  }
   if (rule.night_shift_pattern) {
     return `夜更週期：工作 ${rule.night_shift_on_days ?? 0} 日，休息 ${rule.night_shift_off_days ?? 0} 日`;
   }

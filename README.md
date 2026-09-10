@@ -13,7 +13,7 @@
 - Task Action Queue：按個人／家庭／SEC／Wecare 分類，只先展開逾期、7 日內及無日期 Urgent 各五項；其餘摺起，並提供內部到期日曆及 A4 精簡列印
 - 單一步驟 Today：首頁先突出一項「現在只做這一件」，可直接開始 5 分鐘或要求系統拆細；其餘工作延後顯示，降低同時選擇造成的啟動阻力
 - 多巴胺友善外觀：Today／家庭／個人／工作／財務／健康各有文字、icon 及身份色，另有 Sunrise、Ocean、Aurora、Night Shift 四套主題與安靜／平衡／鮮明三段視覺強度
-- 重複工作：每日／每週／每月／自訂週期／夜更模式；只在完成當前任務後安全建立下一項，可隨時暫停
+- Routine 工作：只需設定「每隔 N 日／月／年」及無限期或結束日期；完成當前任務後才建立下一項，並永遠按原定到期日延續，不會因遲完成而令 schedule 漂移
 - Body Double 同步專注：兩人各自選任務、ready 後同步開始；可個別暫停／離開／完成，結束前必須儲存自己的 checkpoint，沒有排名或自動改動任務
 - Task Resource Pack：任務可連結網址、文件、Supabase Storage、聯絡人及現有 Notes／SOP／Decision／Project／Waiting；逐項明確分享，Focus Mode 只顯示可開啟資源
 - Mobile Quick Capture：手機文字、拍相、文件、語音轉文字、可選原始錄音與 PWA 網頁分享，全部先進既有 Inbox；上載可重試且私人附件不會因 Inbox 分享而外洩
@@ -93,6 +93,7 @@ supabase/migrations/20260804160000_suki_workflow_followups.sql
 supabase/migrations/20260804200000_personal_work_queue.sql
 supabase/migrations/20260909120022_request_duty.sql
 supabase/migrations/20260910120000_visual_themes.sql
+supabase/migrations/20260910150051_routine_interval_schedule.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -130,6 +131,7 @@ supabase/migrations/20260804130000_recurring_no_deadline_reminders.rollback.sql
 supabase/migrations/20260804160000_suki_workflow_followups.rollback.sql
 supabase/migrations/20260804200000_personal_work_queue.rollback.sql
 supabase/migrations/20260909120022_request_duty.rollback.sql
+supabase/migrations/20260910150051_routine_interval_schedule.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。

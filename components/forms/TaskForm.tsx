@@ -5,6 +5,7 @@ import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
+import { addRoutineInterval, formatRoutineDate, type RoutineIntervalUnit } from "@/lib/routine-interval";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
 
@@ -38,15 +39,10 @@ type TaskFormState = {
   handoff_to_user_id: string;
   handoff_note: string;
   recurrence_enabled: boolean;
-  recurrence_deadline_mode: "scheduled" | "none";
-  recurrence_frequency: string;
-  recurrence_weekdays: number[];
-  recurrence_custom_interval_days: string;
-  recurrence_business_days_only: boolean;
-  recurrence_night_shift_pattern: boolean;
-  recurrence_night_shift_on_days: string;
-  recurrence_night_shift_off_days: string;
-  recurrence_cycle_anchor_date: string;
+  recurrence_interval_value: string;
+  recurrence_interval_unit: RoutineIntervalUnit;
+  recurrence_end_mode: "never" | "date";
+  recurrence_ends_on: string;
   notice_user_ids: string[];
   follower_user_ids: string[];
 };
@@ -81,15 +77,10 @@ const defaultState: TaskFormState = {
   handoff_to_user_id: "",
   handoff_note: "",
   recurrence_enabled: false,
-  recurrence_deadline_mode: "scheduled",
-  recurrence_frequency: "weekly",
-  recurrence_weekdays: [],
-  recurrence_custom_interval_days: "7",
-  recurrence_business_days_only: false,
-  recurrence_night_shift_pattern: false,
-  recurrence_night_shift_on_days: "4",
-  recurrence_night_shift_off_days: "2",
-  recurrence_cycle_anchor_date: "",
+  recurrence_interval_value: "1",
+  recurrence_interval_unit: "month",
+  recurrence_end_mode: "never",
+  recurrence_ends_on: "",
   notice_user_ids: [],
   follower_user_ids: []
 };
@@ -151,15 +142,10 @@ export function TaskForm({
           handoff_to_user_id: "",
           handoff_note: "",
           recurrence_enabled: false,
-          recurrence_deadline_mode: "scheduled",
-          recurrence_frequency: "weekly",
-          recurrence_weekdays: [],
-          recurrence_custom_interval_days: "7",
-          recurrence_business_days_only: false,
-          recurrence_night_shift_pattern: false,
-          recurrence_night_shift_on_days: "4",
-          recurrence_night_shift_off_days: "2",
-          recurrence_cycle_anchor_date: "",
+          recurrence_interval_value: "1",
+          recurrence_interval_unit: "month",
+          recurrence_end_mode: "never",
+          recurrence_ends_on: "",
           notice_user_ids: initialNoticeUserIds,
           follower_user_ids: initialFollowerUserIds
         }
@@ -173,6 +159,9 @@ export function TaskForm({
   const [draftRestored, setDraftRestored] = useState(false);
   const customStatusListId = useId();
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
+  const nextRoutineDueDate = form.due_date
+    ? addRoutineInterval(form.due_date, Number(form.recurrence_interval_value), form.recurrence_interval_unit)
+    : null;
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
 
@@ -214,23 +203,6 @@ export function TaskForm({
     setForm((current) => ({ ...current, [name]: value }));
   }
 
-  function toggleRecurrenceWeekday(day: number) {
-    setForm((current) => ({
-      ...current,
-      recurrence_weekdays: current.recurrence_weekdays.includes(day)
-        ? current.recurrence_weekdays.filter((value) => value !== day)
-        : [...current.recurrence_weekdays, day].sort((left, right) => left - right)
-    }));
-  }
-
-  function setRecurrenceDeadlineMode(mode: "scheduled" | "none") {
-    setForm((current) => ({
-      ...current,
-      recurrence_deadline_mode: mode,
-      due_date: mode === "none" ? "" : current.due_date
-    }));
-  }
-
   function toggleFollower(userId: string) {
     setForm((current) => ({
       ...current,
@@ -252,15 +224,11 @@ export function TaskForm({
   function recurrencePayload(taskId: string) {
     return {
       taskId,
-      deadlineMode: form.recurrence_deadline_mode,
-      frequency: form.recurrence_frequency,
-      weekdays: form.recurrence_weekdays,
-      customIntervalDays: Number(form.recurrence_custom_interval_days),
-      businessDaysOnly: form.recurrence_business_days_only,
-      nightShiftPattern: form.recurrence_night_shift_pattern,
-      nightShiftOnDays: Number(form.recurrence_night_shift_on_days),
-      nightShiftOffDays: Number(form.recurrence_night_shift_off_days),
-      cycleAnchorDate: form.recurrence_cycle_anchor_date || null
+      deadlineMode: "scheduled",
+      frequency: "interval",
+      intervalValue: Number(form.recurrence_interval_value),
+      intervalUnit: form.recurrence_interval_unit,
+      endsOn: form.recurrence_end_mode === "date" ? form.recurrence_ends_on || null : null
     };
   }
 
@@ -285,6 +253,21 @@ export function TaskForm({
     if (!initialTask && form.handoff_to_user_id && !form.handoff_note.trim()) {
       setError("請填交接 notes，讓對方知道第一步要做甚麼。");
       return;
+    }
+    if (form.recurrence_enabled) {
+      const intervalValue = Number(form.recurrence_interval_value);
+      if (!form.due_date) {
+        setError("Routine 工作需要先設定首次到期日。");
+        return;
+      }
+      if (!Number.isInteger(intervalValue) || intervalValue < 1 || intervalValue > 3650) {
+        setError("Routine 相隔時間必須是 1 至 3650 的整數。");
+        return;
+      }
+      if (form.recurrence_end_mode === "date" && (!form.recurrence_ends_on || form.recurrence_ends_on < form.due_date)) {
+        setError("Routine 結束日期不可早過首次到期日。");
+        return;
+      }
     }
 
     setSaving(true);
@@ -337,6 +320,16 @@ export function TaskForm({
           buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
           task_type_label: payload.taskType
         } });
+        if (form.recurrence_enabled && !initialTask.recurrence_rule_id) {
+          try {
+            await controlAction("save_task_recurrence", recurrencePayload(initialTask.id));
+          } catch (caught) {
+            setCreatedTaskId(initialTask.id);
+            setRecurrenceWarning(caught instanceof Error ? caught.message : "任務已更新，但未能設定 Routine 工作。");
+            setSaving(false);
+            return;
+          }
+        }
       } else {
         const created = await controlAction<{ task: Task }>("create_task", payload);
         sessionStorage.removeItem(draftKey);
@@ -384,7 +377,6 @@ export function TaskForm({
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <DueDatePicker
           value={form.due_date}
-          disabled={form.recurrence_enabled && form.recurrence_deadline_mode === "none"}
           onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))}
         />
         <label>
@@ -476,7 +468,7 @@ export function TaskForm({
       ) : null}
       {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
       {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
-      {!initialTask && !compact ? (
+      {!compact && !initialTask?.recurrence_rule_id ? (
         <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
           <label className="flex cursor-pointer items-start gap-3">
             <input
@@ -486,76 +478,48 @@ export function TaskForm({
               onChange={(event) => update("recurrence_enabled", event.target.checked)}
             />
             <span>
-              <span className="block font-extrabold text-slate-900">這是一項重複工作</span>
-              <span className="mt-1 block text-sm leading-6 text-slate-600">完成目前這一項後才建立下一項，不會預先產生大量 backlog。之後可在任務卡暫停或恢復。</span>
+              <span className="block font-extrabold text-slate-900">這是一項 Routine 工作</span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">完成今次後才會建立下一次。遲完成亦會沿用原定到期日計算，不會令整個 schedule 越推越遲。</span>
             </span>
           </label>
           {form.recurrence_enabled ? (
             <div className="mt-4 grid gap-4">
-              <label>
-                <span className="label">重複方式</span>
-                <select className="field mt-2 bg-white" value={form.recurrence_frequency} onChange={(event) => update("recurrence_frequency", event.target.value)}>
-                  <option value="daily">每日</option>
-                  <option value="weekly">每星期指定日</option>
-                  <option value="monthly">每月同一日</option>
-                  <option value="custom">自訂相隔日數</option>
-                </select>
-              </label>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
+                <label>
+                  <span className="label">每隔</span>
+                  <input className="field mt-2 bg-white" type="number" min="1" max="3650" value={form.recurrence_interval_value} onChange={(event) => update("recurrence_interval_value", event.target.value)} required={form.recurrence_enabled} />
+                </label>
+                <label>
+                  <span className="label">時限</span>
+                  <select className="field mt-2 bg-white" value={form.recurrence_interval_unit} onChange={(event) => update("recurrence_interval_unit", event.target.value)}>
+                    <option value="day">日</option>
+                    <option value="month">月</option>
+                    <option value="year">年</option>
+                  </select>
+                </label>
+              </div>
+              {form.due_date && nextRoutineDueDate ? (
+                <p className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-indigo-800" aria-live="polite">
+                  首次到期：{formatRoutineDate(form.due_date)} · 如完成，下一次：{formatRoutineDate(nextRoutineDueDate)}
+                </p>
+              ) : <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">請先在上方設定首次到期日。</p>}
               <fieldset>
-                <legend className="label">每次是否有期限</legend>
+                <legend className="label">幾時完結</legend>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_deadline_mode === "scheduled" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
-                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-deadline-mode" checked={form.recurrence_deadline_mode === "scheduled"} onChange={() => setRecurrenceDeadlineMode("scheduled")} />
-                    <span className="font-bold text-slate-900">每次有到期日</span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-600">下一次的週期日期會當作到期日。</span>
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_end_mode === "never" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-end-mode" checked={form.recurrence_end_mode === "never"} onChange={() => update("recurrence_end_mode", "never")} />
+                    <span className="font-bold text-slate-900">無限期</span>
                   </label>
-                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_deadline_mode === "none" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
-                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-deadline-mode" checked={form.recurrence_deadline_mode === "none"} onChange={() => setRecurrenceDeadlineMode("none")} />
-                    <span className="font-bold text-slate-900">沒有期限，只按週期提示</span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-600">不會顯示逾期；到每個時段會提示，並保留今次工作直至你按「今次已完成」。</span>
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_end_mode === "date" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-end-mode" checked={form.recurrence_end_mode === "date"} onChange={() => update("recurrence_end_mode", "date")} />
+                    <span className="font-bold text-slate-900">指定結束日期</span>
                   </label>
                 </div>
               </fieldset>
-              {form.recurrence_frequency === "weekly" ? (
-                <div>
-                  <p className="label">每星期哪一天</p>
-                  <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
-                    {[
-                      [0, "日"], [1, "一"], [2, "二"], [3, "三"], [4, "四"], [5, "五"], [6, "六"]
-                    ].map(([day, label]) => {
-                      const value = Number(day);
-                      const checked = form.recurrence_weekdays.includes(value);
-                      return (
-                        <label className={`cursor-pointer rounded-lg border-2 px-3 py-2 text-center text-sm font-bold ${checked ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-200 bg-white text-slate-700"}`} key={value}>
-                          <input className="sr-only" type="checkbox" checked={checked} onChange={() => toggleRecurrenceWeekday(value)} />
-                          星期{label}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+              {form.recurrence_end_mode === "date" ? (
+                <label><span className="label">結束日期</span><input className="field mt-2 bg-white" type="date" min={form.due_date || undefined} value={form.recurrence_ends_on} onChange={(event) => update("recurrence_ends_on", event.target.value)} required /></label>
               ) : null}
-              {form.recurrence_frequency === "custom" ? (
-                <label>
-                  <span className="label">每隔幾日</span>
-                  <input className="field mt-2 bg-white" type="number" min="1" max="3650" value={form.recurrence_custom_interval_days} onChange={(event) => update("recurrence_custom_interval_days", event.target.value)} />
-                </label>
-              ) : null}
-              <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
-                <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.recurrence_business_days_only} onChange={(event) => update("recurrence_business_days_only", event.target.checked)} />
-                只在工作日產生下一項
-              </label>
-              <label className="flex items-start gap-3 rounded-xl bg-white p-3 text-sm text-slate-700">
-                <input className="mt-1 h-5 w-5 accent-indigo-600" type="checkbox" checked={form.recurrence_night_shift_pattern} onChange={(event) => update("recurrence_night_shift_pattern", event.target.checked)} />
-                <span><span className="block font-bold">按夜更週期</span><span className="mt-1 block leading-5">開啟後會以「工作幾日／休息幾日」取代上方日期規則。</span></span>
-              </label>
-              {form.recurrence_night_shift_pattern ? (
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <label><span className="label">工作日數</span><input className="field mt-2 bg-white" type="number" min="1" max="365" value={form.recurrence_night_shift_on_days} onChange={(event) => update("recurrence_night_shift_on_days", event.target.value)} /></label>
-                  <label><span className="label">休息日數</span><input className="field mt-2 bg-white" type="number" min="0" max="365" value={form.recurrence_night_shift_off_days} onChange={(event) => update("recurrence_night_shift_off_days", event.target.value)} /></label>
-                  <label><span className="label">週期第一日（可選）</span><input className="field mt-2 bg-white" type="date" value={form.recurrence_cycle_anchor_date} onChange={(event) => update("recurrence_cycle_anchor_date", event.target.value)} /></label>
-                </div>
-              ) : null}
+              <p className="text-xs font-semibold leading-5 text-slate-600">不設「重複次數」。到指定結束日期後，系統會自動停止建立下一次。</p>
             </div>
           ) : null}
         </fieldset>

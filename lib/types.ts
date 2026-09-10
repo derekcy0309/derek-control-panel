@@ -425,7 +425,7 @@ export type ProjectMilestone = {
   updated_at: string;
 };
 
-export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "custom";
+export type RecurrenceFrequency = "daily" | "weekly" | "monthly" | "custom" | "interval";
 
 export type TaskRecurrenceRule = {
   id: string;
@@ -436,6 +436,9 @@ export type TaskRecurrenceRule = {
   frequency: RecurrenceFrequency;
   weekdays: number[];
   custom_interval_days: number | null;
+  interval_value: number | null;
+  interval_unit: "day" | "month" | "year" | null;
+  ends_on: string | null;
   business_days_only: boolean;
   night_shift_pattern: boolean;
   night_shift_on_days: number | null;
