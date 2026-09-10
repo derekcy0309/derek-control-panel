@@ -148,12 +148,13 @@ export type UserSettings = {
   default_reminder_days: ReminderDays;
   created_at: string;
   updated_at: string;
-  theme?: "light" | "dark" | "system";
+  theme?: "light" | "dark" | "system" | "sunrise" | "ocean" | "aurora" | "night_shift";
   language?: string;
   accent_colour?: string;
   gentle_mode?: boolean;
   low_capacity_mode?: boolean;
   dashboard_density?: "calm" | "comfortable" | "compact";
+  visual_intensity?: "quiet" | "balanced" | "vivid";
   wip_limit?: number;
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;

@@ -65,7 +65,8 @@ test("home is progressive, caps the primary list at three and keeps advanced too
   const dashboard = read("components/RoleDailyDashboard.tsx");
   const home = read("app/page.tsx");
   assert.match(dashboard, /slice\(0, 3\)/);
-  assert.match(dashboard, /今日三項主要任務/);
+  assert.match(dashboard, /現在只做這一件/);
+  assert.match(dashboard, /完成這一步後再看/);
   assert.match(dashboard, /真正緊急或已逾期/);
   assert.match(dashboard, /新交接/);
   assert.match(dashboard, /等待本人決定或確認/);

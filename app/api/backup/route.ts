@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
 async function buildBackup({ client, user }: RequestContext): Promise<BackupEnvelope | Response> {
   const [profile, settings, tasks, operatingItems, transactions, meetings, balances, planning, capacityCheckins, weeklyReviews, notificationPreferences, recurrenceRules] = await Promise.all([
     client.from("user_profiles").select("user_id,display_name,timezone,active,created_at,updated_at").eq("user_id", user.id).maybeSingle(),
-    client.from("user_settings").select("daily_reminder_time,default_reminder_days,theme,language,accent_colour,gentle_mode,low_capacity_mode,dashboard_density,wip_limit,quiet_hours_start,quiet_hours_end,notification_mode,default_area,focus_minutes,monthly_profit_target,pinned_pages,created_at,updated_at").eq("user_id", user.id).maybeSingle(),
+    client.from("user_settings").select("daily_reminder_time,default_reminder_days,theme,language,accent_colour,gentle_mode,low_capacity_mode,dashboard_density,visual_intensity,wip_limit,quiet_hours_start,quiet_hours_end,notification_mode,default_area,focus_minutes,monthly_profit_target,pinned_pages,created_at,updated_at").eq("user_id", user.id).maybeSingle(),
     client.from("tasks").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).limit(maxCollectionSize),
     client.from("operating_items").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).limit(maxCollectionSize),
     client.from("transactions").select("*").eq("user_id", user.id).order("created_at", { ascending: true }).limit(maxCollectionSize),

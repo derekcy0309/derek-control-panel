@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { BellOff, BellRing, Mic, Plus, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { ArrowRight, BellOff, BellRing, CalendarClock, Clock3, Mic, Plus, Scissors, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { SectionArtwork } from "@/components/SectionArtwork";
 import { formatDate, isOverdue } from "@/lib/date";
 import { riskLabels, taskStatusDetailLabels } from "@/lib/labels";
 import { buildSukiFollowupSummary, sukiFollowupCategoryLabels } from "@/lib/suki-followups";
@@ -15,6 +16,8 @@ export function RoleDailyDashboard({
   busy,
   onVoice,
   onAdd,
+  onStart,
+  onNeedHelp,
   onQuietMode,
   onResolveDecision
 }: {
@@ -23,6 +26,8 @@ export function RoleDailyDashboard({
   busy: boolean;
   onVoice: () => void;
   onAdd: () => void;
+  onStart: (task: Task, minutes: number) => void;
+  onNeedHelp: (task: Task) => void;
   onQuietMode: (until: string | null) => Promise<void>;
   onResolveDecision: (task: Task) => Promise<void>;
 }) {
@@ -37,6 +42,8 @@ export function RoleDailyDashboard({
   const visibleTop = role === "suki" && quietActive
     ? topCandidates.filter(trulyUrgent)
     : topCandidates;
+  const primaryTask = visibleTop[0] ?? null;
+  const nextTasks = visibleTop.slice(1);
   const urgent = data.taskCatalog
     .filter((task) => activeTask(task) && (role === "suki" && quietActive ? trulyUrgent(task) : task.risk === "high" || isOverdue(task.due_date)))
     .filter((task) => !visibleTop.some((top) => top.id === task.id))
@@ -52,9 +59,9 @@ export function RoleDailyDashboard({
 
   return (
     <section className="space-y-4" aria-label={workspaceRoleLabels[role]}>
-      <div className="overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50 p-5 shadow-soft sm:p-6">
+      <div className="today-overview-banner section-hero overflow-hidden p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+          <div className="relative z-10">
             <p className="eyebrow">{workspaceRoleLabels[role]}</p>
             <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{role === "suki" && quietActive ? "安靜模式：只顯示真正緊急事項" : "今日只先處理最重要的三件事"}</h2>
             {roleCounts.length ? <p className="mt-2 text-sm text-slate-600">{roleCounts.join(" · ")}</p> : null}
@@ -64,11 +71,20 @@ export function RoleDailyDashboard({
             <Button type="button" className="min-h-14" variant="secondary" onClick={onAdd}><Plus className="h-5 w-5" />新增任務</Button>
           </div>
         </div>
+        <SectionArtwork section="today" compact />
       </div>
 
-      <DashboardSection title={role === "suki" && quietActive ? "目前真正緊急事項" : "今日三項主要任務"} count={visibleTop.length} empty={role === "suki" && quietActive ? "目前沒有真正緊急事項；其他工作已留待稍後摘要。" : "今日暫時沒有需要開始的主要任務。"}>
-        {visibleTop.map((task) => <CompactTaskCard key={task.id} task={task} />)}
-      </DashboardSection>
+      {primaryTask ? (
+        <PrimaryActionCard task={primaryTask} onStart={() => onStart(primaryTask, 5)} onNeedHelp={() => onNeedHelp(primaryTask)} />
+      ) : (
+        <DashboardSection title={role === "suki" && quietActive ? "目前真正緊急事項" : "現在做甚麼"} count={0} empty={role === "suki" && quietActive ? "目前沒有真正緊急事項；其他工作已留待稍後摘要。" : "今日暫時沒有需要開始的主要任務。"} />
+      )}
+
+      {nextTasks.length ? (
+        <DashboardSection title="完成這一步後再看" count={nextTasks.length}>
+          {nextTasks.map((task) => <CompactTaskCard key={task.id} task={task} />)}
+        </DashboardSection>
+      ) : null}
 
       {urgent.length ? (
         <DashboardSection title="真正緊急或已逾期" count={urgent.length} tone="urgent">
@@ -113,6 +129,33 @@ export function RoleDailyDashboard({
   );
 }
 
+function PrimaryActionCard({ task, onStart, onNeedHelp }: { task: Task; onStart: () => void; onNeedHelp: () => void }) {
+  return (
+    <section className="today-primary-action" aria-labelledby={`today-primary-${task.id}`}>
+      <div className="relative z-10">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="flex items-center gap-2 text-sm font-extrabold text-indigo-700"><span className="today-now-dot" aria-hidden="true" />現在只做這一件</p>
+          <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-extrabold text-slate-700 ring-1 ring-indigo-100">{taskStatusDetailLabels[task.status]}</span>
+        </div>
+        <h3 id={`today-primary-${task.id}`} className="mt-4 max-w-4xl text-2xl font-black leading-tight tracking-tight text-slate-950 sm:text-4xl">{task.title}</h3>
+        <div className="today-next-step mt-5">
+          <p className="text-xs font-extrabold uppercase tracking-[.14em] text-indigo-700">最小下一步</p>
+          <p className="mt-2 text-base font-bold leading-7 text-slate-900 sm:text-lg">{task.next_action || "先打開任務，寫低第一個可以見到的動作。"}</p>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-slate-600">
+          <span className="inline-flex items-center gap-1.5"><Clock3 className="h-4 w-4" />先做 5 分鐘</span>
+          {task.due_date ? <span className="inline-flex items-center gap-1.5"><CalendarClock className="h-4 w-4" />截止 {formatDate(task.due_date)}</span> : null}
+        </div>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Button type="button" onClick={onStart}><ArrowRight className="h-5 w-5" />開始 5 分鐘</Button>
+          <Button type="button" variant="secondary" onClick={onNeedHelp}><Scissors className="h-4 w-4" />我開始唔到</Button>
+          <Link className="inline-flex min-h-11 items-center rounded-lg px-4 font-bold text-indigo-700 hover:bg-white/70" href={`/tasks/${task.id}`}>查看完整任務</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SukiDailyFollowup({ data, summary }: { data: TodayData; summary: ReturnType<typeof buildSukiFollowupSummary> }) {
   const categories = Object.entries(summary.counts).filter(([, count]) => count > 0) as Array<[keyof typeof sukiFollowupCategoryLabels, number]>;
   return (
@@ -133,7 +176,7 @@ function SukiDailyFollowup({ data, summary }: { data: TodayData; summary: Return
   );
 }
 
-function DashboardSection({ title, count, empty, tone = "normal", children }: { title: string; count: number; empty?: string; tone?: "normal" | "urgent"; children: React.ReactNode }) {
+function DashboardSection({ title, count, empty, tone = "normal", children }: { title: string; count: number; empty?: string; tone?: "normal" | "urgent"; children?: React.ReactNode }) {
   return <section className={`rounded-2xl border p-4 sm:p-5 ${tone === "urgent" ? "border-amber-200 bg-amber-50/60" : "border-slate-200 bg-white"}`}><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-extrabold text-slate-950">{title}</h3><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{count}</span></div><div className="mt-3 grid gap-3">{count ? children : <p className="py-2 text-sm text-slate-500">{empty}</p>}</div></section>;
 }
 

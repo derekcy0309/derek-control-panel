@@ -14,6 +14,7 @@ import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 import { EncouragementFooter } from "@/components/EncouragementFooter";
 import { LiveClock } from "@/components/LiveClock";
+import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
@@ -36,7 +37,6 @@ const navGroups: NavGroupData[] = [
     items: [
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
       { href: "/workspace/project", label: "項目", icon: BriefcaseBusiness },
-      { href: "/deadlines", label: "死線", icon: Clock3 },
       { href: "/calendar", label: "日曆", icon: CalendarDays },
       { href: "/request-duty", label: "Request Duty", icon: ClipboardCheck },
     ]
@@ -114,8 +114,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setIsAdmin(Boolean(data.profile.is_admin && data.profile.active));
         setShowEncouragement(Boolean(data.showEncouragement));
         if (data.settings) {
-        const theme = data.settings.theme === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : data.settings.theme;
-        document.documentElement.dataset.theme = theme || "light";
+        applyAppearance(data.settings.theme, data.settings.visual_intensity);
         document.documentElement.dataset.accent = data.settings.accent_colour || "indigo";
         document.documentElement.dataset.density = data.settings.dashboard_density || "comfortable";
         }
@@ -145,7 +144,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="app-frame min-h-screen bg-mist text-ink">
+    <div className="app-frame min-h-screen bg-mist text-ink" data-section={sectionIdentityForPath(pathname)}>
       {mustChangePassword ? <PasswordChangeGate onComplete={() => setMustChangePassword(false)} /> : null}
       <aside className="sidebar hidden lg:flex" aria-label="主要導覽">
         <Brand displayName={displayName} />

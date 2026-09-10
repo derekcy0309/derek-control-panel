@@ -2052,7 +2052,13 @@ async function revokeShare({ client, user }: RequestContext, body: Record<string
 
 async function saveSettings({ client, user }: RequestContext, body: Record<string, unknown>) {
   const settings = objectValue(body.settings);
-  const payload = pick(settings, ["theme","language","accent_colour","gentle_mode","low_capacity_mode","dashboard_density","wip_limit","quiet_hours_start","quiet_hours_end","notification_mode","default_area","focus_minutes","monthly_profit_target","pinned_pages","support_profile","planning_buffer_percent","default_family_load"]);
+  const payload = pick(settings, ["theme","language","accent_colour","gentle_mode","low_capacity_mode","dashboard_density","visual_intensity","wip_limit","quiet_hours_start","quiet_hours_end","notification_mode","default_area","focus_minutes","monthly_profit_target","pinned_pages","support_profile","planning_buffer_percent","default_family_load"]);
+  if ("theme" in payload && !["light", "dark", "system", "sunrise", "ocean", "aurora", "night_shift"].includes(String(payload.theme))) {
+    return jsonError("主題設定不正確。", 422);
+  }
+  if ("visual_intensity" in payload && !["quiet", "balanced", "vivid"].includes(String(payload.visual_intensity))) {
+    return jsonError("視覺刺激設定不正確。", 422);
+  }
   const result = await client.from("user_settings").update(payload).eq("user_id", user.id).select("*").single();
   if (result.error) return databaseError(result.error);
   const displayName = stringValue(body.displayName).trim();

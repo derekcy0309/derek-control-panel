@@ -10,6 +10,7 @@ import { CaptureFiles } from "@/components/inbox/CaptureFiles";
 import { ProjectMilestonesPanel } from "@/components/projects/ProjectMilestonesPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
+import { SectionArtwork } from "@/components/SectionArtwork";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { Button } from "@/components/ui/Button";
@@ -79,7 +80,7 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
   const familyPriorityView = config.area === "family" && !config.itemType;
 
   return <div className="space-y-5">
-    <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title mt-1">{config.title}</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">{config.description}</p></div><Button onClick={() => setAdding(true)}><Plus className="h-5 w-5" />{config.addLabel}</Button></section>
+    <section className="section-hero flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="relative z-10"><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title mt-1">{config.title}</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">{config.description}</p></div><Button className="relative z-10" onClick={() => setAdding(true)}><Plus className="h-5 w-5" />{config.addLabel}</Button><SectionArtwork section={config.itemType === "health" ? "health" : config.area} compact /></section>
     {config.itemType === "project" ? <ProjectMilestonesPanel projects={items} milestones={data.projectMilestones} tasks={data.tasks} onChanged={() => void reload()} /> : null}
     <section className="panel flex flex-col gap-3 p-3 sm:flex-row"><label className="relative flex-1"><span className="sr-only">搜尋此頁</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋標題、內容或下一步" /></label><label className="relative sm:w-48"><span className="sr-only">狀態</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><select className="field pl-10" value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="all">全部</option></select></label></section>
     {familyPriorityView && items.length ? (

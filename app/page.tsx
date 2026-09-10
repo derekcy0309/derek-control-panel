@@ -408,6 +408,8 @@ function TodayCommandCenter() {
         busy={busy}
         onVoice={() => setVoiceHandoffOpen(true)}
         onAdd={() => setAdding(true)}
+        onStart={(task, minutes) => openFocus(task, minutes)}
+        onNeedHelp={setSplitTask}
         onQuietMode={setQuietMode}
         onResolveDecision={resolveDecision}
       />

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Check, Pencil } from "lucide-react";
+import { CalendarClock, Check, Leaf, Pencil } from "lucide-react";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
 import { duePriorityBand } from "@/lib/due-priority";
@@ -27,6 +27,7 @@ export function TaskQueueRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [justCompleted, setJustCompleted] = useState(false);
   const urgency = !task.due_date ? undatedUrgencyFor(task) : null;
   const datedPriority = duePriorityBand(task.due_date, hkDateIso());
 
@@ -39,6 +40,8 @@ export function TaskQueueRow({
         id: task.id,
         changes: { status: "done", completed_at: new Date().toISOString() }
       });
+      setJustCompleted(true);
+      await new Promise((resolve) => window.setTimeout(resolve, 420));
       onChanged();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "未能完成任務。");
@@ -48,7 +51,7 @@ export function TaskQueueRow({
   }
 
   return (
-    <article className={`task-queue-row task-queue-row-${tone}`}>
+    <article className={`task-queue-row task-queue-row-${tone} ${justCompleted ? "is-completing" : ""}`}>
       {completed ? (
         <span className="task-complete-button bg-slate-100 text-slate-500 no-print" aria-hidden="true"><Check className="h-4 w-4" /></span>
       ) : (
@@ -83,6 +86,7 @@ export function TaskQueueRow({
       <button type="button" className="icon-button no-print" onClick={() => onEdit(task)} aria-label={`修改任務：${task.title}`}>
         <Pencil className="h-4 w-4" />
       </button>
+      {justCompleted ? <span className="task-completion-feedback" role="status"><Leaf className="h-4 w-4" />完成一步</span> : null}
     </article>
   );
 }

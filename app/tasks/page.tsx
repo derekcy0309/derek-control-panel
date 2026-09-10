@@ -5,6 +5,7 @@ import { Plus, Printer } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
+import { SectionArtwork } from "@/components/SectionArtwork";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { TaskDueCalendar } from "@/components/tasks/TaskDueCalendar";
 import { TaskPrintSheet } from "@/components/tasks/TaskPrintSheet";
@@ -54,16 +55,17 @@ function TasksContent() {
   return (
     <div className="task-list-root space-y-5">
       <div className="no-print space-y-5">
-        <section className="task-list-hero flex flex-col justify-between gap-4 rounded-2xl p-5 shadow-soft sm:flex-row sm:items-center">
-          <div>
+        <section className="task-list-hero section-hero flex flex-col justify-between gap-4 rounded-2xl p-5 shadow-soft sm:flex-row sm:items-center">
+          <div className="relative z-10">
             <p className="text-sm font-extrabold text-indigo-700">任務管理</p>
             <h1 className="mt-1 text-2xl font-bold text-ink">任務行動清單</h1>
             <p className="mt-2 text-sm font-semibold text-slate-600">先處理逾期、7 日內到期和 Urgent，再按需要打開其他無日期任務。</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="relative z-10 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => window.print()}><Printer className="h-5 w-5" />列印 A4 清單</Button>
             <Button onClick={() => setIsAdding(true)}><Plus className="h-5 w-5" />新增任務</Button>
           </div>
+          <SectionArtwork section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} compact />
         </section>
 
         <section className="panel p-3 sm:p-4" aria-label="選擇任務分類">
