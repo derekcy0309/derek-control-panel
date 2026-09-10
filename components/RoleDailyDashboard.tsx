@@ -79,7 +79,7 @@ export function RoleDailyDashboard({
       {pending.length && !(role === "suki" && quietActive) ? (
         <DashboardSection title="新交接" count={pending.length}>
           {pending.map((assignment) => <PendingHandoff key={assignment.id} assignment={assignment} task={data.taskCatalog.find((task) => task.id === assignment.resource_id)} />)}
-          <Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/handover">查看及回應全部交接 →</Link>
+          <Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/sharing">查看及回應全部交接 →</Link>
         </DashboardSection>
       ) : null}
 

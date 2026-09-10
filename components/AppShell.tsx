@@ -13,6 +13,7 @@ import { loadControlData } from "@/lib/control-api";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 import { EncouragementFooter } from "@/components/EncouragementFooter";
+import { LiveClock } from "@/components/LiveClock";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
@@ -159,6 +160,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="topbar">
           <Brand displayName={displayName} compact />
           <div className="flex items-center gap-2">
+            <LiveClock />
             <OfflineWriteQueueStatus userId={currentUserId} />
             <Link className="icon-button" href="/capture" aria-label="快速收集"><PlusCircle className="h-5 w-5" /></Link>
             <Link className="icon-button" href="/search" aria-label="搜尋"><Search className="h-5 w-5" /></Link>
