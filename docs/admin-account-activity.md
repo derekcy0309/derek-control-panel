@@ -6,7 +6,7 @@
 - 上次使用：`user_profiles.last_seen_at`，每次完成認證的 Portal request 後最多每五分鐘更新一次。
 - 清單不會傳送或顯示密碼、refresh token、任務、健康、家庭或其他私人內容。
 - 瀏覽器只呼叫受管理員檢查保護的 `/api/admin/users`；`SUPABASE_SERVICE_ROLE_KEY` 只存在 server route。
-- 鼓勵句預設只向 `derekcy0309@gmail.com` 顯示；管理員的選擇保存於 Supabase Auth `app_metadata`，一般使用者不能自行修改。
+- 鼓勵句預設只向 `derekcy0309@gmail.com` 顯示；管理員的選擇保存於 Supabase Auth `app_metadata`，一般使用者不能自行修改。鼓勵卡使用86句有中英文、人物、年份／場合及來源連結的審閱語錄，並按香港日期、頁面及近期顯示歷史輪替；詳見 [`encouragements.md`](encouragements.md)。
 
 ## 刪除帳戶
 

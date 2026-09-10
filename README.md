@@ -28,6 +28,7 @@
 - 個人工作範本：會議後跟進、等待文件、等待別人決定、每週行政、每月財務檢查、社交媒體及個人學習
 - 每日綜合提醒：今日工作、等待別人、接近期限及需要重新安排事項合併成每人每天最多一封；不混入財務或已停用營運資料
 - Request Duty 提示：只輸入提醒日期及事項；完成 request 後剔選即完成原有 Task，並沿用私人權限、三日到期電郵及完成紀錄
+- 雙語鼓勵語：86句經審閱的中英文名人及Business語錄，完整顯示人物、年份／場合與核實來源；按香港日期及頁面輪替、避開近期重複，並由管理員控制每個帳戶是否顯示
 - Inbox、Projects、統一 Task Waiting、Decisions、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
@@ -152,6 +153,8 @@ Life OS v1 升級另需設定 Google OAuth、token encryption、Resend 及 `NEXT
 Restart Checkpoint 的資料模型、RLS 及 rollback 說明見 [`docs/restart-checkpoints.md`](docs/restart-checkpoints.md)。
 
 管理員帳戶活動清單的可見範圍、最後登入／使用時間與 rollback 說明見 [`docs/admin-account-activity.md`](docs/admin-account-activity.md)。
+
+雙語鼓勵語的來源欄位、主題比例、輪替及管理員可見設定見 [`docs/encouragements.md`](docs/encouragements.md)。
 
 Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback 說明見 [`docs/inbox-processing.md`](docs/inbox-processing.md)。
 
