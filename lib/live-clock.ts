@@ -1,7 +1,12 @@
-const hongKongDateFormatter = new Intl.DateTimeFormat("zh-HK", {
+const hongKongDateFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Hong_Kong",
-  month: "short",
-  day: "numeric",
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+});
+
+const hongKongWeekdayFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Hong_Kong",
   weekday: "short"
 });
 
@@ -14,8 +19,15 @@ const hongKongTimeFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 
 export function formatHongKongClock(value: Date) {
+  const dateParts = Object.fromEntries(
+    hongKongDateFormatter
+      .formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
   return {
-    dateLabel: hongKongDateFormatter.format(value),
+    dateLabel: `${dateParts.day}/${dateParts.month}/${dateParts.year} (${hongKongWeekdayFormatter.format(value)})`,
     timeLabel: hongKongTimeFormatter.format(value),
     iso: value.toISOString()
   };

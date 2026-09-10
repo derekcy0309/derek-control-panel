@@ -187,10 +187,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 .live-clock-icon { width: 1.05rem; height: 1.05rem; flex: 0 0 auto; color: var(--accent); }
-.live-clock-zone { display: block; color: var(--muted); font-size: .58rem; font-weight: 800; letter-spacing: .08em; line-height: 1; }
+.live-clock-values { display: grid; gap: .18rem; }
 .live-clock-time {
   display: block;
-  margin-top: .15rem;
   color: var(--ink);
   font-size: .9rem;
   font-variant-numeric: tabular-nums;
@@ -510,7 +509,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 @media (max-width: 640px) {
   .live-clock { gap: .4rem; padding-inline: .55rem; }
-  .live-clock-date { display: none; }
+  .live-clock-time { font-size: .82rem; }
+  .live-clock-date { font-size: .62rem; }
   .encouragement-footer { gap: .4rem; padding: 1rem; }
   .encouragement-art { width: 6.5rem; margin-right: -1.5rem; opacity: .86; }
   .encouragement-quote-en { font-size: .8rem; }
