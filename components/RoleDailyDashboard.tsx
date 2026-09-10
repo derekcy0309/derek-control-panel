@@ -63,7 +63,7 @@ export function RoleDailyDashboard({
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="relative z-10">
             <p className="eyebrow">{workspaceRoleLabels[role]}</p>
-            <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{role === "suki" && quietActive ? "安靜模式：只顯示真正緊急事項" : "今日只先處理最重要的三件事"}</h2>
+            <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{role === "suki" && quietActive ? "安靜模式：只顯示真正緊急事項" : "今日只先做一件，完成後再看下一步"}</h2>
             {roleCounts.length ? <p className="mt-2 text-sm text-slate-600">{roleCounts.join(" · ")}</p> : null}
           </div>
           <div className="grid shrink-0 grid-cols-2 gap-2">

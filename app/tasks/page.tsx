@@ -55,7 +55,7 @@ function TasksContent() {
   return (
     <div className="task-list-root space-y-5">
       <div className="no-print space-y-5">
-        <section className="task-list-hero section-hero flex flex-col justify-between gap-4 rounded-2xl p-5 shadow-soft sm:flex-row sm:items-center">
+        <section data-section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} className="task-list-hero section-hero flex flex-col justify-between gap-4 rounded-2xl p-5 shadow-soft sm:flex-row sm:items-center">
           <div className="relative z-10">
             <p className="text-sm font-extrabold text-indigo-700">任務管理</p>
             <h1 className="mt-1 text-2xl font-bold text-ink">任務行動清單</h1>
