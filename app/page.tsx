@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -82,6 +82,14 @@ function TodayCommandCenter() {
 
   const today = hkDateIso();
   const currentData = data;
+
+  useEffect(() => {
+    if (!currentData || window.location.hash !== "#task-action-list") return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("task-action-list")?.scrollIntoView({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentData]);
   const isSuki = Boolean(currentData?.currentUser.displayName.toLowerCase().includes("suki"));
   const minimumDay = Boolean(
     currentData

@@ -145,6 +145,8 @@ test("Today and the task action list share one page while the legacy route redir
   const api = read("app/api/control/route.ts");
 
   assert.match(today, /<TaskActionList data=\{currentData\} onChanged=\{reload\}/);
+  assert.match(today, /window\.location\.hash !== "#task-action-list"/);
+  assert.match(today, /scrollIntoView/);
   assert.match(taskList, /id="task-action-list"/);
   assert.match(legacyRoute, /redirect\("\/#task-action-list"\)/);
   assert.match(api, /taskQueueCatalog:/);
