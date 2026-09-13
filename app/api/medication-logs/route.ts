@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 type MedicationPayload = {
   id?: string;
   entryDate?: string;
+  takenTime?: string;
   medication?: string;
   otherMedication?: string;
   dosage?: string;
@@ -14,16 +15,17 @@ type MedicationPayload = {
   records?: MedicationEntryPayload[];
 };
 
-type MedicationEntryPayload = Pick<MedicationPayload, "medication" | "otherMedication" | "dosage" | "effect">;
+type MedicationEntryPayload = Pick<MedicationPayload, "takenTime" | "medication" | "otherMedication" | "dosage" | "effect">;
 
 export async function GET(request: NextRequest) {
   const context = await authenticateRequest(request);
   if (context instanceof Response) return context;
   const result = await context.client
     .from("personal_medication_logs")
-    .select("id,entry_date,medication,dosage,effect,created_at,updated_at")
+    .select("id,entry_date,taken_time,medication,dosage,effect,created_at,updated_at")
     .eq("user_id", context.user.id)
     .order("entry_date", { ascending: false })
+    .order("taken_time", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(500);
   if (result.error) return privateJson({ error: "未能讀取藥物紀錄。" }, 500);
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
   if (entryDate instanceof Response) return entryDate;
   const drafts = Array.isArray(payload?.records) ? payload.records : [payload ?? {}];
   if (!drafts.length || drafts.length > 20) return privateJson({ error: "每次請儲存 1 至 20 項藥物紀錄。" }, 422);
-  const values: Array<{ medication: string; dosage: string; effect: string | null }> = [];
+  const values: Array<{ takenTime: string | null; medication: string; dosage: string; effect: string | null }> = [];
   for (const draft of drafts) {
     const value = validateEntry(draft);
     if (value instanceof Response) return value;
@@ -47,10 +49,11 @@ export async function POST(request: NextRequest) {
   const inserted = await context.client.from("personal_medication_logs").insert(values.map((value) => ({
     user_id: context.user.id,
     entry_date: entryDate,
+    taken_time: value.takenTime,
     medication: value.medication,
     dosage: value.dosage,
     effect: value.effect
-  }))).select("id,entry_date,medication,dosage,effect,created_at,updated_at");
+  }))).select("id,entry_date,taken_time,medication,dosage,effect,created_at,updated_at");
   if (inserted.error) return privateJson({ error: "未能儲存藥物紀錄，資料未有遺失。請再試一次。" }, 500);
   return privateJson({ records: inserted.data ?? [] }, 201);
 }
@@ -67,11 +70,12 @@ export async function PATCH(request: NextRequest) {
   if (values instanceof Response) return values;
   const updated = await context.client.from("personal_medication_logs").update({
     entry_date: entryDate,
+    taken_time: values.takenTime,
     medication: values.medication,
     dosage: values.dosage,
     effect: values.effect
   }).eq("id", id).eq("user_id", context.user.id)
-    .select("id,entry_date,medication,dosage,effect,created_at,updated_at").maybeSingle();
+    .select("id,entry_date,taken_time,medication,dosage,effect,created_at,updated_at").maybeSingle();
   if (updated.error) return privateJson({ error: "未能更新藥物紀錄。" }, 500);
   if (!updated.data) return privateJson({ error: "找不到藥物紀錄或你沒有權限修改。" }, 404);
   return privateJson({ record: updated.data });
@@ -100,8 +104,19 @@ function validateEntry(payload: MedicationEntryPayload | MedicationPayload | nul
   const medication = selected === "其他藥物" ? otherMedication : selected;
   const dosage = typeof payload?.dosage === "string" ? payload.dosage.trim().slice(0, 80) : "";
   const effect = typeof payload?.effect === "string" ? payload.effect.trim().slice(0, 2_000) : "";
+  const rawTakenTime = typeof payload?.takenTime === "string" ? payload.takenTime.trim() : "";
+  const takenTime = rawTakenTime ? normalizeTime(rawTakenTime) : null;
   if (!medication) return privateJson({ error: "請選擇或輸入藥物名稱。" }, 422);
   if (selected !== "其他藥物" && !medicationPresets.includes(selected as typeof medicationPresets[number])) return privateJson({ error: "藥物名稱不正確。" }, 422);
   if (!dosage) return privateJson({ error: "請輸入劑量。" }, 422);
-  return { medication, dosage, effect: effect || null };
+  if (rawTakenTime && !takenTime) return privateJson({ error: "服用時間不正確，請使用 24 小時格式。" }, 422);
+  return { takenTime, medication, dosage, effect: effect || null };
+}
+
+function normalizeTime(value: string) {
+  const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour <= 23 && minute <= 59 ? `${match[1]}:${match[2]}` : null;
 }

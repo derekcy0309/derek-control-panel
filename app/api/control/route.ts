@@ -1337,7 +1337,7 @@ async function saveTaskRecurrence({ client, user }: RequestContext, body: Record
     return jsonError("請在未完成的任務上設定重複工作。", 422);
   }
   const taskDueDate = dateValue(task.data.due_date);
-  if (recurrence.frequency === "interval" && !taskDueDate) {
+  if (["interval", "weekly"].includes(recurrence.frequency) && !taskDueDate) {
     return jsonError("Routine 工作需要先設定首次到期日。", 422);
   }
   if (recurrence.endsOn && taskDueDate && recurrence.endsOn < taskDueDate) {
@@ -2893,7 +2893,7 @@ function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | R
   const rawEndsOn = stringValue(body.endsOn);
   const endsOn = rawEndsOn ? dateValue(rawEndsOn) : null;
   if (rawEndsOn && !endsOn) return jsonError("Routine 結束日期不正確。", 422);
-  if (frequency === "interval" && deadlineMode !== "scheduled") {
+  if (["interval", "weekly"].includes(frequency) && deadlineMode !== "scheduled") {
     return jsonError("Routine 工作必須使用原定到期日計算。", 422);
   }
   const nightShiftPattern = typeof body.nightShiftPattern === "boolean" ? body.nightShiftPattern : false;
@@ -2914,7 +2914,7 @@ function recurrenceOptions(body: Record<string, unknown>): RecurrenceOptions | R
     customIntervalDays,
     intervalValue,
     intervalUnit,
-    endsOn: frequency === "interval" ? endsOn : null,
+    endsOn: ["interval", "weekly"].includes(frequency) ? endsOn : null,
     businessDaysOnly,
     nightShiftPattern,
     nightShiftOnDays,

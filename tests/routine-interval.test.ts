@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { addRoutineInterval } from "../lib/routine-interval.ts";
+import { addRoutineInterval, nextRoutineWeeklyDate } from "../lib/routine-interval.ts";
 
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
@@ -14,10 +14,20 @@ test("routine date preview supports fixed day, month and year cadences", () => {
   assert.equal(addRoutineInterval("2026-01-01", 0, "day"), null);
 });
 
+test("weekly routine preview supports multiple selected weekdays", () => {
+  assert.equal(nextRoutineWeeklyDate("2026-09-14", [1, 3, 5]), "2026-09-16");
+  assert.equal(nextRoutineWeeklyDate("2026-09-16", [1, 3, 5]), "2026-09-18");
+  assert.equal(nextRoutineWeeklyDate("2026-09-18", [1, 3, 5]), "2026-09-21");
+  assert.equal(nextRoutineWeeklyDate("2026-09-14", []), null);
+});
+
 test("routine form is intentionally simple and does not ask for a repeat count", () => {
   const form = read("components/forms/TaskForm.tsx");
   assert.match(form, /這是一項 Routine 工作/);
   assert.match(form, /recurrence_interval_value/);
+  assert.match(form, /每星期指定日子/);
+  assert.match(form, /星期幾（可多選）/);
+  assert.match(form, /recurrence_weekdays/);
   assert.match(form, /<option value="day">日<\/option>/);
   assert.match(form, /<option value="month">月<\/option>/);
   assert.match(form, /<option value="year">年<\/option>/);
@@ -47,4 +57,12 @@ test("API validates interval values, end dates and the initial due date", () => 
   assert.match(api, /\["day", "month", "year"\]/);
   assert.match(api, /Routine 結束日期不可早過首次到期日/);
   assert.match(api, /Routine 工作需要先設定首次到期日/);
+});
+
+test("weekly routines use the existing recurrence API and may have an end date", () => {
+  const api = read("app/api/control/route.ts");
+  const migration = read("supabase/migrations/20260913121000_weekly_routine_end_date.sql");
+  assert.match(api, /\["interval", "weekly"\]\.includes\(frequency\)/);
+  assert.match(api, /frequency === "weekly" && validWeekdays\.length === 0/);
+  assert.match(migration, /frequency = 'weekly' or ends_on is null/);
 });

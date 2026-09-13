@@ -5,7 +5,7 @@ import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
-import { addRoutineInterval, formatRoutineDate, type RoutineIntervalUnit } from "@/lib/routine-interval";
+import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWeekdays, type RoutineIntervalUnit } from "@/lib/routine-interval";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { OperatingItem, Task } from "@/lib/types";
 
@@ -39,8 +39,10 @@ type TaskFormState = {
   handoff_to_user_id: string;
   handoff_note: string;
   recurrence_enabled: boolean;
+  recurrence_mode: "interval" | "weekly";
   recurrence_interval_value: string;
   recurrence_interval_unit: RoutineIntervalUnit;
+  recurrence_weekdays: number[];
   recurrence_end_mode: "never" | "date";
   recurrence_ends_on: string;
   notice_user_ids: string[];
@@ -77,8 +79,10 @@ const defaultState: TaskFormState = {
   handoff_to_user_id: "",
   handoff_note: "",
   recurrence_enabled: false,
+  recurrence_mode: "interval",
   recurrence_interval_value: "1",
   recurrence_interval_unit: "month",
+  recurrence_weekdays: [],
   recurrence_end_mode: "never",
   recurrence_ends_on: "",
   notice_user_ids: [],
@@ -142,8 +146,10 @@ export function TaskForm({
           handoff_to_user_id: "",
           handoff_note: "",
           recurrence_enabled: false,
+          recurrence_mode: "interval",
           recurrence_interval_value: "1",
           recurrence_interval_unit: "month",
+          recurrence_weekdays: [],
           recurrence_end_mode: "never",
           recurrence_ends_on: "",
           notice_user_ids: initialNoticeUserIds,
@@ -160,7 +166,9 @@ export function TaskForm({
   const customStatusListId = useId();
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
   const nextRoutineDueDate = form.due_date
-    ? addRoutineInterval(form.due_date, Number(form.recurrence_interval_value), form.recurrence_interval_unit)
+    ? form.recurrence_mode === "weekly"
+      ? nextRoutineWeeklyDate(form.due_date, form.recurrence_weekdays)
+      : addRoutineInterval(form.due_date, Number(form.recurrence_interval_value), form.recurrence_interval_unit)
     : null;
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
@@ -221,13 +229,23 @@ export function TaskForm({
     }));
   }
 
+  function toggleRecurrenceWeekday(day: number) {
+    setForm((current) => ({
+      ...current,
+      recurrence_weekdays: current.recurrence_weekdays.includes(day)
+        ? current.recurrence_weekdays.filter((value) => value !== day)
+        : [...current.recurrence_weekdays, day]
+    }));
+  }
+
   function recurrencePayload(taskId: string) {
     return {
       taskId,
       deadlineMode: "scheduled",
-      frequency: "interval",
-      intervalValue: Number(form.recurrence_interval_value),
-      intervalUnit: form.recurrence_interval_unit,
+      frequency: form.recurrence_mode,
+      weekdays: form.recurrence_mode === "weekly" ? form.recurrence_weekdays : [],
+      intervalValue: form.recurrence_mode === "interval" ? Number(form.recurrence_interval_value) : null,
+      intervalUnit: form.recurrence_mode === "interval" ? form.recurrence_interval_unit : null,
       endsOn: form.recurrence_end_mode === "date" ? form.recurrence_ends_on || null : null
     };
   }
@@ -260,8 +278,12 @@ export function TaskForm({
         setError("Routine 工作需要先設定首次到期日。");
         return;
       }
-      if (!Number.isInteger(intervalValue) || intervalValue < 1 || intervalValue > 3650) {
+      if (form.recurrence_mode === "interval" && (!Number.isInteger(intervalValue) || intervalValue < 1 || intervalValue > 3650)) {
         setError("Routine 相隔時間必須是 1 至 3650 的整數。");
+        return;
+      }
+      if (form.recurrence_mode === "weekly" && form.recurrence_weekdays.length === 0) {
+        setError("每星期重複請至少選擇一天。");
         return;
       }
       if (form.recurrence_end_mode === "date" && (!form.recurrence_ends_on || form.recurrence_ends_on < form.due_date)) {
@@ -468,7 +490,7 @@ export function TaskForm({
       ) : null}
       {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
       {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
-      {!compact && !initialTask?.recurrence_rule_id ? (
+      {!initialTask?.recurrence_rule_id ? (
         <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
           <label className="flex cursor-pointer items-start gap-3">
             <input
@@ -484,25 +506,55 @@ export function TaskForm({
           </label>
           {form.recurrence_enabled ? (
             <div className="mt-4 grid gap-4">
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
-                <label>
-                  <span className="label">每隔</span>
-                  <input className="field mt-2 bg-white" type="number" min="1" max="3650" value={form.recurrence_interval_value} onChange={(event) => update("recurrence_interval_value", event.target.value)} required={form.recurrence_enabled} />
-                </label>
-                <label>
-                  <span className="label">時限</span>
-                  <select className="field mt-2 bg-white" value={form.recurrence_interval_unit} onChange={(event) => update("recurrence_interval_unit", event.target.value)}>
-                    <option value="day">日</option>
-                    <option value="month">月</option>
-                    <option value="year">年</option>
-                  </select>
-                </label>
-              </div>
+              <fieldset>
+                <legend className="label">重複方式</legend>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_mode === "interval" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-mode" checked={form.recurrence_mode === "interval"} onChange={() => update("recurrence_mode", "interval")} />
+                    <span className="font-bold text-slate-900">每隔一段時間</span>
+                  </label>
+                  <label className={`cursor-pointer rounded-xl border-2 bg-white p-3 ${form.recurrence_mode === "weekly" ? "border-indigo-600 ring-2 ring-indigo-100" : "border-slate-200"}`}>
+                    <input className="mr-2 h-4 w-4 accent-indigo-600" type="radio" name="recurrence-mode" checked={form.recurrence_mode === "weekly"} onChange={() => update("recurrence_mode", "weekly")} />
+                    <span className="font-bold text-slate-900">每星期指定日子</span>
+                  </label>
+                </div>
+              </fieldset>
+              {form.recurrence_mode === "interval" ? (
+                <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-3">
+                  <label>
+                    <span className="label">每隔</span>
+                    <input className="field mt-2 bg-white" type="number" min="1" max="3650" value={form.recurrence_interval_value} onChange={(event) => update("recurrence_interval_value", event.target.value)} required />
+                  </label>
+                  <label>
+                    <span className="label">時限</span>
+                    <select className="field mt-2 bg-white" value={form.recurrence_interval_unit} onChange={(event) => update("recurrence_interval_unit", event.target.value)}>
+                      <option value="day">日</option>
+                      <option value="month">月</option>
+                      <option value="year">年</option>
+                    </select>
+                  </label>
+                </div>
+              ) : (
+                <fieldset>
+                  <legend className="label">星期幾（可多選）</legend>
+                  <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {routineWeekdays.map((weekday) => {
+                      const checked = form.recurrence_weekdays.includes(weekday.value);
+                      return (
+                        <label key={weekday.value} className={`cursor-pointer rounded-xl border-2 p-3 text-center font-extrabold ${checked ? "border-indigo-600 bg-indigo-600 text-white shadow-sm" : "border-slate-200 bg-white text-slate-700"}`}>
+                          <input className="sr-only" type="checkbox" checked={checked} onChange={() => toggleRecurrenceWeekday(weekday.value)} />
+                          週{weekday.label}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
               {form.due_date && nextRoutineDueDate ? (
                 <p className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-indigo-800" aria-live="polite">
                   首次到期：{formatRoutineDate(form.due_date)} · 如完成，下一次：{formatRoutineDate(nextRoutineDueDate)}
                 </p>
-              ) : <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">請先在上方設定首次到期日。</p>}
+              ) : <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">{form.due_date && form.recurrence_mode === "weekly" ? "請至少選擇一個星期日子。" : "請先在上方設定首次到期日。"}</p>}
               <fieldset>
                 <legend className="label">幾時完結</legend>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
