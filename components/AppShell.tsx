@@ -26,8 +26,7 @@ const navGroups: NavGroupData[] = [
     tone: "daily",
     defaultOpen: true,
     items: [
-      { href: "/", label: "今日", icon: Sparkles },
-      { href: "/tasks", label: "任務", icon: CheckSquare2 },
+      { href: "/", label: "今日＋任務", icon: Sparkles },
       { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
   },
@@ -82,10 +81,9 @@ const systemItems: NavItem[] = [
 ];
 
 const mobileNav = [
-  { href: "/", label: "今日", icon: Sparkles },
+  { href: "/", label: "今日＋任務", icon: Sparkles },
   { href: "/workspace/inbox", label: "收集箱", icon: Inbox },
-  { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
-  { href: "/tasks", label: "任務", icon: CheckSquare2 }
+  { href: "/workspace/waiting", label: "等待中", icon: Clock3 }
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {

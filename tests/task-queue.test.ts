@@ -89,7 +89,7 @@ test("dated priority upgrades automatically as the due date approaches", () => {
 });
 
 test("task UI previews five priority items, puts undated work above the bottom calendar and prints A4", () => {
-  const page = read("app/tasks/page.tsx");
+  const page = read("components/tasks/TaskActionList.tsx");
   const form = read("components/forms/TaskForm.tsx");
   const section = read("components/tasks/TaskQueueSection.tsx");
   const calendar = read("components/tasks/TaskDueCalendar.tsx");
@@ -134,6 +134,21 @@ test("sidebar keeps the daily loop open and removes the duplicate sharing route"
   assert.doesNotMatch(shell, /href: "\/workspace\/document"/);
   assert.ok(shell.indexOf('href: "/cashflow"') < shell.indexOf('label: "系統設定"'));
   assert.match(shell, /EncouragementFooter/);
+  assert.match(shell, /label: "今日＋任務"/);
+  assert.doesNotMatch(shell, /href: "\/tasks"/);
+});
+
+test("Today and the task action list share one page while the legacy route redirects", () => {
+  const today = read("app/page.tsx");
+  const taskList = read("components/tasks/TaskActionList.tsx");
+  const legacyRoute = read("app/tasks/page.tsx");
+  const api = read("app/api/control/route.ts");
+
+  assert.match(today, /<TaskActionList data=\{currentData\} onChanged=\{reload\}/);
+  assert.match(taskList, /id="task-action-list"/);
+  assert.match(legacyRoute, /redirect\("\/#task-action-list"\)/);
+  assert.match(api, /taskQueueCatalog:/);
+  assert.match(api, /taskProjects:/);
 });
 
 test("family overview explains sensitive school data and groups every item by urgency", () => {

@@ -152,7 +152,7 @@ function CapacityStep({ summary, value, assessment, disabled, onChange }: { summ
 
 function RebalancingStep({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
   const linkClass = "inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-4 py-2 text-base font-semibold text-slate-800 ring-1 ring-slate-200 transition hover:bg-slate-50";
-  return <div><div className="flex items-start gap-3"><UsersRound className="h-6 w-6 text-violet-600" /><div><h2 className="text-xl font-bold">Derek／Suki 是否需要重新分工</h2><p className="muted mt-1">先記下要討論的事；不會在這裡自動交接。</p></div></div><textarea className="field mt-5 min-h-32" disabled={disabled} maxLength={2000} value={value} placeholder="例如：可否由 Derek 跟進電話；Suki 先處理文件第一步。" onChange={(event) => onChange(event.target.value)} /><div className="mt-4 flex flex-wrap gap-2"><Link className={linkClass} href="/sharing">到交辦中心，再決定是否交接</Link><Link className={linkClass} href="/tasks">查看任務後再決定</Link></div></div>;
+  return <div><div className="flex items-start gap-3"><UsersRound className="h-6 w-6 text-violet-600" /><div><h2 className="text-xl font-bold">Derek／Suki 是否需要重新分工</h2><p className="muted mt-1">先記下要討論的事；不會在這裡自動交接。</p></div></div><textarea className="field mt-5 min-h-32" disabled={disabled} maxLength={2000} value={value} placeholder="例如：可否由 Derek 跟進電話；Suki 先處理文件第一步。" onChange={(event) => onChange(event.target.value)} /><div className="mt-4 flex flex-wrap gap-2"><Link className={linkClass} href="/sharing">到交辦中心，再決定是否交接</Link><Link className={linkClass} href="/#task-action-list">查看任務後再決定</Link></div></div>;
 }
 
 function FinishStep({ form, disabled, onChange }: { form: ReviewForm; disabled: boolean; onChange: (patch: Partial<ReviewForm>) => void }) {

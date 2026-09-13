@@ -824,6 +824,10 @@ export type TodayData = {
   settings: UserSettings;
   tasks: Task[];
   taskCatalog: Task[];
+  taskQueueCatalog: Task[];
+  taskProjects: OperatingItem[];
+  taskNoticeRecipients: TaskNoticeRecipient[];
+  taskFollowers: TaskFollower[];
   shares: ShareRecord[];
   assignments: Assignment[];
   planning: PlanningMetadata[];

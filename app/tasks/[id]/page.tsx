@@ -40,7 +40,7 @@ function TaskDetailContent() {
 
   return (
     <main className="mx-auto max-w-5xl space-y-4">
-      <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold text-slate-700 hover:bg-white" href="/tasks"><ArrowLeft className="h-4 w-4" />返回任務</Link>
+      <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold text-slate-700 hover:bg-white" href="/#task-action-list"><ArrowLeft className="h-4 w-4" />返回任務</Link>
       <section>
         <p className="eyebrow">Task Detail</p>
         <h1 className="page-title mt-1">完整任務內容</h1>

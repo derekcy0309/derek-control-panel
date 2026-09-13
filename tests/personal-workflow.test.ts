@@ -52,7 +52,7 @@ test("task list cards keep key information visible and disclose details on deman
 });
 
 test("tasks select one private or shared category before showing the action queue", () => {
-  const tasksPage = read("app/tasks/page.tsx");
+  const tasksPage = read("components/tasks/TaskActionList.tsx");
   assert.match(tasksPage, /useState<TaskCategory>\("personal"\)/);
   assert.match(tasksPage, /taskCategoryOptions\.map/);
   assert.match(tasksPage, /aria-pressed=\{selected\}/);

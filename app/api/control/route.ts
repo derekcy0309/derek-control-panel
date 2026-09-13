@@ -315,14 +315,25 @@ async function todayDashboard({ client, user }: RequestContext) {
     .order("due_date", { ascending: true, nullsFirst: false })
     .limit(200);
   if (activeTasks.error) return databaseError(activeTasks.error);
-  const taskCatalog = await client.from("tasks")
-    .select("*")
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .not("status", "in", "(done,cancelled)")
-    .order("due_date", { ascending: true, nullsFirst: false })
-    .limit(500);
-  if (taskCatalog.error) return databaseError(taskCatalog.error);
+  const [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers] = await Promise.all([
+    client.from("tasks")
+      .select("*")
+      .is("deleted_at", null)
+      .is("archived_at", null)
+      .order("due_date", { ascending: true, nullsFirst: false })
+      .limit(1000),
+    client.from("operating_items")
+      .select("*")
+      .eq("item_type", "project")
+      .is("archived_at", null)
+      .order("title", { ascending: true })
+      .limit(200),
+    client.from("task_notice_recipients").select("*").limit(1000),
+    client.from("task_followers").select("*").limit(1000)
+  ]);
+  const taskQueueError = [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers]
+    .find((result) => result.error)?.error;
+  if (taskQueueError) return databaseError(taskQueueError);
 
   const monthStart = `${today.slice(0, 7)}-01`;
   const nextMonthStart = nextMonthIso(monthStart);
@@ -412,7 +423,11 @@ async function todayDashboard({ client, user }: RequestContext) {
     profile: profile.data,
     settings: settings.data,
     tasks: [...taskMap.values()],
-    taskCatalog: taskCatalog.data ?? [],
+    taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))),
+    taskQueueCatalog: taskQueueCatalog.data ?? [],
+    taskProjects: taskProjects.data ?? [],
+    taskNoticeRecipients: taskNoticeRecipients.data ?? [],
+    taskFollowers: taskFollowers.data ?? [],
     shares: shares.data ?? [],
     assignments: assignments.data ?? [],
     planning: [...planningMap.values()],

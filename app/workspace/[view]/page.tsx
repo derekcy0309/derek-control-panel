@@ -121,7 +121,7 @@ function WaitingWorkspace() {
 }
 
 function RetiredModuleNotice() {
-  return <section className="mx-auto max-w-2xl panel p-6 sm:p-8"><p className="eyebrow">Personal Work Only</p><h1 className="page-title mt-1">這個舊有營運模組已從工作流程停用</h1><p className="muted mt-3 leading-7">原有資料沒有刪除或改寫。Derek Panel 現在只用作 Derek、Suki 及 Amigo 的個人工作管理；新增工作請使用統一 Work Queue。</p><Link className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 font-bold text-white" href="/tasks">前往任務</Link></section>;
+  return <section className="mx-auto max-w-2xl panel p-6 sm:p-8"><p className="eyebrow">Personal Work Only</p><h1 className="page-title mt-1">這個舊有營運模組已從工作流程停用</h1><p className="muted mt-3 leading-7">原有資料沒有刪除或改寫。Derek Panel 現在只用作 Derek、Suki 及 Amigo 的個人工作管理；新增工作請使用統一 Work Queue。</p><Link className="mt-5 inline-flex min-h-11 items-center rounded-lg bg-indigo-600 px-4 font-bold text-white" href="/#task-action-list">前往任務</Link></section>;
 }
 
 function InboxWorkspace() {

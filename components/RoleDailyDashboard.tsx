@@ -171,7 +171,7 @@ function SukiDailyFollowup({ data, summary }: { data: TodayData; summary: Return
           </Link>
         ))}
       </div>
-      {summary.totalTasks > 3 ? <Link className="mt-3 inline-flex min-h-11 items-center font-bold text-indigo-700" href="/tasks">查看其餘 {summary.totalTasks - 3} 項 →</Link> : null}
+      {summary.totalTasks > 3 ? <Link className="mt-3 inline-flex min-h-11 items-center font-bold text-indigo-700" href="/#task-action-list">查看其餘 {summary.totalTasks - 3} 項 →</Link> : null}
     </section>
   );
 }

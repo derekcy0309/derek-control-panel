@@ -26,6 +26,7 @@ import { FocusMode } from "@/components/FocusMode";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { TaskForm } from "@/components/forms/TaskForm";
+import { TaskActionList } from "@/components/tasks/TaskActionList";
 import { ReminderPanel } from "@/components/ReminderPanel";
 import { RoleDailyDashboard } from "@/components/RoleDailyDashboard";
 import { TodayTaskManager } from "@/components/TodayTaskManager";
@@ -358,6 +359,15 @@ function TodayCommandCenter() {
           <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"><span><span className="block font-extrabold text-slate-900">需要時查看提醒或調整 Today</span><span className="mt-1 block text-xs text-slate-500">預設收起，今日休息不需要處理 backlog。</span></span><ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" /></summary>
           <div className="space-y-4 border-t border-slate-100 p-4"><ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} /><TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} /></div>
         </details>
+        <details className="panel group overflow-hidden">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+            <span><span className="block font-extrabold text-slate-900">需要時查看全部任務</span><span className="mt-1 block text-xs text-slate-500">今日休息時預設收起，任務資料仍然完整保留。</span></span>
+            <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-slate-100 p-4 sm:p-5">
+            <TaskActionList data={currentData} onChanged={reload} restful />
+          </div>
+        </details>
         {capacityOpen ? (
           <CapacityModal
             current={currentData.capacity}
@@ -613,6 +623,8 @@ function TodayCommandCenter() {
 
         </div>
       </details>
+
+      <TaskActionList data={currentData} onChanged={reload} />
 
       {voiceHandoffOpen ? (
         <Modal title="語音／文字交接" onClose={() => setVoiceHandoffOpen(false)}>
