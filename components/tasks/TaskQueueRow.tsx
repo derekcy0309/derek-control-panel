@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Check, Leaf, Pencil } from "lucide-react";
+import { CalendarClock, Check, Leaf, ListPlus, Pencil } from "lucide-react";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
 import { duePriorityBand } from "@/lib/due-priority";
@@ -16,20 +16,33 @@ export function TaskQueueRow({
   task,
   tone = "neutral",
   completed = false,
+  inToday = false,
+  bulkMode = false,
+  selected = false,
+  todayBusy = false,
   onChanged,
-  onEdit
+  onEdit,
+  onSelect,
+  onAddToday
 }: {
   task: Task;
   tone?: Tone;
   completed?: boolean;
+  inToday?: boolean;
+  bulkMode?: boolean;
+  selected?: boolean;
+  todayBusy?: boolean;
   onChanged: () => void;
   onEdit: (task: Task) => void;
+  onSelect?: (task: Task, selected: boolean) => void;
+  onAddToday?: (task: Task) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [justCompleted, setJustCompleted] = useState(false);
   const urgency = !task.due_date ? undatedUrgencyFor(task) : null;
   const datedPriority = duePriorityBand(task.due_date, hkDateIso());
+  const canAddToday = !completed && !["waiting", "blocked", "done", "cancelled"].includes(task.status) && !task.blocked_reason?.trim();
 
   async function complete() {
     if (busy) return;
@@ -51,7 +64,12 @@ export function TaskQueueRow({
   }
 
   return (
-    <article className={`task-queue-row task-queue-row-${tone} ${justCompleted ? "is-completing" : ""}`}>
+    <article className={`task-queue-row task-queue-row-${tone} flex-wrap sm:flex-nowrap ${justCompleted ? "is-completing" : ""}`}>
+      {bulkMode && canAddToday && !inToday ? (
+        <label className="no-print grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-lg bg-white ring-1 ring-slate-200" aria-label={`選擇加入今日：${task.title}`}>
+          <input type="checkbox" checked={selected} onChange={(event) => onSelect?.(task, event.target.checked)} />
+        </label>
+      ) : null}
       {completed ? (
         <span className="task-complete-button bg-slate-100 text-slate-500 no-print" aria-hidden="true"><Check className="h-4 w-4" /></span>
       ) : (
@@ -83,9 +101,24 @@ export function TaskQueueRow({
         </div>
         {error ? <p className="mt-1 text-xs font-semibold text-rose-700" role="alert">{error}</p> : null}
       </div>
-      <button type="button" className="icon-button no-print" onClick={() => onEdit(task)} aria-label={`修改任務：${task.title}`}>
-        <Pencil className="h-4 w-4" />
-      </button>
+      <div className="no-print ml-auto flex shrink-0 items-center gap-2">
+        {!completed && inToday ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-extrabold text-emerald-700">已在今日</span> : null}
+        {!completed && canAddToday && !inToday && !bulkMode ? (
+          <button
+            type="button"
+            className="inline-flex min-h-10 shrink-0 items-center gap-1 rounded-lg bg-indigo-50 px-3 text-xs font-extrabold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+            disabled={todayBusy}
+            onClick={() => onAddToday?.(task)}
+            aria-label={`加入今日：${task.title}`}
+          >
+            <ListPlus className="h-4 w-4" />
+            {todayBusy ? "加入中" : "＋今日"}
+          </button>
+        ) : null}
+        <button type="button" className="icon-button" onClick={() => onEdit(task)} aria-label={`修改任務：${task.title}`}>
+          <Pencil className="h-4 w-4" />
+        </button>
+      </div>
       {justCompleted ? <span className="task-completion-feedback" role="status"><Leaf className="h-4 w-4" />完成一步</span> : null}
     </article>
   );

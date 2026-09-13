@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, Printer } from "lucide-react";
+import { Check, ListPlus, Plus, Printer, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { SectionArtwork } from "@/components/SectionArtwork";
 import { TaskForm } from "@/components/forms/TaskForm";
@@ -9,6 +9,7 @@ import { TaskDueCalendar } from "@/components/tasks/TaskDueCalendar";
 import { TaskPrintSheet } from "@/components/tasks/TaskPrintSheet";
 import { TaskQueueSection } from "@/components/tasks/TaskQueueSection";
 import { Button } from "@/components/ui/Button";
+import { controlAction } from "@/lib/control-api";
 import { hkDateIso } from "@/lib/planning";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import { taskQueueBuckets } from "@/lib/task-queue";
@@ -28,6 +29,11 @@ export function TaskActionList({
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory>("personal");
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [todayBusyId, setTodayBusyId] = useState<string | null>(null);
+  const [todayMessage, setTodayMessage] = useState("");
+  const [todayError, setTodayError] = useState("");
   const today = hkDateIso();
   const tasksInCategory = useMemo(
     () => data.taskQueueCatalog.filter((task) => taskCategoryFor(task) === selectedCategory),
@@ -48,25 +54,108 @@ export function TaskActionList({
   const categoryFields = taskCategoryFields(selectedCategory);
   const statusSuggestions = [...new Set(data.taskQueueCatalog.map((task) => task.custom_status_label?.trim()).filter((value): value is string => Boolean(value)))].sort();
   const datedTasks = tasksInCategory.filter((task) => task.due_date && task.status !== "done" && task.status !== "cancelled");
-  const sectionProps = { onChanged, onEdit: setEditingTask };
+  const todayTaskIds = useMemo(() => new Set(
+    data.planning
+      .filter((item) => item.resource_type === "task" && item.planned_date === today)
+      .map((item) => item.resource_id)
+  ), [data.planning, today]);
+  const selectedTaskIdSet = useMemo(() => new Set(selectedTaskIds), [selectedTaskIds]);
+
+  async function addOneToToday(task: Task) {
+    if (todayBusyId) return;
+    setTodayBusyId(task.id);
+    setTodayMessage("");
+    setTodayError("");
+    try {
+      await controlAction("set_today_task", { taskId: task.id, included: true });
+      await onChanged();
+      setTodayMessage(`已將「${task.title}」加入今日；任務日期及狀態沒有改動。`);
+    } catch (caught) {
+      setTodayError(caught instanceof Error ? caught.message : "未能加入今日。");
+    } finally {
+      setTodayBusyId(null);
+    }
+  }
+
+  async function addSelectedToToday() {
+    if (!selectedTaskIds.length || todayBusyId) return;
+    setTodayBusyId("bulk");
+    setTodayMessage("");
+    setTodayError("");
+    const results = await Promise.allSettled(selectedTaskIds.map((taskId) =>
+      controlAction("set_today_task", { taskId, included: true })
+    ));
+    const succeeded = results.filter((result) => result.status === "fulfilled").length;
+    const failed = results.length - succeeded;
+    await onChanged();
+    if (succeeded) setTodayMessage(`已將 ${succeeded} 項任務加入今日。`);
+    if (failed) setTodayError(`${failed} 項未能加入，其他成功項目已保留。`);
+    setSelectedTaskIds([]);
+    setBulkMode(false);
+    setTodayBusyId(null);
+  }
+
+  function selectTask(task: Task, selected: boolean) {
+    setSelectedTaskIds((current) => selected
+      ? [...new Set([...current, task.id])]
+      : current.filter((id) => id !== task.id));
+  }
+
+  function cancelBulkMode() {
+    setBulkMode(false);
+    setSelectedTaskIds([]);
+  }
+
+  const sectionProps = {
+    onChanged,
+    onEdit: setEditingTask,
+    todayTaskIds,
+    bulkMode,
+    selectedTaskIds: selectedTaskIdSet,
+    todayBusyId,
+    onSelect: selectTask,
+    onAddToday: (task: Task) => void addOneToToday(task)
+  };
 
   return (
     <section id="task-action-list" className="task-list-root scroll-mt-24 space-y-5" aria-labelledby="task-action-list-heading">
       <div className="no-print space-y-5">
         <section data-section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} className="task-list-hero section-hero flex flex-col justify-between gap-4 rounded-2xl p-5 shadow-soft sm:flex-row sm:items-center">
           <div className="relative z-10">
-            <p className="text-sm font-extrabold text-indigo-700">今日＋全部任務</p>
-            <h2 id="task-action-list-heading" className="mt-1 text-2xl font-bold text-ink">任務行動清單</h2>
+            <p className="text-sm font-extrabold text-indigo-700">Action Center</p>
+            <h2 id="task-action-list-heading" className="mt-1 text-2xl font-bold text-ink">任務總表</h2>
             <p className="mt-2 text-sm font-semibold text-slate-600">
               {restful ? "今日休息，清單只供需要時查看；任務沒有被移動。" : "先處理逾期、7 日內到期和 Urgent，再按需要打開其他任務。"}
             </p>
           </div>
           <div className="relative z-10 flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => window.print()}><Printer className="h-5 w-5" />列印 A4 清單</Button>
+            <Button variant="secondary" onClick={() => bulkMode ? cancelBulkMode() : setBulkMode(true)}>
+              {bulkMode ? <X className="h-5 w-5" /> : <ListPlus className="h-5 w-5" />}
+              {bulkMode ? "取消多選" : "多選加入今日"}
+            </Button>
             <Button onClick={() => setIsAdding(true)}><Plus className="h-5 w-5" />新增任務</Button>
           </div>
           <SectionArtwork section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} compact />
         </section>
+
+        {bulkMode ? (
+          <section className="sticky top-20 z-20 flex flex-col justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center" aria-label="批量加入今日">
+            <div>
+              <p className="font-extrabold text-indigo-950">揀選一項或多項可執行任務</p>
+              <p className="mt-1 text-sm font-semibold text-indigo-700">已選 {selectedTaskIds.length} 項；Waiting、Blocked 及已完成任務不會顯示剔選格。</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={cancelBulkMode}>取消</Button>
+              <Button disabled={!selectedTaskIds.length || todayBusyId === "bulk"} onClick={() => void addSelectedToToday()}>
+                <Check className="h-4 w-4" />{todayBusyId === "bulk" ? "加入中…" : `加入今日（${selectedTaskIds.length}）`}
+              </Button>
+            </div>
+          </section>
+        ) : null}
+
+        {todayMessage ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800" role="status">{todayMessage}</p> : null}
+        {todayError ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800" role="alert">{todayError}</p> : null}
 
         <section className="panel p-3 sm:p-4" aria-label="選擇任務分類">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

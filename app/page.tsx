@@ -20,6 +20,7 @@ import {
   Zap
 } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { ActionCenterTabs, type ActionCenterTab } from "@/components/ActionCenterTabs";
 import { AIDailyPlanner } from "@/components/AIDailyPlanner";
 import { CapacityOverloadPanel } from "@/components/CapacityOverloadPanel";
 import { FocusMode } from "@/components/FocusMode";
@@ -29,7 +30,7 @@ import { TaskForm } from "@/components/forms/TaskForm";
 import { TaskActionList } from "@/components/tasks/TaskActionList";
 import { ReminderPanel } from "@/components/ReminderPanel";
 import { RoleDailyDashboard } from "@/components/RoleDailyDashboard";
-import { TodayTaskManager } from "@/components/TodayTaskManager";
+import { TodayAllTasks } from "@/components/TodayAllTasks";
 import { VoiceHandoffForm } from "@/components/VoiceHandoffForm";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
@@ -78,6 +79,7 @@ function TodayCommandCenter() {
   const [splitTask, setSplitTask] = useState<Task | null>(null);
   const [handoffTask, setHandoffTask] = useState<Task | null>(null);
   const [postponeTask, setPostponeTask] = useState<Task | null>(null);
+  const [activeTab, setActiveTab] = useState<ActionCenterTab>("focus");
   const confirmationToken = useRef<string | null>(null);
 
   const today = hkDateIso();
@@ -85,11 +87,16 @@ function TodayCommandCenter() {
 
   useEffect(() => {
     if (!currentData || window.location.hash !== "#task-action-list") return;
+    setActiveTab("tasks");
+  }, [currentData]);
+
+  useEffect(() => {
+    if (!currentData || activeTab !== "tasks" || window.location.hash !== "#task-action-list") return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById("task-action-list")?.scrollIntoView({ block: "start" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [currentData]);
+  }, [activeTab, currentData]);
   const isSuki = Boolean(currentData?.currentUser.displayName.toLowerCase().includes("suki"));
   const minimumDay = Boolean(
     currentData
@@ -348,34 +355,36 @@ function TodayCommandCenter() {
           onCapacity={() => setCapacityOpen(true)}
           onAdd={() => setAdding(true)}
         />
-        <section className="panel mx-auto max-w-2xl p-6 text-center sm:p-9">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
-            <Coffee className="h-7 w-7" />
+        <ActionCenterTabs active={activeTab} todayCount={acceptedPlan.metadata.length} taskCount={currentData.taskQueueCatalog.filter((task) => !["done", "cancelled"].includes(task.status)).length} onChange={setActiveTab} />
+        {activeTab === "focus" ? (
+          <div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus" className="space-y-4">
+            <section className="panel mx-auto max-w-2xl p-6 text-center sm:p-9">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <Coffee className="h-7 w-7" />
+              </div>
+              <p className="eyebrow mt-5">Minimum Viable Day</p>
+              <h2 className="mt-2 text-2xl font-extrabold text-slate-900">今日休息已安排</h2>
+              <p className="muted mx-auto mt-3 max-w-lg leading-7">
+                休息唔係失敗。系統沒有完成、延期或搬動任何任務，亦不會製造負面紀錄。
+              </p>
+              <Button className="mt-6" disabled={busy} onClick={() => void setRestDay(false)}>
+                <ArrowRight className="h-5 w-5" />
+                需要時重新開啟今日
+              </Button>
+              {actionError ? <InlineAlert message={actionError} /> : null}
+            </section>
+            <details className="panel group overflow-hidden">
+              <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"><span><span className="block font-extrabold text-slate-900">需要時查看提醒</span><span className="mt-1 block text-xs text-slate-500">預設收起，今日休息不需要處理 backlog。</span></span><ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" /></summary>
+              <div className="space-y-4 border-t border-slate-100 p-4"><ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} /></div>
+            </details>
           </div>
-          <p className="eyebrow mt-5">Minimum Viable Day</p>
-          <h2 className="mt-2 text-2xl font-extrabold text-slate-900">今日休息已安排</h2>
-          <p className="muted mx-auto mt-3 max-w-lg leading-7">
-            休息唔係失敗。系統沒有完成、延期或搬動任何任務，亦不會製造負面紀錄。
-          </p>
-          <Button className="mt-6" disabled={busy} onClick={() => void setRestDay(false)}>
-            <ArrowRight className="h-5 w-5" />
-            需要時重新開啟今日
-          </Button>
-          {actionError ? <InlineAlert message={actionError} /> : null}
-        </section>
-        <details className="panel group overflow-hidden">
-          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"><span><span className="block font-extrabold text-slate-900">需要時查看提醒或調整 Today</span><span className="mt-1 block text-xs text-slate-500">預設收起，今日休息不需要處理 backlog。</span></span><ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" /></summary>
-          <div className="space-y-4 border-t border-slate-100 p-4"><ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} /><TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} /></div>
-        </details>
-        <details className="panel group overflow-hidden">
-          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
-            <span><span className="block font-extrabold text-slate-900">需要時查看全部任務</span><span className="mt-1 block text-xs text-slate-500">今日休息時預設收起，任務資料仍然完整保留。</span></span>
-            <ChevronDown className="h-5 w-5 text-slate-400 transition group-open:rotate-180" />
-          </summary>
-          <div className="border-t border-slate-100 p-4 sm:p-5">
-            <TaskActionList data={currentData} onChanged={reload} restful />
-          </div>
-        </details>
+        ) : null}
+        {activeTab === "today" ? (
+          <TodayAllTasks tasks={currentData.tasks} planning={currentData.planning} today={today} onChanged={reload} onStart={openFocus} onComplete={(task) => complete(task, null)} onBrowseTasks={() => setActiveTab("tasks")} />
+        ) : null}
+        {activeTab === "tasks" ? (
+          <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks"><TaskActionList data={currentData} onChanged={reload} restful /></div>
+        ) : null}
         {capacityOpen ? (
           <CapacityModal
             current={currentData.capacity}
@@ -420,6 +429,15 @@ function TodayCommandCenter() {
       ) : null}
       {actionError ? <InlineAlert message={actionError} /> : null}
 
+      <ActionCenterTabs
+        active={activeTab}
+        todayCount={acceptedPlan.metadata.length}
+        taskCount={currentData.taskQueueCatalog.filter((task) => !["done", "cancelled"].includes(task.status)).length}
+        onChange={setActiveTab}
+      />
+
+      {activeTab === "focus" ? (
+      <div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus" className="space-y-5 sm:space-y-6">
       <RoleDailyDashboard
         data={currentData}
         topTasks={plannedSequence}
@@ -618,7 +636,6 @@ function TodayCommandCenter() {
             tasks={currentData.tasks}
             onAccepted={reload}
           />
-          <TodayTaskManager tasks={currentData.taskCatalog} planning={currentData.planning} today={today} onChanged={reload} />
           <ReminderPanel reminders={currentData.reminders} participants={currentData.participants} currentUserId={currentData.currentUser.id} onChanged={reload} />
         </div>
       </details>
@@ -632,7 +649,26 @@ function TodayCommandCenter() {
         </div>
       </details>
 
-      <TaskActionList data={currentData} onChanged={reload} />
+      </div>
+      ) : null}
+
+      {activeTab === "today" ? (
+        <TodayAllTasks
+          tasks={currentData.tasks}
+          planning={currentData.planning}
+          today={today}
+          onChanged={reload}
+          onStart={openFocus}
+          onComplete={(task) => complete(task, null)}
+          onBrowseTasks={() => setActiveTab("tasks")}
+        />
+      ) : null}
+
+      {activeTab === "tasks" ? (
+        <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks">
+          <TaskActionList data={currentData} onChanged={reload} />
+        </div>
+      ) : null}
 
       {voiceHandoffOpen ? (
         <Modal title="語音／文字交接" onClose={() => setVoiceHandoffOpen(false)}>
@@ -747,10 +783,8 @@ function TodayHeader({
   return (
     <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="eyebrow">Today Command Center</p>
-        <h1 className="page-title mt-1">
-          {minimumDay ? "今日只需要推進最小一步" : "今日行動中心"}
-        </h1>
+        <p className="eyebrow">Action Center</p>
+        <h1 className="page-title mt-1">行動中心</h1>
         <p className="muted mt-2 max-w-2xl text-sm leading-6">
           {minimumDay
             ? "只顯示一項核心責任及最多兩項簡單選項；休息亦是有效安排。"

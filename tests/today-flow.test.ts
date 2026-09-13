@@ -34,9 +34,12 @@ test("Today skips completed, blocked, waiting, and cancelled items when showing 
 
 test("Today keeps the main action before secondary tools and exposes the following task", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const tabs = await readFile(new URL("../components/ActionCenterTabs.tsx", import.meta.url), "utf8");
   assert.match(page, /currentAndNextTodayTask\(plannedSequence\)/);
   assert.match(page, /完成這項後，下一個做/);
   assert.match(page, /上一項已完成，現在只需處理這一項。/);
-  assert.ok(page.indexOf("<PrimaryTask") < page.lastIndexOf("<TodayTaskManager"));
+  assert.ok(page.indexOf("<PrimaryTask") < page.lastIndexOf("<TodayAllTasks"));
+  assert.match(tabs, /今日全部/);
+  assert.match(tabs, /任務總表/);
   assert.match(page, /今日工具與完整安排/);
 });

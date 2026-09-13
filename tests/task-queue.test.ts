@@ -134,12 +134,14 @@ test("sidebar keeps the daily loop open and removes the duplicate sharing route"
   assert.doesNotMatch(shell, /href: "\/workspace\/document"/);
   assert.ok(shell.indexOf('href: "/cashflow"') < shell.indexOf('label: "系統設定"'));
   assert.match(shell, /EncouragementFooter/);
-  assert.match(shell, /label: "今日＋任務"/);
+  assert.match(shell, /label: "行動中心"/);
   assert.doesNotMatch(shell, /href: "\/tasks"/);
 });
 
 test("Today and the task action list share one page while the legacy route redirects", () => {
   const today = read("app/page.tsx");
+  const tabs = read("components/ActionCenterTabs.tsx");
+  const todayAll = read("components/TodayAllTasks.tsx");
   const taskList = read("components/tasks/TaskActionList.tsx");
   const legacyRoute = read("app/tasks/page.tsx");
   const api = read("app/api/control/route.ts");
@@ -147,7 +149,17 @@ test("Today and the task action list share one page while the legacy route redir
   assert.match(today, /<TaskActionList data=\{currentData\} onChanged=\{reload\}/);
   assert.match(today, /window\.location\.hash !== "#task-action-list"/);
   assert.match(today, /scrollIntoView/);
+  assert.match(today, /activeTab === "today"/);
+  assert.match(today, /activeTab === "tasks"/);
+  assert.match(tabs, /今日重點/);
+  assert.match(tabs, /今日全部/);
+  assert.match(tabs, /任務總表/);
+  assert.match(todayAll, /set_today_task/);
+  assert.match(todayAll, /included: false/);
+  assert.match(todayAll, /不會同步到 Google Calendar/);
   assert.match(taskList, /id="task-action-list"/);
+  assert.match(taskList, /多選加入今日/);
+  assert.match(taskList, /set_today_task/);
   assert.match(legacyRoute, /redirect\("\/#task-action-list"\)/);
   assert.match(api, /taskQueueCatalog:/);
   assert.match(api, /taskProjects:/);

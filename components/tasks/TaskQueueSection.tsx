@@ -15,8 +15,14 @@ export function TaskQueueSection({
   defaultOpen = false,
   previewLimit,
   completed = false,
+  todayTaskIds,
+  bulkMode = false,
+  selectedTaskIds,
+  todayBusyId,
   onChanged,
-  onEdit
+  onEdit,
+  onSelect,
+  onAddToday
 }: {
   title: string;
   description: string;
@@ -25,8 +31,14 @@ export function TaskQueueSection({
   defaultOpen?: boolean;
   previewLimit?: number;
   completed?: boolean;
+  todayTaskIds?: Set<string>;
+  bulkMode?: boolean;
+  selectedTaskIds?: Set<string>;
+  todayBusyId?: string | null;
   onChanged: () => void;
   onEdit: (task: Task) => void;
+  onSelect?: (task: Task, selected: boolean) => void;
+  onAddToday?: (task: Task) => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [showAll, setShowAll] = useState(false);
@@ -56,7 +68,22 @@ export function TaskQueueSection({
         <div className="border-t border-black/5 px-3 py-3 sm:px-4">
           {tasks.length ? (
             <div className="grid gap-2 [content-visibility:auto]">
-              {visibleTasks.map((task) => <TaskQueueRow key={task.id} task={task} tone={tone} completed={completed} onChanged={onChanged} onEdit={onEdit} />)}
+              {visibleTasks.map((task) => (
+                <TaskQueueRow
+                  key={task.id}
+                  task={task}
+                  tone={tone}
+                  completed={completed}
+                  inToday={todayTaskIds?.has(task.id)}
+                  bulkMode={bulkMode}
+                  selected={selectedTaskIds?.has(task.id)}
+                  todayBusy={todayBusyId === task.id}
+                  onChanged={onChanged}
+                  onEdit={onEdit}
+                  onSelect={onSelect}
+                  onAddToday={onAddToday}
+                />
+              ))}
             </div>
           ) : <p className="px-2 py-3 text-sm font-semibold text-slate-500">暫時沒有項目。</p>}
           {previewLimit && tasks.length > previewLimit ? (

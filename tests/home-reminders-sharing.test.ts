@@ -11,7 +11,7 @@ const invite = readFileSync("app/api/admin/invite/route.ts", "utf8").toLowerCase
 test("home supports manual task inclusion without deleting the task", () => {
   assert.match(control, /case "set_today_task"/);
   assert.match(control, /plan_source:\s*included \? "manual"/);
-  assert.match(home, /todaytaskmanager/);
+  assert.match(home, /todayalltasks/);
 });
 
 test("reminders are independent, participant-visible, and use generic notifications", () => {

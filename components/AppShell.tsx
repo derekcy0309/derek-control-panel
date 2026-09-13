@@ -26,7 +26,7 @@ const navGroups: NavGroupData[] = [
     tone: "daily",
     defaultOpen: true,
     items: [
-      { href: "/", label: "今日＋任務", icon: Sparkles },
+      { href: "/", label: "行動中心", icon: Sparkles },
       { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
   },
@@ -81,7 +81,7 @@ const systemItems: NavItem[] = [
 ];
 
 const mobileNav = [
-  { href: "/", label: "今日＋任務", icon: Sparkles },
+  { href: "/", label: "行動中心", icon: Sparkles },
   { href: "/workspace/inbox", label: "收集箱", icon: Inbox },
   { href: "/workspace/waiting", label: "等待中", icon: Clock3 }
 ] as const;

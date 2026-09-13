@@ -73,7 +73,8 @@ test("home is progressive, caps the primary list at three and keeps advanced too
   assert.match(home, /重新安排或查看完整 Today 工具/);
   assert.match(home, /RoleDailyDashboard/);
   assert.match(home, /AIDailyPlanner/);
-  assert.match(home, /TodayTaskManager/);
+  assert.match(home, /TodayAllTasks/);
+  assert.match(home, /ActionCenterTabs/);
 });
 
 test("migration is additive, indexed, least-privilege and has an explicit rollback", () => {
