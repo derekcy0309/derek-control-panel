@@ -1,8 +1,9 @@
-import { taskAnalysisSchema, type TaskAnalysis } from "./schemas.ts";
+import { taskAnalysisSchema, taskBreakdownSchema, type TaskAnalysis, type TaskBreakdown } from "./schemas.ts";
 import { redactSensitiveText } from "./redact.ts";
 
 export const chatGPTWebUrl = "https://chatgpt.com/";
 export const manualChatGPTPromptVersion = "manual-chatgpt-task-v1";
+export const manualChatGPTBreakdownPromptVersion = "manual-chatgpt-breakdown-v1";
 export const maximumChatGPTResponseLength = 30_000;
 
 export type ManualTaskPromptInput = {
@@ -98,6 +99,43 @@ ${JSON.stringify(input.task, null, 2)}
 - effortReductionTips 最多 4 項。
 - warnings 最多 3 項。
 - firstTenMinutes 必須可以不經再規劃就立即開始。`;
+}
+
+export function buildManualChatGPTBreakdownPrompt(input: {
+  taskId: string;
+  task: Pick<ManualTaskPromptInput["task"], "title" | "description" | "dueDate">;
+}) {
+  return `你係 Derek Control Panel 的任務拆解助手。請用香港繁體中文，將以下一項任務拆成可獨立完成的小步驟。
+
+只係提出建議，不能聲稱已建立子任務、指派、改期或改動任何資料。不要加不必要的行政工作。第一步應該毋須再規劃就做得到；每步盡量 5–25 分鐘。如果任務本身很細，只建議一項。資料不足時，以「先確認…」作一個小步，不要猜測事實。不要提供醫療、臨床、法律或財務結論。
+
+任務識別碼：${input.taskId}
+已遮罩的任務資料：${JSON.stringify(input.task, null, 2)}
+
+只輸出一個 JSON object，不要 Markdown 或解釋：
+{"taskId":"${input.taskId}","breakdown":{"steps":[{"title":"一個具體的小動作","minutes":10}]}}
+
+steps 只可有 1–6 項；title 不多於 250 字；minutes 必須是 2–120 的整數。請不要包括病人、客戶、聯絡資料或其他敏感資訊。`;
+}
+
+export function parseManualChatGPTBreakdownResponse(value: string, expectedTaskId: string): TaskBreakdown {
+  const text = value.trim();
+  if (!text) throw new Error("請先貼上 ChatGPT 回覆。");
+  if (text.length > maximumChatGPTResponseLength) throw new Error("ChatGPT 回覆太長；請只貼上 JSON 結果。");
+  let sawTaskMismatch = false;
+  let sawMissingTaskId = false;
+  for (const candidate of jsonCandidates(text)) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(candidate); } catch { continue; }
+    if (!isRecord(parsed)) continue;
+    if (typeof parsed.taskId !== "string") { sawMissingTaskId = true; continue; }
+    if (parsed.taskId !== expectedTaskId) { sawTaskMismatch = true; continue; }
+    const breakdown = taskBreakdownSchema.safeParse(parsed.breakdown);
+    if (breakdown.success) return breakdown.data;
+  }
+  if (sawTaskMismatch) throw new Error("呢段回覆屬於另一項任務，請返回正確任務重新拆解。");
+  if (sawMissingTaskId) throw new Error("ChatGPT 回覆欠缺任務識別碼，請要求佢重新輸出完整 JSON。");
+  throw new Error("未能讀取拆解結果。請要求 ChatGPT 只重新輸出指定 JSON，再貼一次。");
 }
 
 export function parseManualChatGPTTaskResponse(

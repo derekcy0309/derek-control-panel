@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 import {
+  buildManualChatGPTBreakdownPrompt,
   buildManualChatGPTTaskPrompt,
   chatGPTWebUrl,
   createRuleTaskAnalysis,
+  manualChatGPTBreakdownPromptVersion,
   manualChatGPTPromptVersion,
   maximumChatGPTResponseLength,
+  parseManualChatGPTBreakdownResponse,
   parseManualChatGPTTaskResponse,
   redactManualTaskForChatGPT
 } from "@/lib/ai/manual-chatgpt";
@@ -21,14 +24,17 @@ export async function POST(request: NextRequest) {
   if (context instanceof Response) return context;
 
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
-  const action = body?.action === "import" ? "import" : "prepare";
+  const action = body?.action === "import" || body?.action === "prepare_breakdown" || body?.action === "import_breakdown"
+    ? body.action : "prepare";
   const parsed = taskAnalysisRequestSchema.safeParse({ taskId: body?.taskId });
   if (!parsed.success) return privateJson({ error: "任務識別碼不正確。" }, 422);
 
   const [task, settings] = await Promise.all([
     context.client.from("tasks")
-      .select("id,title,description,next_action,definition_of_done,estimated_minutes,energy_level,context,due_date,risk,area,status")
+      .select("id,owner_id,title,description,next_action,definition_of_done,estimated_minutes,energy_level,context,due_date,risk,area,status")
       .eq("id", parsed.data.taskId)
+      .is("deleted_at", null)
+      .is("archived_at", null)
       .maybeSingle(),
     context.client.from("user_settings")
       .select("support_profile")
@@ -54,6 +60,26 @@ export async function POST(request: NextRequest) {
     area: task.data.area,
     status: task.data.status
   });
+
+  if (action === "prepare_breakdown" || action === "import_breakdown") {
+    if (task.data.owner_id !== context.user.id) {
+      return privateJson({ error: "只有任務擁有人可以建立子任務。" }, 403);
+    }
+    if (task.data.status === "done" || task.data.status === "cancelled") {
+      return privateJson({ error: "已結束任務不能再拆成子任務。" }, 422);
+    }
+  }
+
+  if (action === "prepare_breakdown") {
+    return privateJson({
+      chatGPTUrl: chatGPTWebUrl,
+      prompt: buildManualChatGPTBreakdownPrompt({
+        taskId: task.data.id,
+        task: { title: safeTask.title, description: safeTask.description, dueDate: safeTask.dueDate }
+      }),
+      privacyMessage: "系統已遮罩常見敏感資料；送出前仍請檢查 Prompt，不要貼入私人或醫療資料。"
+    });
+  }
 
   if (action === "prepare") {
     return privateJson({
@@ -88,6 +114,27 @@ export async function POST(request: NextRequest) {
     .gte("created_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString());
   if (!recent.error && (recent.count ?? 0) >= 50) {
     return privateJson({ error: "今日已匯入很多分析，請稍後再試，避免重複建立建議。" }, 429);
+  }
+
+  if (action === "import_breakdown") {
+    let breakdown;
+    try {
+      breakdown = parseManualChatGPTBreakdownResponse(responseText, task.data.id);
+    } catch (error) {
+      return privateJson({ error: error instanceof Error ? error.message : "未能讀取拆解結果。" }, 422);
+    }
+    const event = await context.client.from("ai_analysis_events").insert({
+      user_id: context.user.id,
+      source_type: "task_analysis",
+      source_id: task.data.id,
+      model: "chatgpt-manual",
+      prompt_version: manualChatGPTBreakdownPromptVersion,
+      input_hash: hashAIInput(responseText),
+      output_json: { stepCount: breakdown.steps.length },
+      source: "ai"
+    }).select("id").single();
+    if (event.error) return privateJson({ error: event.error.message }, 500);
+    return privateJson({ breakdown, eventId: event.data.id, message: "已讀取 AI 建議；尚未建立任何子任務。" });
   }
 
   let analysis;

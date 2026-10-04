@@ -7,6 +7,7 @@ import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
 import { taskCategoryFor } from "@/lib/task-categories";
 import type { Task } from "@/lib/types";
+import { AIBreakdownPanel } from "@/components/tasks/AIBreakdownPanel";
 
 export function ChildTasksPanel({ parent, childTasks, participants, currentUserId, onCreated }: {
   parent: Task;
@@ -61,6 +62,7 @@ export function ChildTasksPanel({ parent, childTasks, participants, currentUserI
       {canCreate ? <Button type="button" variant="secondary" onClick={() => setOpen((value) => !value)}>{open ? "收起新增" : "新增子任務"}</Button> : null}
     </div>
     {childTasks.length ? <ul className="mt-4 space-y-2">{childTasks.map((child) => <li key={child.id} className="rounded-xl border border-slate-200 bg-white p-3"><Link href={`/tasks/${child.id}`} className="block min-h-11 font-bold text-indigo-800 hover:underline">{child.title}</Link><p className="text-xs text-slate-600">{child.status === "done" ? "已完成" : "待跟進"} · 到期：{formatDate(child.due_date)}</p></li>)}</ul> : <p className="mt-4 text-sm text-slate-600">暫時未有子任務。</p>}
+    {canCreate ? <AIBreakdownPanel key={parent.id} parent={parent} childTasks={childTasks} onCreated={onCreated} /> : null}
     {open && canCreate ? <form className="mt-4 grid gap-3 rounded-xl bg-indigo-50 p-4" onSubmit={(event) => void createChild(event)}>
       <label><span className="label">子任務名稱</span><input className="field mt-1" value={title} onChange={(event) => { setTitle(event.target.value); requestId.current = null; }} maxLength={250} required placeholder="例如：先找出需要的文件" /></label>
       <div className="grid gap-3 sm:grid-cols-2"><label><span className="label">到期日（可留空）</span><input className="field mt-1" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label><label><span className="label">交俾邊個（可選）</span><select className="field mt-1" value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}><option value="">自己跟進</option>{otherParticipants.map((person) => <option key={person.user_id} value={person.user_id}>{person.display_name}</option>)}</select></label></div>

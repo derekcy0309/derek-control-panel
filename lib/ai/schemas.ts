@@ -47,5 +47,13 @@ export const taskAnalysisSchema = z.object({
   warnings: z.array(z.string().max(220)).max(3)
 });
 
+export const taskBreakdownSchema = z.object({
+  steps: z.array(z.object({
+    title: z.string().trim().min(1).max(250),
+    minutes: z.number().int().min(2).max(120)
+  })).min(1).max(6).refine((steps) => new Set(steps.map((step) => step.title.toLocaleLowerCase())).size === steps.length)
+});
+
 export type AIDailySelection = z.infer<typeof aiDailySelectionSchema>;
 export type TaskAnalysis = z.infer<typeof taskAnalysisSchema>;
+export type TaskBreakdown = z.infer<typeof taskBreakdownSchema>;

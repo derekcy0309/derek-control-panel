@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
+  buildManualChatGPTBreakdownPrompt,
   buildManualChatGPTTaskPrompt,
   createRuleTaskAnalysis,
   maximumChatGPTResponseLength,
+  parseManualChatGPTBreakdownResponse,
   parseManualChatGPTTaskResponse,
   redactManualTaskForChatGPT
 } from "../lib/ai/manual-chatgpt.ts";
@@ -127,4 +130,42 @@ test("manual ChatGPT paste-back is bounded and rules still provide an immediate 
   });
   assert.equal(bounded.estimatedMinutes, 5);
   assert.equal(bounded.fastestPath[0].minutes, 5);
+});
+
+test("AI breakdown prompt binds one redacted task and only proposes child steps", () => {
+  const safe = redactManualTaskForChatGPT({
+    title: "name: Suki", description: "致電 9123 4567", nextAction: "", definitionOfDone: "",
+    estimatedMinutes: null, energyLevel: null, context: null, dueDate: null,
+    risk: null, area: null, status: "not_started"
+  });
+  const prompt = buildManualChatGPTBreakdownPrompt({
+    taskId, task: { title: safe.title, description: safe.description, dueDate: safe.dueDate }
+  });
+  assert.match(prompt, /可獨立完成的小步驟/);
+  assert.match(prompt, new RegExp(taskId));
+  assert.match(prompt, /只係提出建議/);
+  assert.doesNotMatch(prompt, /9123 4567|Suki/);
+});
+
+test("AI breakdown paste-back validates task ID, shape, limits and duplicates", () => {
+  const valid = { taskId, breakdown: { steps: [{ title: "打開文件", minutes: 5 }, { title: "列出欠缺資料", minutes: 10 }] } };
+  assert.equal(parseManualChatGPTBreakdownResponse(JSON.stringify(valid), taskId).steps.length, 2);
+  assert.equal(parseManualChatGPTBreakdownResponse(`\`\`\`json\n${JSON.stringify(valid)}\n\`\`\``, taskId).steps[0].title, "打開文件");
+  assert.throws(() => parseManualChatGPTBreakdownResponse(JSON.stringify({ ...valid, taskId: "other" }), taskId), /另一項任務/);
+  assert.throws(() => parseManualChatGPTBreakdownResponse(JSON.stringify({ breakdown: valid.breakdown }), taskId), /欠缺任務識別碼/);
+  assert.throws(() => parseManualChatGPTBreakdownResponse(JSON.stringify({ taskId, breakdown: { steps: [] } }), taskId), /未能讀取/);
+  assert.throws(() => parseManualChatGPTBreakdownResponse(JSON.stringify({ taskId, breakdown: { steps: Array(7).fill({ title: "一步", minutes: 5 }) } }), taskId), /未能讀取/);
+  assert.throws(() => parseManualChatGPTBreakdownResponse(JSON.stringify({ taskId, breakdown: { steps: [{ title: "重複", minutes: 5 }, { title: "重複", minutes: 10 }] } }), taskId), /未能讀取/);
+});
+
+test("AI breakdown stays user-confirmed, idempotent and limited to the parent task", () => {
+  const route = readFileSync("app/api/chatgpt/task-assistant/route.ts", "utf8");
+  const panel = readFileSync("components/tasks/AIBreakdownPanel.tsx", "utf8");
+  assert.match(route, /task\.data\.owner_id !== context\.user\.id/);
+  assert.match(route, /output_json: \{ stepCount: breakdown\.steps\.length \}/);
+  assert.match(panel, /確認建立已勾選子任務/);
+  assert.match(panel, /clientRequestId: step\.id/);
+  assert.match(panel, /parentTaskId: parent\.id/);
+  assert.match(panel, /createdTaskId/);
+  assert.doesNotMatch(panel, /OPENAI_API_KEY|AI_GATEWAY_API_KEY/);
 });
