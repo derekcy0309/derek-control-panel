@@ -4,7 +4,8 @@ import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { priorityValueForDueDate } from "@/lib/due-priority";
-import { currentTaskStep } from "@/lib/task-steps";
+import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
+import type { BodyDoubleTaskOption } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -558,20 +559,26 @@ async function bodyDouble({ client, user }: RequestContext, requestedSessionId: 
     .order("created_at", { ascending: false })
     .limit(1);
   const selectedSession = sessionId ? sessionQuery.eq("id", sessionId).maybeSingle() : sessionQuery.in("status", ["waiting", "running"]).maybeSingle();
-  const [tasks, profiles, sessionResult] = await Promise.all([
+  const [tasks, profiles, sessionResult, currentSteps] = await Promise.all([
     ownTasks,
     client.rpc("participant_profiles"),
-    selectedSession
+    selectedSession,
+    client.from("task_current_steps").select("task_id,title,status").limit(1000)
   ]);
-  const firstError = [tasks, profiles, sessionResult].find((result) => result.error)?.error;
+  const firstError = [tasks, profiles, sessionResult, currentSteps].find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
+  const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
+  const availableTasks = (tasks.data ?? []).filter((task: BodyDoubleTaskOption) => currentStepByTaskId.get(task.id)?.status !== "waiting").map((task: BodyDoubleTaskOption) => {
+    const step = currentStepByTaskId.get(task.id);
+    return { ...task, next_action: taskVisibleNextAction({ next_action: task.next_action, current_step_title: step?.title ?? null, current_step_status: step?.status ?? null }) };
+  });
 
   const session = sessionResult.data as Record<string, unknown> | null;
   if (!session) {
     return Response.json({
       currentUser: { id: user.id, email: user.email ?? "", displayName: inferDisplayName(user) },
       participants: (profiles.data ?? []).filter((profile: { user_id: string; display_name: string }) => profile.user_id !== user.id),
-      availableTasks: tasks.data ?? [],
+      availableTasks,
       session: null
     }, { headers: privateHeaders() });
   }
@@ -604,7 +611,7 @@ async function bodyDouble({ client, user }: RequestContext, requestedSessionId: 
   return Response.json({
     currentUser: { id: user.id, email: user.email ?? "", displayName: inferDisplayName(user) },
     participants: (profiles.data ?? []).filter((profile: { user_id: string; display_name: string }) => profile.user_id !== user.id),
-    availableTasks: tasks.data ?? [],
+    availableTasks,
     session: {
       ...session,
       participants: visibleParticipants

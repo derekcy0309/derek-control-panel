@@ -6,6 +6,7 @@ import { CalendarClock, Check, ListPlus, Play, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
+import { taskVisibleNextAction } from "@/lib/task-steps";
 import type { PlanningMetadata, Task } from "@/lib/types";
 
 const roleOrder = { now: 0, later: 1, quick_win: 2 } as const;
@@ -107,10 +108,11 @@ export function TodayAllTasks({
                     {task.due_date ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600"><CalendarClock className="h-3.5 w-3.5" />{formatDate(task.due_date)}</span> : null}
                   </div>
                   <Link href={`/tasks/${task.id}`} className={`mt-2 block font-extrabold leading-6 text-slate-950 hover:text-indigo-700 hover:underline ${completed ? "line-through" : ""}`}>{task.title}</Link>
-                  {task.next_action ? <p className="mt-1 text-sm text-slate-600">下一步：{task.next_action}</p> : null}
+                  {taskVisibleNextAction(task) ? <p className="mt-1 text-sm text-slate-600">下一步：{taskVisibleNextAction(task)}</p> : null}
                 </div>
                 <div className="no-print flex shrink-0 flex-wrap gap-2">
-                  {!completed ? <Button variant="secondary" disabled={busyId === task.id} onClick={() => onStart(task)}><Play className="h-4 w-4" />開始</Button> : null}
+                  {!completed && task.current_step_status !== "waiting" ? <Button variant="secondary" disabled={busyId === task.id} onClick={() => onStart(task)}><Play className="h-4 w-4" />開始</Button> : null}
+                  {!completed && task.current_step_status === "waiting" ? <Link className="inline-flex min-h-11 items-center rounded-lg bg-slate-50 px-4 font-semibold text-slate-700" href={`/tasks/${task.id}`}>查看等待進度</Link> : null}
                   {!completed ? <Button disabled={busyId === task.id} onClick={() => void complete(task)}><Check className="h-4 w-4" />完成</Button> : null}
                   <Button variant="ghost" disabled={busyId === task.id} onClick={() => void remove(task)}><X className="h-4 w-4" />移出今日</Button>
                 </div>

@@ -44,6 +44,21 @@ test("waiting for a step result stays in Waiting, not Today Now", () => {
   assert.equal(taskVisibleNextAction(task), "等待結果：等回覆");
 });
 
+test("role home, Today, Waiting and Body Double use the same current step", () => {
+  const roleHome = readFileSync("components/RoleDailyDashboard.tsx", "utf8");
+  const today = readFileSync("components/TodayAllTasks.tsx", "utf8");
+  const waiting = readFileSync("app/workspace/[view]/page.tsx", "utf8");
+  const control = readFileSync("app/api/control/route.ts", "utf8");
+  assert.match(roleHome, /task\.current_step_status !== "waiting"/);
+  assert.match(roleHome, /taskVisibleNextAction\(task\)/);
+  assert.match(today, /task\.current_step_status !== "waiting"/);
+  assert.match(today, /taskVisibleNextAction\(task\)/);
+  assert.match(waiting, /task\.status === "waiting" \|\| task\.current_step_status === "waiting"/);
+  assert.match(waiting, /waitingStep \? taskVisibleNextAction\(task\)/);
+  assert.match(control, /availableTasks = .*status !== "waiting"/);
+  assert.match(control, /next_action: taskVisibleNextAction/);
+});
+
 test("migration keeps parent status independent and protects shared steps with RLS", () => {
   const sql = readFileSync("supabase/migrations/20261004120000_task_steps.sql", "utf8").toLowerCase();
   assert.match(sql, /alter table public\.task_steps enable row level security/);

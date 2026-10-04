@@ -8,6 +8,7 @@ import { formatDate, isOverdue } from "@/lib/date";
 import { riskLabels, taskStatusDetailLabels } from "@/lib/labels";
 import { buildSukiFollowupSummary, sukiFollowupCategoryLabels } from "@/lib/suki-followups";
 import { resolveWorkspaceRole, workspaceRoleLabels } from "@/lib/workspace-role";
+import { taskVisibleNextAction } from "@/lib/task-steps";
 import type { Assignment, Task, TodayData } from "@/lib/types";
 
 export function RoleDailyDashboard({
@@ -104,7 +105,7 @@ export function RoleDailyDashboard({
           {decisions.map((task) => (
             <div key={task.id} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0"><p className="font-extrabold text-slate-950">{task.title}</p><p className="mt-1 text-sm text-slate-600">{task.next_action || "請先查看完整內容"}</p></div>
+                <div className="min-w-0"><p className="font-extrabold text-slate-950">{task.title}</p><p className="mt-1 text-sm text-slate-600">{taskVisibleNextAction(task) || "請先查看完整內容"}</p></div>
                 <div className="flex shrink-0 gap-2"><Link className="inline-flex min-h-11 items-center rounded-lg bg-white px-4 font-semibold text-slate-800 ring-1 ring-slate-200" href={`/tasks/${task.id}`}>查看</Link><Button type="button" disabled={busy} onClick={() => void onResolveDecision(task)}><ShieldCheck className="h-4 w-4" />確認決定</Button></div>
               </div>
             </div>
@@ -140,7 +141,7 @@ function PrimaryActionCard({ task, onStart, onNeedHelp }: { task: Task; onStart:
         <h3 id={`today-primary-${task.id}`} className="mt-4 max-w-4xl text-2xl font-black leading-tight tracking-tight text-slate-950 sm:text-4xl">{task.title}</h3>
         <div className="today-next-step mt-5">
           <p className="text-xs font-extrabold uppercase tracking-[.14em] text-indigo-700">最小下一步</p>
-          <p className="mt-2 text-base font-bold leading-7 text-slate-900 sm:text-lg">{task.next_action || "先打開任務，寫低第一個可以見到的動作。"}</p>
+          <p className="mt-2 text-base font-bold leading-7 text-slate-900 sm:text-lg">{taskVisibleNextAction(task) || "先打開任務，寫低第一個可以見到的動作。"}</p>
         </div>
         <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-slate-600">
           <span className="inline-flex items-center gap-1.5"><Clock3 className="h-4 w-4" />先做 5 分鐘</span>
@@ -181,7 +182,7 @@ function DashboardSection({ title, count, empty, tone = "normal", children }: { 
 }
 
 function CompactTaskCard({ task }: { task: Task }) {
-  return <Link href={`/tasks/${task.id}`} className="block rounded-xl border border-slate-200 bg-white p-4 transition hover:border-indigo-300 hover:shadow-sm"><div className="flex items-start justify-between gap-3"><h4 className="min-w-0 text-base font-extrabold text-slate-950">{task.title}</h4><span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{taskStatusDetailLabels[task.status]}</span></div><p className="mt-3 text-sm font-semibold text-slate-700"><span className="text-slate-500">下一步：</span>{task.next_action || "先補一個清晰下一步"}</p><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>截止：{formatDate(task.due_date)}</span><span>優先：{riskLabels[task.risk]}</span></div></Link>;
+  return <Link href={`/tasks/${task.id}`} className="block rounded-xl border border-slate-200 bg-white p-4 transition hover:border-indigo-300 hover:shadow-sm"><div className="flex items-start justify-between gap-3"><h4 className="min-w-0 text-base font-extrabold text-slate-950">{task.title}</h4><span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{taskStatusDetailLabels[task.status]}</span></div><p className="mt-3 text-sm font-semibold text-slate-700"><span className="text-slate-500">下一步：</span>{taskVisibleNextAction(task) || "先補一個清晰下一步"}</p><div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500"><span>截止：{formatDate(task.due_date)}</span><span>優先：{riskLabels[task.risk]}</span></div></Link>;
 }
 
 function PendingHandoff({ assignment, task }: { assignment: Assignment; task?: Task }) {
@@ -189,13 +190,13 @@ function PendingHandoff({ assignment, task }: { assignment: Assignment; task?: T
 }
 
 function activeTask(task: Task) { return !["done", "cancelled"].includes(task.status) && !task.deleted_at && !task.archived_at; }
-function todayEligible(task: Task) { return activeTask(task) && !["waiting", "blocked"].includes(task.status) && !task.blocked_reason?.trim(); }
+function todayEligible(task: Task) { return activeTask(task) && !["waiting", "blocked"].includes(task.status) && task.current_step_status !== "waiting" && !task.blocked_reason?.trim(); }
 function trulyUrgent(task: Task) { return task.safety_impact && task.risk === "high"; }
 function ownerName(task: Task, data: TodayData) { const ownerId = task.assignee_id ?? task.owner_id ?? data.currentUser.id; return data.participants.find((person) => person.user_id === ownerId)?.display_name ?? (ownerId === data.currentUser.id ? data.currentUser.displayName : task.owner) ?? "未指定"; }
 function uniqueTasks(tasks: Task[]) { return [...new Map(tasks.map((task) => [task.id, task])).values()]; }
 function roleCategoryCounts(role: ReturnType<typeof resolveWorkspaceRole>, tasks: Task[]) {
   const active = tasks.filter(activeTask);
-  if (role === "suki") return [`等待別人 ${active.filter((task) => task.status === "waiting").length}`, `需要重新安排 ${active.filter((task) => task.status === "blocked").length}`];
+  if (role === "suki") return [`等待別人 ${active.filter((task) => task.status === "waiting" || task.current_step_status === "waiting").length}`, `需要重新安排 ${active.filter((task) => task.status === "blocked").length}`];
   if (role === "amigo") return [`系統工作 ${active.filter((task) => task.task_type === "system_issue").length}`, `文件整理 ${active.filter((task) => ["ai_document", "materials"].includes(task.task_type ?? "")).length}`, `等待覆核 ${active.filter((task) => task.task_type === "assessment").length}`];
   if (role === "derek") return [`等待我決定 ${active.filter((task) => task.needs_decision_from_id && !task.decision_resolved_at).length}`, `未填日期 ${active.filter((task) => !task.due_date && !task.follow_up_date && !task.planned_date).length}`];
   return [];

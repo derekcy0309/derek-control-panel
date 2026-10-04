@@ -129,7 +129,7 @@ export function TaskCard({
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
           </span>
           <span className="mt-3 block text-xl font-bold text-ink">{task.title}</span>
-          {task.current_step_title ? <span className="mt-2 block text-sm font-semibold text-indigo-800">現在這一步：{task.current_step_title}</span> : null}
+          {task.current_step_title ? <span className="mt-2 block text-sm font-semibold text-indigo-800">{task.current_step_status === "waiting" ? "等待結果" : "現在這一步"}：{task.current_step_title}</span> : null}
           <span className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold text-slate-600">
             <span className="inline-flex items-center gap-2">
               <CalendarClock className="h-4 w-4 text-indigo-600" />

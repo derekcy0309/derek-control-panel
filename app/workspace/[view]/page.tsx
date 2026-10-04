@@ -18,6 +18,7 @@ import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
 import { waitingAge } from "@/lib/planning";
 import { hkDateIso } from "@/lib/planning";
+import { taskVisibleNextAction } from "@/lib/task-steps";
 import { operatingItemPriorityBand, type PriorityBand } from "@/lib/due-priority";
 import type { Area, OperatingItem } from "@/lib/types";
 import { useControlData } from "@/hooks/useControlData";
@@ -99,7 +100,7 @@ function WaitingWorkspace() {
   const [adding, setAdding] = useState(false);
   if (loading || error || !data) return <LoadingState error={error} />;
   const tasks = data.tasks
-    .filter((task) => task.status === "waiting" && !task.deleted_at && !task.archived_at)
+    .filter((task) => (task.status === "waiting" || task.current_step_status === "waiting") && !task.deleted_at && !task.archived_at)
     .sort((left, right) => (left.follow_up_date ?? "9999-12-31").localeCompare(right.follow_up_date ?? "9999-12-31"));
   const legacyCount = data.operatingItems.filter((item) => item.item_type === "waiting" && !item.archived_at).length;
 
@@ -113,7 +114,8 @@ function WaitingWorkspace() {
     {tasks.length ? <section className="grid gap-3">{tasks.map((task) => {
       const handlerId = task.assignee_id ?? task.owner_id ?? task.user_id;
       const handler = handlerId === data.currentUser.id ? "我" : data.participants.find((person) => person.user_id === handlerId)?.display_name ?? "已指派使用者";
-      return <article key={task.id} className="panel p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="text-xs font-bold text-indigo-700">現在由 {handler} 跟進</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">{task.title}</h2></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">等待別人</span></div><dl className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt className="text-xs font-bold text-slate-500">等待誰</dt><dd className="mt-1 font-semibold text-slate-800">{task.waiting_for || "尚未填寫"}</dd></div><div><dt className="text-xs font-bold text-slate-500">等待甚麼</dt><dd className="mt-1 font-semibold text-slate-800">{task.waiting_on || task.next_action || "尚未填寫"}</dd></div><div><dt className="text-xs font-bold text-slate-500">下次跟進</dt><dd className="mt-1 font-semibold text-slate-800">{formatDate(task.follow_up_date)}</dd></div></dl><div className="mt-4 flex flex-wrap gap-2"><Link href={`/tasks/${task.id}`} className="inline-flex min-h-11 items-center rounded-lg bg-white px-4 font-semibold text-slate-800 ring-1 ring-slate-200">查看完整工作</Link><Button variant="secondary" onClick={() => void resumeTask(task.id)}>收到回覆，繼續處理</Button></div></article>;
+      const waitingStep = task.current_step_status === "waiting";
+      return <article key={task.id} className="panel p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="text-xs font-bold text-indigo-700">現在由 {handler} 跟進</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">{task.title}</h2></div><span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">等待別人</span></div><dl className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt className="text-xs font-bold text-slate-500">等待誰</dt><dd className="mt-1 font-semibold text-slate-800">{task.waiting_for || (waitingStep ? "等候結果" : "尚未填寫")}</dd></div><div><dt className="text-xs font-bold text-slate-500">等待甚麼</dt><dd className="mt-1 font-semibold text-slate-800">{waitingStep ? taskVisibleNextAction(task) : task.waiting_on || taskVisibleNextAction(task) || "尚未填寫"}</dd></div><div><dt className="text-xs font-bold text-slate-500">下次跟進</dt><dd className="mt-1 font-semibold text-slate-800">{formatDate(task.follow_up_date)}</dd></div></dl><div className="mt-4 flex flex-wrap gap-2"><Link href={`/tasks/${task.id}`} className="inline-flex min-h-11 items-center rounded-lg bg-white px-4 font-semibold text-slate-800 ring-1 ring-slate-200">{waitingStep ? "查看細步驟／重新開始" : "查看完整工作"}</Link>{!waitingStep ? <Button variant="secondary" onClick={() => void resumeTask(task.id)}>收到回覆，繼續處理</Button> : null}</div></article>;
     })}</section> : <section className="panel p-8 text-center"><h2 className="text-lg font-bold">目前沒有等待中的工作</h2><p className="muted mt-2 text-sm">需要等待別人時再加入，今日三項會保持清晰。</p></section>}
     {legacyCount ? <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">舊版另有 {legacyCount} 項 Waiting 資料仍安全保留，沒有刪除或改寫；新工作會統一加入目前的 Work Queue。</p> : null}
     {adding ? <Modal title="新增等待工作" onClose={() => setAdding(false)}><TaskForm userId={data.currentUser.id} participants={data.participants} compact preset={{ status: "waiting", area: "personal", source_type: "follow_up" }} onSaved={() => { setAdding(false); void reload(); }} onCancel={() => setAdding(false)} /></Modal> : null}
