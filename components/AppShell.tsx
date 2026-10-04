@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  BriefcaseBusiness, CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
+  CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
   PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
 } from "lucide-react";
@@ -12,6 +12,7 @@ import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
+import { AssignmentAlerts } from "@/components/AssignmentAlerts";
 import { EncouragementFooter } from "@/components/EncouragementFooter";
 import { LiveClock } from "@/components/LiveClock";
 import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
@@ -35,7 +36,6 @@ const navGroups: NavGroupData[] = [
     tone: "planning",
     items: [
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
-      { href: "/workspace/project", label: "項目", icon: BriefcaseBusiness },
       { href: "/calendar", label: "日曆", icon: CalendarDays },
       { href: "/request-duty", label: "Request Duty", icon: ClipboardCheck },
     ]
@@ -134,6 +134,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         sessionStorage.removeItem(`dcp:voice-handoff-draft:v1:${currentUserId}`);
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:new`);
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:waiting`);
+        sessionStorage.removeItem(`dcp:assignment-alerts:v1:${currentUserId}`);
+        localStorage.removeItem(`dcp:assignment-alerts:v1:${currentUserId}`);
       } catch {
         // Sign-out must still complete if browser storage is unavailable.
       }
@@ -144,6 +146,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-frame min-h-screen bg-mist text-ink" data-section={sectionIdentityForPath(pathname)}>
       {mustChangePassword ? <PasswordChangeGate onComplete={() => setMustChangePassword(false)} /> : null}
+      {!mustChangePassword ? <AssignmentAlerts userId={currentUserId} /> : null}
       <aside className="sidebar hidden lg:flex" aria-label="主要導覽">
         <Brand displayName={displayName} />
         <div className="sidebar-scroll">

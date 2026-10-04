@@ -45,6 +45,10 @@ export async function POST(request: NextRequest) {
     p_now: now
   });
   if (queued.error) return dispatchError("enqueue_failed");
+  const followups = await client.rpc("enqueue_assignment_followups", {
+    p_dispatch_secret: secret,
+    p_now: now
+  });
 
   const batchId = crypto.randomUUID();
   const claimed = await client.rpc("claim_due_notifications", {
@@ -91,6 +95,8 @@ export async function POST(request: NextRequest) {
   return Response.json({
     ok: true,
     queued: Number(queued.data ?? 0),
+    followupsQueued: Number(followups.data ?? 0),
+    followupSchedulingFailed: Boolean(followups.error),
     claimed: rows.length,
     sent,
     retry,

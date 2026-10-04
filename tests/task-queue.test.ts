@@ -162,7 +162,7 @@ test("Today and the task action list share one page while the legacy route redir
   assert.match(taskList, /set_today_task/);
   assert.match(legacyRoute, /redirect\("\/#task-action-list"\)/);
   assert.match(api, /taskQueueCatalog:/);
-  assert.match(api, /taskProjects:/);
+  assert.doesNotMatch(api, /taskProjects:/);
 });
 
 test("family overview explains sensitive school data and groups every item by urgency", () => {

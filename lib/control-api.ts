@@ -56,6 +56,26 @@ export async function loadTaskDetail(taskId: string): Promise<TaskDetailData> {
   );
 }
 
+export type AssignmentAlertRecord = {
+  id: string;
+  resource_id: string;
+  assigned_by_id: string;
+  assigned_to_id: string;
+  status: string;
+  due_date: string | null;
+  accepted_at: string | null;
+  acknowledged_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  task_active: boolean;
+};
+
+export async function loadAssignmentAlerts(): Promise<{ assignments: AssignmentAlertRecord[]; currentUserId: string; quietModeUntil: string | null }> {
+  return controlRequest<{ assignments: AssignmentAlertRecord[]; currentUserId: string; quietModeUntil: string | null }>(
+    "/api/control?view=assignment_alerts", { method: "GET" }
+  );
+}
+
 export async function loadArchivedTransactions(page = 1) {
   return controlRequest<{ transactions: Transaction[]; page: number; hasMore: boolean }>(
     `/api/control?view=archived_transactions&page=${encodeURIComponent(String(page))}`,

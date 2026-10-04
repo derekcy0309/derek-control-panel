@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
   if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
   if (view === "focus_sessions") return focusSessions(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "task_detail") return taskDetail(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "assignment_alerts") return assignmentAlerts(context);
   if (view === "archived_transactions") return archivedTransactions(context, request.nextUrl.searchParams);
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
@@ -172,7 +173,7 @@ async function taskDetail(
   if (task.error) return databaseError(task.error);
   if (!task.data) return jsonError("找不到任務或你沒有查看權限。", 404);
 
-  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps] = await Promise.all([
+  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps, childTasks, parentTask] = await Promise.all([
     client.from("user_profiles").select("display_name").eq("user_id", user.id).maybeSingle(),
     client.rpc("participant_profiles"),
     client.from("assignments")
@@ -201,9 +202,13 @@ async function taskDetail(
       .order("created_at", { ascending: false })
       .limit(100),
     client.from("task_followers").select("*").eq("task_id", taskId),
-    client.from("task_steps").select("*").eq("task_id", taskId).order("sort_order", { ascending: true }).limit(100)
+    client.from("task_steps").select("*").eq("task_id", taskId).order("sort_order", { ascending: true }).limit(100),
+    client.from("tasks").select("*").eq("parent_task_id", taskId).is("deleted_at", null).is("archived_at", null).order("created_at", { ascending: true }).limit(100),
+    task.data.parent_task_id
+      ? client.from("tasks").select("id,title").eq("id", task.data.parent_task_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null })
   ]);
-  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps]
+  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps, childTasks, parentTask]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -215,6 +220,8 @@ async function taskDetail(
     },
     task: { ...task.data, current_step_title: currentTaskStep(taskSteps.data ?? [])?.title ?? null, current_step_status: currentTaskStep(taskSteps.data ?? [])?.status ?? ((taskSteps.data ?? []).length ? "all_done" : null), follow_up_date: currentTaskStep(taskSteps.data ?? [])?.follow_up_date ?? task.data.follow_up_date },
     taskSteps: taskSteps.data ?? [],
+    childTasks: childTasks.data ?? [],
+    parentTask: parentTask.data ?? null,
     participants: participants.data ?? [],
     assignments: assignments.data ?? [],
     handoffNotes: handoffNotes.data ?? [],
@@ -223,6 +230,34 @@ async function taskDetail(
     activityLogs: activityLogs.data ?? [],
     taskFollowers: taskFollowers.data ?? []
   }, { headers: privateHeaders() });
+}
+
+async function assignmentAlerts({ client, user }: RequestContext) {
+  const [result, preference] = await Promise.all([client.from("assignments")
+    .select("id,resource_id,assigned_by_id,assigned_to_id,status,due_date,accepted_at,acknowledged_at,created_at,updated_at")
+    .eq("resource_type", "task")
+    .or(`assigned_by_id.eq.${user.id},assigned_to_id.eq.${user.id}`)
+    .in("status", ["pending_acceptance", "accepted", "in_progress", "waiting", "blocked"])
+    .order("created_at", { ascending: false })
+    .limit(100),
+  client.from("notification_preferences").select("quiet_mode_until").eq("user_id", user.id).maybeSingle()]);
+  if (result.error) return databaseError(result.error);
+  if (preference.error) return databaseError(preference.error);
+  const taskIds = [...new Set((result.data ?? []).map((item) => item.resource_id))];
+  const tasks = taskIds.length
+    ? await client.from("tasks").select("id,status,due_date,deleted_at,archived_at").in("id", taskIds)
+    : { data: [], error: null };
+  if (tasks.error) return databaseError(tasks.error);
+  const taskById = new Map((tasks.data ?? []).map((task) => [task.id, task]));
+  const assignments = (result.data ?? []).map((assignment) => {
+    const task = taskById.get(assignment.resource_id);
+    return {
+      ...assignment,
+      due_date: assignment.due_date ?? task?.due_date ?? null,
+      task_active: Boolean(task && !["done", "cancelled"].includes(task.status) && !task.deleted_at && !task.archived_at)
+    };
+  });
+  return Response.json({ assignments, currentUserId: user.id, quietModeUntil: preference.data?.quiet_mode_until ?? null }, { headers: privateHeaders() });
 }
 
 async function todayDashboard({ client, user }: RequestContext) {
@@ -321,24 +356,18 @@ async function todayDashboard({ client, user }: RequestContext) {
     .order("due_date", { ascending: true, nullsFirst: false })
     .limit(200);
   if (activeTasks.error) return databaseError(activeTasks.error);
-  const [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers, currentSteps] = await Promise.all([
+  const [taskQueueCatalog, taskNoticeRecipients, taskFollowers, currentSteps] = await Promise.all([
     client.from("tasks")
       .select("*")
       .is("deleted_at", null)
       .is("archived_at", null)
       .order("due_date", { ascending: true, nullsFirst: false })
       .limit(1000),
-    client.from("operating_items")
-      .select("*")
-      .eq("item_type", "project")
-      .is("archived_at", null)
-      .order("title", { ascending: true })
-      .limit(200),
     client.from("task_notice_recipients").select("*").limit(1000),
     client.from("task_followers").select("*").limit(1000),
     client.from("task_current_steps").select("task_id,title,status,follow_up_date").limit(1000)
   ]);
-  const taskQueueError = [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers, currentSteps]
+  const taskQueueError = [taskQueueCatalog, taskNoticeRecipients, taskFollowers, currentSteps]
     .find((result) => result.error)?.error;
   if (taskQueueError) return databaseError(taskQueueError);
   const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
@@ -433,7 +462,6 @@ async function todayDashboard({ client, user }: RequestContext) {
     tasks: [...taskMap.values()].map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(String(task.id))?.title ?? null, current_step_status: currentStepByTaskId.get(String(task.id))?.status ?? null, follow_up_date: currentStepByTaskId.get(String(task.id))?.follow_up_date ?? task.follow_up_date })),
     taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
     taskQueueCatalog: (taskQueueCatalog.data ?? []).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
-    taskProjects: taskProjects.data ?? [],
     taskNoticeRecipients: taskNoticeRecipients.data ?? [],
     taskFollowers: taskFollowers.data ?? [],
     shares: shares.data ?? [],
@@ -838,6 +866,7 @@ export async function POST(request: NextRequest) {
     case "handoff_progress": return recordTaskHandoffProgress(context, body);
     case "handoff_resolve": return resolveTaskHandoff(context, body);
     case "assignment_response": return respondToAssignment(context, body);
+    case "acknowledge_assignment": return acknowledgeAssignment(context, body);
     case "joint_response": return respondToJoint(context, body);
     case "revoke_share": return revokeShare(context, body);
     case "save_settings": return saveSettings(context, body);
@@ -1081,8 +1110,12 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const handoffNote = nullableText(body.handoffNote);
   const requestedProjectId = nullableText(body.projectId);
   const projectId = requestedProjectId ? uuidValue(requestedProjectId) : null;
+  const requestedParentTaskId = nullableText(body.parentTaskId);
+  const parentTaskId = requestedParentTaskId ? uuidValue(requestedParentTaskId) : null;
   if (requestedHandoffTarget && !handoffTarget) return jsonError("交接對象不正確。", 400);
   if (requestedProjectId && !projectId) return jsonError("項目識別碼不正確。", 400);
+  if (projectId) return jsonError("項目已併入任務；請改用子任務拆解。", 422);
+  if (requestedParentTaskId && !parentTaskId) return jsonError("上層任務識別碼不正確。", 400);
   if (handoffTarget === user.id) return jsonError("請選擇另一位跟進者。", 422);
   if (handoffTarget && !handoffNote) return jsonError("請輸入交接 notes，讓對方知道第一步。", 422);
   const requestedDecisionTarget = nullableText(body.needsDecisionFromId);
@@ -1105,7 +1138,22 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const sourceType = enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up", "duty_request"] as const, "follow_up");
   const dueDate = dateValue(body.dueDate);
   if (sourceType === "duty_request" && !dueDate) return jsonError("請輸入 Request Duty 提醒日期。", 422);
-  const access = await defaultResourceAccess(client, user.id, area);
+  if (parentTaskId) {
+    const parent = await client.from("tasks")
+      .select("id,owner_id,area,scope")
+      .eq("id", parentTaskId)
+      .is("deleted_at", null)
+      .is("archived_at", null)
+      .maybeSingle();
+    if (parent.error) return databaseError(parent.error);
+    if (!parent.data || parent.data.owner_id !== user.id) return jsonError("只有原任務擁有者可以新增子任務。", 403);
+    if (parent.data.area !== area || parent.data.scope !== (categoryFields?.scope ?? (area === "work" ? "company" : "home"))) {
+      return jsonError("子任務必須沿用原任務分類。", 422);
+    }
+  }
+  const access = parentTaskId
+    ? { visibility: "private" as const, householdId: null }
+    : await defaultResourceAccess(client, user.id, area);
   if (access instanceof Response) return access;
   const payload = {
     user_id: user.id,
@@ -1139,6 +1187,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     estimated_duration_days: integerValue(body.estimatedDurationDays, 0, 3650),
     buffer_days: integerValue(body.bufferDays, 0, 365) ?? 0,
     project_id: projectId,
+    parent_task_id: parentTaskId,
     notes: nullableText(body.notes),
     case_code: resourceText(body.caseCode, 80),
     task_type: enumValue(body.taskType, [
@@ -1829,6 +1878,7 @@ async function createOperatingItem({ client, user }: RequestContext, body: Recor
   const title = requiredText(body.title, "請輸入項目名稱。");
   if (title instanceof Response) return title;
   const itemType = enumValue(body.itemType, itemTypes, "note");
+  if (itemType === "project") return jsonError("項目已併入任務；請直接建立任務。", 422);
   const area = enumValue(body.area, ["work","family","personal"] as const, "personal");
   const access = await defaultResourceAccess(client, user.id, area);
   if (access instanceof Response) return access;
@@ -2091,6 +2141,27 @@ async function resolveTaskHandoff({ client, user }: RequestContext, body: Record
     resolution === "close" ? "完全結案" : resolution === "return" ? "完成一步並交回上一手" : "完成一步並繼續跟進"
   );
   return Response.json({ assignmentId: result.data }, { headers: privateHeaders() });
+}
+
+async function acknowledgeAssignment({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const id = uuidValue(body.id);
+  if (!id) return jsonError("交辦識別碼不正確。", 400);
+  const found = await client.from("assignments")
+    .select("id,assigned_to_id,status,acknowledged_at")
+    .eq("id", id).eq("resource_type", "task").maybeSingle();
+  if (found.error) return databaseError(found.error);
+  if (!found.data || found.data.assigned_to_id !== user.id) return jsonError("你沒有確認這項交辦的權限。", 403);
+  if (found.data.acknowledged_at) return Response.json({ acknowledgedAt: found.data.acknowledged_at }, { headers: privateHeaders() });
+  if (found.data.status !== "pending_acceptance") return jsonError("這項交辦已處理。", 409);
+  const updated = await client.from("assignments")
+    .update({ acknowledged_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("acknowledged_at", null)
+    .select("acknowledged_at")
+    .maybeSingle();
+  if (updated.error) return databaseError(updated.error);
+  if (!updated.data) return jsonError("交辦剛剛已由另一個畫面確認，請重新整理。", 409);
+  return Response.json({ acknowledgedAt: updated.data.acknowledged_at }, { headers: privateHeaders() });
 }
 
 async function respondToAssignment({ client, user }: RequestContext, body: Record<string, unknown>) {

@@ -196,7 +196,9 @@ async function previewBackup({ client, user }: RequestContext, backup: BackupEnv
   const inactiveCheckpoints = backup.data.checkpoints.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
   const inactiveTaskSteps = backup.data.taskSteps.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
   const inactiveResources = backup.data.taskResources.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
+  const childLinks = backup.data.tasks.filter((row) => typeof row.parent_task_id === "string" && row.parent_task_id.length > 0).length;
   const unsupported = [
+    childLinks ? { category: "tasks.parent", count: childLinks, reason: "子任務關係會保留在 JSON；目前還原只會建立任務，不會自動重連上層任務。" } : null,
     backup.data.recurrenceRules.length ? { category: "recurrenceRules", count: backup.data.recurrenceRules.length, reason: "重複規則會保留在備份中；V1 不會自動重啟它們，以免產生重複任務。" } : null,
     backup.data.focusSessions.length ? { category: "focusSessions", count: backup.data.focusSessions.length, reason: "Focus 歷史保留在備份中，暫不重建以避免把舊時段誤當成正在進行。" } : null,
     backup.data.timeObservations.length ? { category: "timeObservations", count: backup.data.timeObservations.length, reason: "舊估時觀察保留在備份中；還原任務後系統會重新累積個人估時資料。" } : null,

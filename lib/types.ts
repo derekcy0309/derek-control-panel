@@ -79,6 +79,7 @@ export type Task = {
   latest_safe_start_date?: string | null;
   progress?: number;
   project_id?: string | null;
+  parent_task_id?: string | null;
   recurrence_rule_id?: string | null;
   household_id?: string | null;
   case_code?: string | null;
@@ -377,6 +378,7 @@ export type Assignment = {
   decline_reason: string | null;
   proposed_date: string | null;
   accepted_at: string | null;
+  acknowledged_at?: string | null;
   completed_at?: string | null;
   parent_assignment_id?: string | null;
   handoff_sequence?: number;
@@ -827,7 +829,6 @@ export type TodayData = {
   tasks: Task[];
   taskCatalog: Task[];
   taskQueueCatalog: Task[];
-  taskProjects: OperatingItem[];
   taskNoticeRecipients: TaskNoticeRecipient[];
   taskFollowers: TaskFollower[];
   shares: ShareRecord[];
@@ -851,6 +852,8 @@ export type TaskDetailData = {
   currentUser: CurrentUser;
   task: Task;
   taskSteps: TaskStep[];
+  childTasks: Task[];
+  parentTask: Pick<Task, "id" | "title"> | null;
   participants: Array<{ user_id: string; display_name: string }>;
   assignments: Assignment[];
   handoffNotes: HandoffNote[];

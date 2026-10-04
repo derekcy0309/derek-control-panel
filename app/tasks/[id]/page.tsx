@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { TaskCard } from "@/components/items/TaskCard";
+import { ChildTasksPanel } from "@/components/tasks/ChildTasksPanel";
 import { loadTaskDetail } from "@/lib/control-api";
 import type { TaskDetailData } from "@/lib/types";
 
@@ -23,7 +24,6 @@ function TaskDetailContent() {
 
   const reload = useCallback(async () => {
     if (!taskId) return;
-    setLoading(true);
     setError("");
     try {
       setData(await loadTaskDetail(taskId));
@@ -35,7 +35,7 @@ function TaskDetailContent() {
   }, [taskId]);
 
   useEffect(() => { void reload(); }, [reload]);
-  if (loading || error || !data) return <LoadingState error={error} />;
+  if (loading || !data) return <LoadingState error={error} />;
   const participantById = new Map(data.participants.map((person) => [person.user_id, person.display_name]));
 
   return (
@@ -46,6 +46,9 @@ function TaskDetailContent() {
         <h1 className="page-title mt-1">完整任務內容</h1>
         <p className="muted mt-2 text-sm">主頁只顯示摘要；這裡保留交接、checkpoint、資源、歷史及所有工作細節。</p>
       </section>
+      {error ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">畫面未能更新：{error}。你可重新整理後再確認。</p> : null}
+      {data.parentTask ? <Link className="inline-flex min-h-11 items-center font-semibold text-indigo-800 hover:underline" href={`/tasks/${data.parentTask.id}`}>← 返回上層任務：{data.parentTask.title}</Link> : null}
+      <ChildTasksPanel parent={data.task} childTasks={data.childTasks} participants={data.participants} currentUserId={data.currentUser.id} onCreated={(task) => setData((previous) => previous ? { ...previous, childTasks: previous.childTasks.some((child) => child.id === task.id) ? previous.childTasks : [...previous.childTasks, task] } : previous)} />
       <TaskCard
         task={data.task}
         currentUserId={data.currentUser.id}

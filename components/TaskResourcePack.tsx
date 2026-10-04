@@ -16,7 +16,6 @@ const resourceTypeOptions: Array<{ value: TaskResourceType; label: string }> = [
   { value: "note", label: "Notes" },
   { value: "sop", label: "SOP" },
   { value: "decision", label: "Decision" },
-  { value: "project", label: "Project" },
   { value: "waiting", label: "Waiting" }
 ];
 

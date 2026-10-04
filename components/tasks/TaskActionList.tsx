@@ -225,7 +225,6 @@ export function TaskActionList({
             <TaskForm
               userId={data.currentUser.id}
               participants={data.participants}
-              projects={data.taskProjects}
               preset={{ task_category: selectedCategory, area: categoryFields.area, scope: categoryFields.scope }}
               statusSuggestions={statusSuggestions}
               onSaved={() => finish(onChanged, () => setIsAdding(false))}
@@ -239,7 +238,6 @@ export function TaskActionList({
             <TaskForm
               userId={data.currentUser.id}
               participants={data.participants}
-              projects={data.taskProjects}
               initialTask={editingTask}
               initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)}
               initialFollowerUserIds={data.taskFollowers.filter((follower) => follower.task_id === editingTask.id).map((follower) => follower.follower_id)}

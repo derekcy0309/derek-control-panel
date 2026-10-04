@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Link2, LockKeyhole, Plus, ShieldCheck, UserRoundCheck, X } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
@@ -18,6 +18,9 @@ export default function SharingPage() { return <AuthGate><SharingContent /></Aut
 function SharingContent() {
   const { data, loading, error, reload } = useControlData();
   const [tab, setTab] = useState<Tab>("history");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "pending") setTab("pending");
+  }, []);
   const [sharing, setSharing] = useState(false);
   const [actionError, setActionError] = useState("");
   if (loading || error || !data) return <LoadingState error={error} />;
@@ -25,6 +28,7 @@ function SharingContent() {
   const received = data.shares.filter((share) => share.shared_with_user_id === data.currentUser.id && !share.revoked_at);
   const sent = data.shares.filter((share) => share.owner_id === data.currentUser.id && !share.revoked_at);
   const assignments = data.assignments.filter((item) => item.assigned_to_id === data.currentUser.id);
+  const pendingAcknowledgements = assignments.filter((item) => item.resource_type === "task" && item.status === "pending_acceptance" && !item.acknowledged_at);
   const content = tab === "assigned" ? received.filter((item) => item.share_type === "assignment" && assignments.some((a) => a.resource_id === item.resource_id && ["accepted","in_progress","blocked"].includes(a.status)))
     : tab === "reference" ? received.filter((item) => item.share_type === "reference")
     : tab === "joint" ? received.filter((item) => item.share_type === "joint")
@@ -33,10 +37,12 @@ function SharingContent() {
     : received.filter((item) => item.share_type === "assignment" && assignments.some((a) => a.resource_id === item.resource_id && a.status === "pending_acceptance"));
 
   async function assignmentResponse(assignment: Assignment, response: "accept" | "decline") { setActionError(""); try { await controlAction("assignment_response", { id: assignment.id, response, reason: response === "decline" ? "暫時未能處理" : undefined }); await reload(); } catch (caught) { setActionError(caught instanceof Error ? caught.message : "未能處理指派。"); } }
+  async function acknowledgeAssignment(assignment: Assignment) { setActionError(""); try { await controlAction("acknowledge_assignment", { id: assignment.id }); await reload(); } catch (caught) { setActionError(caught instanceof Error ? caught.message : "未能確認收到交辦。"); } }
   async function revoke(share: ShareRecord) { if (!window.confirm("撤銷後，對方會立即失去搜尋、Dashboard、日曆及舊連結存取。確定撤銷？")) return; await controlAction("revoke_share", { id: share.id }); await reload(); }
 
   return <div className="space-y-5"><section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">Private by default</p><h1 className="page-title mt-1">分享及交辦中心</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">分享只代表查看；指派才代表責任。每次只分享一項，私人備註及敏感附件預設不包括。</p></div><Button onClick={() => setSharing(true)}><Plus className="h-5 w-5" />分享或指派</Button></section>
     <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1" aria-label="分享分類">{tabs.map((item) => <button key={item.value} className={`min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold ${tab === item.value ? "bg-indigo-600 text-white" : "text-slate-600 hover:bg-slate-50"}`} onClick={() => setTab(item.value)}>{item.label}</button>)}</nav>
+    {tab === "pending" && pendingAcknowledgements.length ? <section className="grid gap-2" aria-label="未確認收到的交辦">{pendingAcknowledgements.map((assignment) => <div key={assignment.id} className="panel flex flex-wrap items-center justify-between gap-3 p-4"><p className="text-sm font-semibold text-slate-800">一項工作已交俾你；你可以先確認收到，之後再決定是否接受。</p><Button type="button" variant="secondary" onClick={() => void acknowledgeAssignment(assignment)}>確認收到</Button></div>)}</section> : null}
     {tab === "privacy" ? <PrivacySummary shares={sent} /> : null}
     {tab === "history" ? <HandoffHistory data={data} /> : <section className="grid gap-3">{content.length ? content.map((share) => { const resource = findResource(data, share); const assignment = data.assignments.find((item) => item.resource_id === share.resource_id && item.assigned_to_id === share.shared_with_user_id); const otherId = share.owner_id === data.currentUser.id ? share.shared_with_user_id : share.owner_id; const other = data.participants.find((item) => item.user_id === otherId)?.display_name || "對方"; return <article key={share.id} className="panel p-4 sm:p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-start"><div className="min-w-0 flex-1"><div className="flex flex-wrap gap-2"><ShareBadge share={share} actor={other} /><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">{permissionLabel[share.permission]}</span></div><h2 className="mt-3 break-words text-lg font-bold">{resource?.title || "已分享項目"}</h2><p className="muted mt-2 text-sm">分享日期 {formatDate(share.created_at)}{assignment?.due_date ? ` · 截止 ${formatDate(assignment.due_date)}` : ""}</p></div><div className="flex flex-wrap gap-2">{tab === "pending" && assignment ? <><Button onClick={() => assignmentResponse(assignment, "accept")}><Check className="h-4 w-4" />接受</Button><Button variant="secondary" onClick={() => assignmentResponse(assignment, "decline")}><X className="h-4 w-4" />婉拒</Button></> : null}{share.owner_id === data.currentUser.id ? <Button variant="danger" onClick={() => revoke(share)}>撤銷</Button> : null}</div></div></article>; }) : <div className="panel p-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><ShieldCheck className="h-5 w-5" /></div><h2 className="mt-4 text-lg font-bold">此分類暫時沒有項目</h2><p className="muted mt-2 text-sm">只有明確分享、已接受指派或已同意共同管理的項目才會出現。</p></div>}</section>}
     {actionError ? <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700" role="alert">{actionError}</p> : null}

@@ -7,7 +7,7 @@ import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
 import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWeekdays, type RoutineIntervalUnit } from "@/lib/routine-interval";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
-import type { OperatingItem, Task } from "@/lib/types";
+import type { Task } from "@/lib/types";
 
 type TaskFormState = {
   scope: string;
@@ -96,7 +96,6 @@ export function TaskForm({
   initialFollowerUserIds = [],
   preset,
   participants = [],
-  projects = [],
   compact = false,
   statusSuggestions = [],
   onSaved,
@@ -108,7 +107,6 @@ export function TaskForm({
   initialFollowerUserIds?: string[];
   preset?: Partial<TaskFormState>;
   participants?: Array<{ user_id: string; display_name: string }>;
-  projects?: OperatingItem[];
   compact?: boolean;
   statusSuggestions?: string[];
   onSaved: () => void;
@@ -585,7 +583,7 @@ export function TaskForm({
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
             更多選項
-            <span className="ml-2 text-xs font-medium text-slate-500">分類、類型、項目、備註及通知</span>
+            <span className="ml-2 text-xs font-medium text-slate-500">分類、類型、備註及通知</span>
           </summary>
           <div className="mt-4 grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -600,15 +598,6 @@ export function TaskForm({
               <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
             </label>
           </div>
-          {projects.length ? (
-            <label>
-              <span className="label">所屬項目（可選）</span>
-              <select className="field mt-2" value={form.project_id} onChange={(event) => update("project_id", event.target.value)}>
-                <option value="">不連結項目</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}
-              </select>
-            </label>
-          ) : null}
           <label>
             <span className="label">備註</span>
             <textarea className="field mt-2 min-h-28" value={form.notes} onChange={(event) => update("notes", event.target.value)} />

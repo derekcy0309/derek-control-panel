@@ -13,12 +13,13 @@ const statusLabels: Record<TaskStepStatus, string> = {
   done: "已完成"
 };
 
-export function TaskStepPanel({ taskId, steps, canDelete, onChanged, closed = false }: {
+export function TaskStepPanel({ taskId, steps, canDelete, onChanged, closed = false, allowCreate = true }: {
   taskId: string;
   steps: TaskStep[];
   canDelete: boolean;
   onChanged: () => void;
   closed?: boolean;
+  allowCreate?: boolean;
 }) {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -130,8 +131,8 @@ export function TaskStepPanel({ taskId, steps, canDelete, onChanged, closed = fa
     <section className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4" aria-label="任務細步驟">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-lg font-extrabold text-slate-900">把任務拆細</h3>
-          <p className="mt-1 text-sm text-slate-600">每步只需 5–25 分鐘；完成一步不會結束整項任務。</p>
+          <h3 className="text-lg font-extrabold text-slate-900">{allowCreate ? "把任務拆細" : "舊有細步驟"}</h3>
+          <p className="mt-1 text-sm text-slate-600">{allowCreate ? "每步只需 5–25 分鐘；完成一步不會結束整項任務。" : "現有細步驟會保留；之後請用上方「新增子任務」拆解及指派。"}</p>
         </div>
         {steps.length ? <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-indigo-800">{doneCount}／{steps.length} 步已完成</span> : null}
       </div>
@@ -144,7 +145,7 @@ export function TaskStepPanel({ taskId, steps, canDelete, onChanged, closed = fa
           {waitingForm(current)}
         </div>
       ) : steps.length ? <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">所有細步驟已完成。原任務仍然開放；如整項任務已完成，請另外按「完成任務」。</p> : <p className="mt-3 text-sm text-slate-700">先寫第一個最容易開始的動作，例如「打開相關文件」。</p>}
-      {!closed ? (
+      {!closed && allowCreate ? (
         <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={(event) => { event.preventDefault(); void createStep(); }}>
           <label className="sr-only" htmlFor={`new-step-${taskId}`}>新增細步驟</label>
           <input id={`new-step-${taskId}`} className="field min-w-0 flex-1 bg-white" value={title} maxLength={250} onChange={(event) => setTitle(event.target.value)} placeholder="下一個最小動作是甚麼？" />

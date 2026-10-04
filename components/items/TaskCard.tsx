@@ -157,7 +157,7 @@ export function TaskCard({
           ) : null}
             </div>
           </div>
-      <TaskStepPanel taskId={task.id} steps={taskSteps} canDelete={(task.owner_id ?? task.user_id) === currentUserId} closed={["done", "cancelled"].includes(task.status)} onChanged={onChanged} />
+      {taskSteps.length ? <TaskStepPanel taskId={task.id} steps={taskSteps} canDelete={(task.owner_id ?? task.user_id) === currentUserId} closed={["done", "cancelled"].includes(task.status)} allowCreate={false} onChanged={onChanged} /> : null}
       <TaskHandoffControls
         task={task}
         currentUserId={currentUserId}

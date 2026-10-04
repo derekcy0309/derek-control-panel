@@ -89,6 +89,7 @@ export function TaskQueueRow({
           {task.title}
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-600">
+          {task.parent_task_id ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-800">子任務</span> : null}
           {task.due_date ? (
             <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{formatDate(task.due_date)}</span>
           ) : urgency ? (

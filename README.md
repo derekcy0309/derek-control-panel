@@ -7,10 +7,10 @@
 - Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
 - Suki Minimum Viable Day：一項核心最低任務、最多兩項簡單選項、無罪疚休息、拆細、交接及指定日再處理
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
-- 任務細步驟：在同一任務內加入 5–25 分鐘的小步驟；一次只突出目前一步，可完成、等待結果、稍後處理或重新開始。完成一步不會自動結束原任務；雙人共同跟進可見進度，Today／Focus 會顯示目前一步。
+- 任務拆解：打開任務後按「新增子任務」才拆細；子任務是同一 Work Queue 的正式任務，可獨立指派、設定到期日及完成。原任務不會自動結案；舊有細步驟只在已有紀錄時保留顯示。
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
-- 任務依賴與項目里程碑：明確的 blocked-by／blocks 關係、防循環檢查、Project War Room 里程碑，以及不會自動完成或改派的下一步提示
+- 任務依賴：明確的 blocked-by／blocks 關係、防循環檢查，以及不會自動完成或改派的下一步提示；舊有 Project 資料保留但不再新增。
 - Task Action Queue：按個人／家庭／SEC／Wecare 分類，只先展開逾期、7 日內及無日期 Urgent 各五項；其餘摺起，並提供內部到期日曆及 A4 精簡列印
 - 單一步驟 Today：首頁先突出一項「現在只做這一件」，可直接開始 5 分鐘或要求系統拆細；其餘工作延後顯示，降低同時選擇造成的啟動阻力
 - 多巴胺友善外觀：Today／家庭／個人／工作／財務／健康各有文字、icon 及身份色，另有 Sunrise、Ocean、Aurora、Night Shift 四套主題與安靜／平衡／鮮明三段視覺強度
@@ -33,7 +33,7 @@
 - 每日綜合提醒：今日工作、等待別人、接近期限及需要重新安排事項合併成每人每天最多一封；不混入財務或已停用營運資料
 - Request Duty 提示：只輸入提醒日期及事項；完成 request 後剔選即完成原有 Task，並沿用私人權限、三日到期電郵及完成紀錄
 - 雙語鼓勵語：86句經審閱的中英文名人及Business語錄，完整顯示人物、年份／場合與核實來源；按香港日期及頁面輪替、避開近期重複，並由管理員控制每個帳戶是否顯示
-- Inbox、Projects、統一 Task Waiting、Decisions、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
+- Inbox、統一 Task Waiting、Decisions、SOP 與家庭／學校／寵物／家務／採購／個人／健康／文件／車輛／筆記
 - Deadline Intelligence：固定規則計算 latest safe start、逾期與風險
 - 精確電郵分享、Assignment、Joint ownership、撤銷及審計記錄
 - Cashflow、Meetings、Calendar、全域搜尋、個人設定及安全匯出
@@ -97,6 +97,7 @@ supabase/migrations/20260909120022_request_duty.sql
 supabase/migrations/20260910120000_visual_themes.sql
 supabase/migrations/20260910150051_routine_interval_schedule.sql
 supabase/migrations/20261004120000_task_steps.sql
+supabase/migrations/20261004150000_task_children_assignment_followups.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -136,6 +137,7 @@ supabase/migrations/20260804200000_personal_work_queue.rollback.sql
 supabase/migrations/20260909120022_request_duty.rollback.sql
 supabase/migrations/20260910150051_routine_interval_schedule.rollback.sql
 supabase/migrations/20261004120000_task_steps.rollback.sql
+supabase/migrations/20261004150000_task_children_assignment_followups.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。
@@ -170,6 +172,8 @@ Inbox Processing Mode 的 transaction、RLS、idempotency、Undo 與 rollback �
 Today Auto‑Plan 與 Minimum Viable Day 的 scoring、確認邊界、RLS 及 rollback 說明見 [`docs/today-auto-plan.md`](docs/today-auto-plan.md)。
 
 通知的授權、私隱 payload、RLS、server dispatch、排程啟用及 rollback 說明見 [`docs/notifications.md`](docs/notifications.md)。
+
+項目退場、子任務權限、交接彈出提示及派任者到期跟進見 [`docs/task-children-handoff.md`](docs/task-children-handoff.md)。
 
 任務依賴、Project milestones、RLS、cycle prevention 及 rollback 說明見 [`docs/task-dependencies-milestones.md`](docs/task-dependencies-milestones.md)。
 
