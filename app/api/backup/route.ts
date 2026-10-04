@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
   if (body.confirmation !== "RESTORE" || body.acknowledged !== true) {
     return jsonError("請閱讀預覽並確認「只新增、不覆蓋」後才可還原。", 422);
   }
-  const restored = await context.client.rpc("restore_backup_v1", { p_backup: restorePayload(parsed.backup) });
+  const restored = await context.client.rpc("restore_backup_v2", { p_backup: restorePayload(parsed.backup) });
   if (restored.error) return databaseError(restored.error);
   return Response.json({ restored: restored.data ?? {} }, { headers: privateHeaders() });
 }
@@ -130,21 +130,22 @@ async function buildBackup({ client, user }: RequestContext): Promise<BackupEnve
 
   const taskIds = (tasks.data ?? []).map((row) => String(row.id));
   const itemIds = (operatingItems.data ?? []).map((row) => String(row.id));
-  const [checkpoints, taskResources, dependencies, milestones, focusSessions, timeObservations] = await Promise.all([
+  const [checkpoints, taskSteps, taskResources, dependencies, milestones, focusSessions, timeObservations] = await Promise.all([
     byIds(client, "task_checkpoints", "task_id", taskIds, "author_id", user.id),
+    stepsForOwnedTasks(client, taskIds),
     byIds(client, "task_resources", "task_id", taskIds, "owner_id", user.id),
     byIds(client, "task_dependencies", "task_id", taskIds, "created_by_id", user.id),
     byIds(client, "project_milestones", "project_id", itemIds, "created_by_id", user.id),
     byIds(client, "focus_sessions", "task_id", taskIds, "user_id", user.id),
     byIds(client, "task_time_observations", "task_id", taskIds, "user_id", user.id)
   ]);
-  const relatedError = [checkpoints, taskResources, dependencies, milestones, focusSessions, timeObservations].find((result) => result.error)?.error;
+  const relatedError = [checkpoints, taskSteps, taskResources, dependencies, milestones, focusSessions, timeObservations].find((result) => result.error)?.error;
   if (relatedError) return databaseError(relatedError);
 
   const data: BackupData = {
     tasks: rows(tasks.data), operatingItems: rows(operatingItems.data), transactions: rows(transactions.data),
     meetings: rows(meetings.data), balances: rows(balances.data), planning: rows(planning.data),
-    capacityCheckins: rows(capacityCheckins.data), checkpoints: rows(checkpoints.data), taskResources: rows(taskResources.data),
+    capacityCheckins: rows(capacityCheckins.data), checkpoints: rows(checkpoints.data), taskSteps: rows(taskSteps.data), taskResources: rows(taskResources.data),
     recurrenceRules: rows(recurrenceRules.data), dependencies: rows(dependencies.data).filter((row) => taskIds.includes(String(row.depends_on_task_id))),
     milestones: rows(milestones.data), weeklyReviews: rows(weeklyReviews.data), focusSessions: rows(focusSessions.data),
     timeObservations: rows(timeObservations.data), notificationPreferences: notificationPreferences.data ? [record(notificationPreferences.data)] : [],
@@ -161,7 +162,7 @@ async function buildBackup({ client, user }: RequestContext): Promise<BackupEnve
     },
     includes: [
       "本人擁有的任務、工作項目、財務、會議、容量與週檢視資料",
-      "本人撰寫的 Restart Checkpoint、非 Storage 的資源資料、依賴與里程碑",
+      "本人撰寫的 Restart Checkpoint、任務細步驟、非 Storage 的資源資料、依賴與里程碑",
       "個人設定及通知偏好（只供參考，不會於還原時套用）"
     ],
     excluded: [
@@ -182,9 +183,18 @@ async function previewBackup({ client, user }: RequestContext, backup: BackupEnv
     if (count instanceof Response) return count;
     if (count) conflicts.push({ category: source.key, count });
   }
+  const stepIds = backup.data.taskSteps.map((row) => typeof row.id === "string" ? row.id : "").filter(Boolean);
+  let existingSteps = 0;
+  for (let index = 0; index < stepIds.length; index += 200) {
+    const result = await client.from("task_steps").select("id").in("id", stepIds.slice(index, index + 200));
+    if (result.error) return databaseError(result.error);
+    existingSteps += result.data?.length ?? 0;
+  }
+  if (existingSteps) conflicts.push({ category: "taskSteps", count: existingSteps });
   const fileResources = backup.data.taskResources.filter((row) => Boolean(row.storage_bucket || row.storage_path)).length;
   const activeTaskIds = activeTaskIdSet(backup);
   const inactiveCheckpoints = backup.data.checkpoints.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
+  const inactiveTaskSteps = backup.data.taskSteps.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
   const inactiveResources = backup.data.taskResources.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
   const unsupported = [
     backup.data.recurrenceRules.length ? { category: "recurrenceRules", count: backup.data.recurrenceRules.length, reason: "重複規則會保留在備份中；V1 不會自動重啟它們，以免產生重複任務。" } : null,
@@ -195,13 +205,14 @@ async function previewBackup({ client, user }: RequestContext, backup: BackupEnv
     backup.data.settings ? { category: "settings", count: 1, reason: "目前 Settings 保持不變，避免覆蓋現有個人偏好。" } : null,
     fileResources ? { category: "taskResources.storage", count: fileResources, reason: "Storage 檔案本體不在 JSON 備份內；相應資源不會還原為失效連結。" } : null,
     inactiveCheckpoints ? { category: "checkpoints.archived", count: inactiveCheckpoints, reason: "已封存或刪除任務的 checkpoint 會留在 JSON，不會令已關閉任務重新開啟。" } : null,
+    inactiveTaskSteps ? { category: "taskSteps.archived", count: inactiveTaskSteps, reason: "已封存或刪除任務的細步驟會留在 JSON，不會重新開啟舊任務。" } : null,
     inactiveResources ? { category: "taskResources.archived", count: inactiveResources, reason: "已封存或刪除任務的資源會留在 JSON，不會令已關閉任務重新開啟。" } : null
   ].filter((value): value is { category: string; count: number; reason: string } => Boolean(value));
   const counts = backupRecordCounts(backup.data);
   const restorableTaskResources = backup.data.taskResources.filter((row) => activeTaskIds.has(String(row.task_id)) && !row.storage_bucket && !row.storage_path).length;
   const restoreCount = Object.entries(counts)
     .filter(([key]) => (restoreTables.some((table) => table.key === key) || key === "planning") && key !== "checkpoints" && key !== "taskResources")
-    .reduce((total, [, count]) => total + count, 0) + (backup.data.checkpoints.length - inactiveCheckpoints) + restorableTaskResources;
+    .reduce((total, [, count]) => total + count, 0) + (backup.data.checkpoints.length - inactiveCheckpoints) + restorableTaskResources + (backup.data.taskSteps.length - inactiveTaskSteps);
   return {
     version: backup.version,
     ownerId: backup.ownerId,
@@ -220,6 +231,7 @@ function restorePayload(backup: BackupEnvelope): BackupEnvelope {
     data: {
       ...backup.data,
       checkpoints: backup.data.checkpoints.filter((row) => activeTaskIds.has(String(row.task_id))),
+      taskSteps: backup.data.taskSteps.filter((row) => activeTaskIds.has(String(row.task_id))),
       taskResources: backup.data.taskResources.filter((row) => activeTaskIds.has(String(row.task_id)))
     }
   };
@@ -235,6 +247,20 @@ async function byIds(client: SupabaseClient, table: string, foreignKey: string, 
   if (!ids.length) return { data: [] as Array<Record<string, unknown>>, error: null };
   const result = await client.from(table).select("*").in(foreignKey, ids).eq(ownerColumn, userId).limit(maxCollectionSize);
   return { data: result.data ?? [], error: result.error };
+}
+
+async function stepsForOwnedTasks(client: SupabaseClient, taskIds: string[]) {
+  const data: Array<Record<string, unknown>> = [];
+  for (let index = 0; index < taskIds.length; index += 100) {
+    const result = await client.from("task_steps").select("*")
+      .in("task_id", taskIds.slice(index, index + 100))
+      .order("sort_order", { ascending: true })
+      .limit(maxCollectionSize);
+    if (result.error) return { data, error: result.error };
+    data.push(...(result.data ?? []));
+    if (data.length > maxCollectionSize) return { data: [], error: { message: "TOO_MANY_TASK_STEPS" } };
+  }
+  return { data, error: null };
 }
 
 async function existingCount(client: SupabaseClient, table: string, ownerColumn: string, userId: string, ids: string[]): Promise<number | Response> {
@@ -278,7 +304,7 @@ function dateStamp() { return new Date().toISOString().slice(0, 10).replaceAll("
 function privateHeaders() { return { "Cache-Control": "private, no-store, max-age=0", "X-Content-Type-Options": "nosniff" }; }
 function jsonError(message: string, status: number) { return Response.json({ error: message }, { status, headers: privateHeaders() }); }
 function databaseError(error: { code?: string; message?: string }) {
-  if (error.code === "PGRST205" || error.message?.includes("Could not find the table") || error.message?.includes("restore_backup_v1")) return jsonError("資料庫尚未套用最新 Backup／Restore migration。", 503);
+  if (error.code === "PGRST205" || error.message?.includes("Could not find the table") || error.message?.includes("restore_backup_v2")) return jsonError("資料庫尚未套用最新 Backup／Restore migration。", 503);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("BACKUP_INVALID")) return jsonError("備份資料未能通過安全驗證。", 422);
   return jsonError("未能安全完成備份操作，請稍後重試。", 500);

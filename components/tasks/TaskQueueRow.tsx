@@ -8,6 +8,7 @@ import { formatDate } from "@/lib/date";
 import { duePriorityBand } from "@/lib/due-priority";
 import { hkDateIso } from "@/lib/planning";
 import { undatedUrgencyFor } from "@/lib/task-queue";
+import { taskVisibleNextAction } from "@/lib/task-steps";
 import type { Task } from "@/lib/types";
 
 type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent" | "semi" | "calm" | "waiting" | "blocked";
@@ -42,7 +43,7 @@ export function TaskQueueRow({
   const [justCompleted, setJustCompleted] = useState(false);
   const urgency = !task.due_date ? undatedUrgencyFor(task) : null;
   const datedPriority = duePriorityBand(task.due_date, hkDateIso());
-  const canAddToday = !completed && !["waiting", "blocked", "done", "cancelled"].includes(task.status) && !task.blocked_reason?.trim();
+  const canAddToday = !completed && !["waiting", "blocked", "done", "cancelled"].includes(task.status) && task.current_step_status !== "waiting" && !task.blocked_reason?.trim();
 
   async function complete() {
     if (busy) return;
@@ -97,7 +98,7 @@ export function TaskQueueRow({
           {task.custom_status_label ? <span className="rounded-full bg-fuchsia-50 px-2 py-0.5 text-fuchsia-800">{task.custom_status_label}</span> : null}
           {task.status === "in_progress" ? <span className="text-indigo-700">進行中</span> : null}
           {completed ? <span>{task.status === "cancelled" ? "已取消" : "已完成"}</span> : null}
-          {task.next_action ? <span className="hidden truncate sm:inline">下一步：{task.next_action}</span> : null}
+          {taskVisibleNextAction(task) ? <span className="hidden truncate sm:inline">下一步：{taskVisibleNextAction(task)}</span> : null}
         </div>
         {error ? <p className="mt-1 text-xs font-semibold text-rose-700" role="alert">{error}</p> : null}
       </div>

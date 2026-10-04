@@ -8,6 +8,7 @@ import { TaskHandoffControls } from "@/components/items/TaskHandoffControls";
 import { TaskAIAnalysisPanel } from "@/components/TaskAIAnalysisPanel";
 import { TaskCheckpointNotesPanel } from "@/components/TaskCheckpointNotesPanel";
 import { TaskResourcePack } from "@/components/TaskResourcePack";
+import { TaskStepPanel } from "@/components/tasks/TaskStepPanel";
 import { RiskBadge, StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
@@ -15,7 +16,7 @@ import { controlAction } from "@/lib/control-api";
 import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
 import { duePriorityBand } from "@/lib/due-priority";
 import { hkDateIso } from "@/lib/planning";
-import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskFollower, TaskRecurrenceRule } from "@/lib/types";
+import type { Assignment, HandoffNote, OperatingItem, Task, TaskDependency, TaskFollower, TaskRecurrenceRule, TaskStep } from "@/lib/types";
 
 export function TaskCard({
   task,
@@ -29,6 +30,7 @@ export function TaskCard({
   allTasks,
   taskDependencies,
   taskRecurrenceRules,
+  taskSteps = [],
   operatingItems = [],
   prominent = false,
   detailLink = true
@@ -44,6 +46,7 @@ export function TaskCard({
   allTasks: Task[];
   taskDependencies: TaskDependency[];
   taskRecurrenceRules: TaskRecurrenceRule[];
+  taskSteps?: TaskStep[];
   operatingItems?: Array<Pick<OperatingItem, "id" | "title" | "item_type">>;
   prominent?: boolean;
   detailLink?: boolean;
@@ -106,33 +109,6 @@ export function TaskCard({
     await updateTask({ follow_up_date: nextDate });
   }
 
-  async function splitIntoSmallTask() {
-    const nextAction = window.prompt("輸入一個 5–25 分鐘可以開始的最小步驟");
-    if (!nextAction?.trim() || actionBusy) return;
-    setActionBusy(true);
-    setActionError("");
-    try {
-      await controlAction("create_task", {
-        clientRequestId: crypto.randomUUID(),
-        area: task.area ?? (task.scope === "company" ? "work" : "personal"),
-        taskCategory: category,
-        sourceType: task.source_type,
-        title: `${task.title}：${nextAction.trim().slice(0, 60)}`,
-        description: `由原有工作「${task.title}」拆出。`,
-        nextAction: nextAction.trim(),
-        dueDate: task.due_date,
-        status: "not_started",
-        risk: "low",
-        projectId: task.project_id ?? null
-      });
-      onChanged();
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "未能拆出小任務，原有工作沒有改動。");
-    } finally {
-      setActionBusy(false);
-    }
-  }
-
   return (
     <article className={prominent ? "overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white shadow-soft" : "panel-soft overflow-hidden"}>
       <button
@@ -153,6 +129,7 @@ export function TaskCard({
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
           </span>
           <span className="mt-3 block text-xl font-bold text-ink">{task.title}</span>
+          {task.current_step_title ? <span className="mt-2 block text-sm font-semibold text-indigo-800">現在這一步：{task.current_step_title}</span> : null}
           <span className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm font-semibold text-slate-600">
             <span className="inline-flex items-center gap-2">
               <CalendarClock className="h-4 w-4 text-indigo-600" />
@@ -180,6 +157,7 @@ export function TaskCard({
           ) : null}
             </div>
           </div>
+      <TaskStepPanel taskId={task.id} steps={taskSteps} canDelete={(task.owner_id ?? task.user_id) === currentUserId} closed={["done", "cancelled"].includes(task.status)} onChanged={onChanged} />
       <TaskHandoffControls
         task={task}
         currentUserId={currentUserId}
@@ -222,10 +200,7 @@ export function TaskCard({
         </p>
         <p>跟進：{formatDate(task.follow_up_date)}</p>
         {task.completed_at ? <p>完成日期及時間：{formatDateTime(task.completed_at)}</p> : null}
-        <p className="sm:col-span-2">
-          <span className="font-semibold">下一步：</span>
-          {task.next_action || "未設定"}
-        </p>
+        {!taskSteps.length ? <p className="sm:col-span-2"><span className="font-semibold">下一步：</span>{task.next_action || "未設定"}</p> : null}
         {task.status === "waiting" && task.waiting_for ? <p><span className="font-semibold">等待誰：</span>{task.waiting_for}</p> : null}
         {task.status === "waiting" && task.waiting_on ? <p><span className="font-semibold">等待甚麼：</span>{task.waiting_on}</p> : null}
       </div>
@@ -248,9 +223,6 @@ export function TaskCard({
         </Button>
         <Button variant="secondary" onClick={() => void delay()} disabled={actionBusy}>
           重新安排
-        </Button>
-        <Button variant="secondary" onClick={() => void splitIntoSmallTask()} disabled={actionBusy}>
-          拆成小任務
         </Button>
         <Button variant="secondary" onClick={() => void updateTask({ status: "blocked" })} disabled={actionBusy}>
           需要重新安排

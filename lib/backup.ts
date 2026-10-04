@@ -10,6 +10,7 @@ export type BackupData = {
   planning: Array<Record<string, unknown>>;
   capacityCheckins: Array<Record<string, unknown>>;
   checkpoints: Array<Record<string, unknown>>;
+  taskSteps: Array<Record<string, unknown>>;
   taskResources: Array<Record<string, unknown>>;
   recurrenceRules: Array<Record<string, unknown>>;
   dependencies: Array<Record<string, unknown>>;
@@ -45,14 +46,14 @@ export type BackupPreview = {
 
 const collectionKeys: Array<keyof Omit<BackupData, "profile" | "settings">> = [
   "tasks", "operatingItems", "transactions", "meetings", "balances", "planning",
-  "capacityCheckins", "checkpoints", "taskResources", "recurrenceRules", "dependencies",
+  "capacityCheckins", "checkpoints", "taskSteps", "taskResources", "recurrenceRules", "dependencies",
   "milestones", "weeklyReviews", "focusSessions", "timeObservations", "notificationPreferences"
 ];
 
 export function emptyBackupData(): BackupData {
   return {
     tasks: [], operatingItems: [], transactions: [], meetings: [], balances: [], planning: [],
-    capacityCheckins: [], checkpoints: [], taskResources: [], recurrenceRules: [], dependencies: [],
+    capacityCheckins: [], checkpoints: [], taskSteps: [], taskResources: [], recurrenceRules: [], dependencies: [],
     milestones: [], weeklyReviews: [], focusSessions: [], timeObservations: [], notificationPreferences: [],
     profile: null, settings: null
   };

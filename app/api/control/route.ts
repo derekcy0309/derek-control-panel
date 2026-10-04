@@ -4,6 +4,7 @@ import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { priorityValueForDueDate } from "@/lib/due-priority";
+import { currentTaskStep } from "@/lib/task-steps";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
   const { client, user } = context;
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients, taskFollowers] =
+  const [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients, taskFollowers, currentSteps] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -68,12 +69,14 @@ export async function GET(request: NextRequest) {
         .eq("user_id", user.id)
         .order("target"),
       client.from("task_notice_recipients").select("*"),
-      client.from("task_followers").select("*")
+      client.from("task_followers").select("*"),
+      client.from("task_current_steps").select("task_id,title,status,follow_up_date").limit(1000)
     ]);
 
-  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients, taskFollowers]
+  const firstError = [profile, settings, tasks, transactions, recurringExpenseRules, recurringIncomeRules, meetings, balances, items, shares, assignments, handoffNotes, planning, capacity, participants, taskDependencies, projectMilestones, taskRecurrenceRules, notificationPreferences, notificationDeliveries, pushSubscriptions, household, calendarConnections, taskNoticeRecipients, taskFollowers, currentSteps]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
+  const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
 
   if (!profile.data) {
     const created = await client.from("user_profiles").insert({ user_id: user.id, display_name: displayName }).select("*").single();
@@ -98,7 +101,7 @@ export async function GET(request: NextRequest) {
     currentUser: { id: user.id, email: user.email ?? "", displayName: profile.data.display_name },
     profile: profile.data,
     settings: settings.data,
-    tasks: tasks.data ?? [],
+    tasks: (tasks.data ?? []).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
     transactions: transactions.data ?? [],
     recurringExpenseRules: recurringExpenseRules.data ?? [],
     recurringIncomeRules: recurringIncomeRules.data ?? [],
@@ -168,7 +171,7 @@ async function taskDetail(
   if (task.error) return databaseError(task.error);
   if (!task.data) return jsonError("找不到任務或你沒有查看權限。", 404);
 
-  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers] = await Promise.all([
+  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps] = await Promise.all([
     client.from("user_profiles").select("display_name").eq("user_id", user.id).maybeSingle(),
     client.rpc("participant_profiles"),
     client.from("assignments")
@@ -196,9 +199,10 @@ async function taskDetail(
       .eq("resource_id", taskId)
       .order("created_at", { ascending: false })
       .limit(100),
-    client.from("task_followers").select("*").eq("task_id", taskId)
+    client.from("task_followers").select("*").eq("task_id", taskId),
+    client.from("task_steps").select("*").eq("task_id", taskId).order("sort_order", { ascending: true }).limit(100)
   ]);
-  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers]
+  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
@@ -208,7 +212,8 @@ async function taskDetail(
       email: user.email ?? "",
       displayName: profile.data?.display_name ?? inferDisplayName(user)
     },
-    task: task.data,
+    task: { ...task.data, current_step_title: currentTaskStep(taskSteps.data ?? [])?.title ?? null, current_step_status: currentTaskStep(taskSteps.data ?? [])?.status ?? ((taskSteps.data ?? []).length ? "all_done" : null), follow_up_date: currentTaskStep(taskSteps.data ?? [])?.follow_up_date ?? task.data.follow_up_date },
+    taskSteps: taskSteps.data ?? [],
     participants: participants.data ?? [],
     assignments: assignments.data ?? [],
     handoffNotes: handoffNotes.data ?? [],
@@ -315,7 +320,7 @@ async function todayDashboard({ client, user }: RequestContext) {
     .order("due_date", { ascending: true, nullsFirst: false })
     .limit(200);
   if (activeTasks.error) return databaseError(activeTasks.error);
-  const [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers] = await Promise.all([
+  const [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers, currentSteps] = await Promise.all([
     client.from("tasks")
       .select("*")
       .is("deleted_at", null)
@@ -329,11 +334,13 @@ async function todayDashboard({ client, user }: RequestContext) {
       .order("title", { ascending: true })
       .limit(200),
     client.from("task_notice_recipients").select("*").limit(1000),
-    client.from("task_followers").select("*").limit(1000)
+    client.from("task_followers").select("*").limit(1000),
+    client.from("task_current_steps").select("task_id,title,status,follow_up_date").limit(1000)
   ]);
-  const taskQueueError = [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers]
+  const taskQueueError = [taskQueueCatalog, taskProjects, taskNoticeRecipients, taskFollowers, currentSteps]
     .find((result) => result.error)?.error;
   if (taskQueueError) return databaseError(taskQueueError);
+  const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
 
   const monthStart = `${today.slice(0, 7)}-01`;
   const nextMonthStart = nextMonthIso(monthStart);
@@ -422,9 +429,9 @@ async function todayDashboard({ client, user }: RequestContext) {
     },
     profile: profile.data,
     settings: settings.data,
-    tasks: [...taskMap.values()],
-    taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))),
-    taskQueueCatalog: taskQueueCatalog.data ?? [],
+    tasks: [...taskMap.values()].map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(String(task.id))?.title ?? null, current_step_status: currentStepByTaskId.get(String(task.id))?.status ?? null, follow_up_date: currentStepByTaskId.get(String(task.id))?.follow_up_date ?? task.follow_up_date })),
+    taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
+    taskQueueCatalog: (taskQueueCatalog.data ?? []).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
     taskProjects: taskProjects.data ?? [],
     taskNoticeRecipients: taskNoticeRecipients.data ?? [],
     taskFollowers: taskFollowers.data ?? [],
@@ -794,6 +801,9 @@ export async function POST(request: NextRequest) {
   switch (action) {
     case "create_task": return createTask(context, body);
     case "update_task": return updateTask(context, body);
+    case "create_task_step": return createTaskStep(context, body);
+    case "update_task_step": return updateTaskStep(context, body);
+    case "delete_task_step": return deleteTaskStep(context, body);
     case "resolve_task_decision": return resolveTaskDecision(context, body);
     case "set_today_task": return setTodayTask(context, body);
     case "save_reminder": return saveReminder(context, body);
@@ -1254,6 +1264,83 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   if (followerError) return followerError;
   await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
   return Response.json({ task: result.data }, { headers: privateHeaders() });
+}
+
+async function createTaskStep({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  const title = stringValue(body.title).trim();
+  if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  if (!title || title.length > 250) return jsonError("請輸入 1 至 250 字的細步驟。", 422);
+  const task = await client.from("tasks").select("id,status,deleted_at,archived_at")
+    .eq("id", taskId).maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (!task.data) return jsonError("找不到任務或你沒有查看權限。", 404);
+  if (task.data.deleted_at || task.data.archived_at || ["done", "cancelled"].includes(task.data.status)) {
+    return jsonError("已結束或封存的任務不能再加入細步驟。", 409);
+  }
+  const count = await client.from("task_steps").select("id", { count: "exact", head: true }).eq("task_id", taskId);
+  if (count.error) return databaseError(count.error);
+  if ((count.count ?? 0) >= 50) return jsonError("每項任務最多 50 個細步驟；請先整理現有步驟。", 422);
+  const inserted = await client.from("task_steps").insert({
+    task_id: taskId, title, created_by_id: user.id, updated_by_id: user.id
+  }).select("*").single();
+  if (inserted.error) return databaseError(inserted.error);
+  await recordActivity(client, user.id, "task", taskId, "step_created", "加入一個細步驟");
+  return Response.json({ step: inserted.data }, { status: 201, headers: privateHeaders() });
+}
+
+async function updateTaskStep({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const stepId = uuidValue(body.id);
+  const expectedUpdatedAt = timestampValue(body.expectedUpdatedAt);
+  if (!stepId || !expectedUpdatedAt) return jsonError("細步驟或版本資料不正確，請重新載入。", 400);
+  const existing = await client.from("task_steps").select("id,task_id,status")
+    .eq("id", stepId).maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到細步驟或你沒有查看權限。", 404);
+
+  const changes: Record<string, unknown> = {};
+  if (body.title !== undefined) {
+    const title = stringValue(body.title).trim();
+    if (!title || title.length > 250) return jsonError("請輸入 1 至 250 字的細步驟。", 422);
+    changes.title = title;
+  }
+  if (body.status !== undefined) {
+    const status = stringValue(body.status);
+    if (!["todo", "waiting", "later", "done"].includes(status)) return jsonError("細步驟狀態不正確。", 422);
+    changes.status = status;
+    if (status === "waiting") {
+      const note = stringValue(body.waitingNote).trim();
+      if (note.length > 1000) return jsonError("等待說明最多 1000 字。", 422);
+      const followUp = body.followUpDate ? dateValue(body.followUpDate) : null;
+      if (body.followUpDate && !followUp) return jsonError("跟進日期格式不正確。", 422);
+      changes.waiting_note = note || null;
+      changes.follow_up_date = followUp;
+    }
+  }
+  if (!Object.keys(changes).length) return jsonError("沒有需要更新的內容。", 422);
+  const updated = await client.from("task_steps").update(changes)
+    .eq("id", stepId).eq("updated_at", expectedUpdatedAt).select("*").maybeSingle();
+  if (updated.error) return databaseError(updated.error);
+  if (!updated.data) return jsonError("這一步已被其他人更新，請重新載入再試。", 409);
+  await recordActivity(client, user.id, "task", existing.data.task_id, "step_updated", "更新細步驟進度");
+  return Response.json({ step: updated.data }, { headers: privateHeaders() });
+}
+
+async function deleteTaskStep({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const stepId = uuidValue(body.id);
+  if (!stepId) return jsonError("細步驟識別碼不正確。", 400);
+  const existing = await client.from("task_steps").select("id,task_id")
+    .eq("id", stepId).maybeSingle();
+  if (existing.error) return databaseError(existing.error);
+  if (!existing.data) return jsonError("找不到細步驟或你沒有查看權限。", 404);
+  const task = await client.from("tasks").select("owner_id").eq("id", existing.data.task_id).maybeSingle();
+  if (task.error) return databaseError(task.error);
+  if (task.data?.owner_id !== user.id) return jsonError("只有任務擁有者可以刪除細步驟。", 403);
+  const deleted = await client.from("task_steps").delete().eq("id", stepId).select("id").maybeSingle();
+  if (deleted.error) return databaseError(deleted.error);
+  if (!deleted.data) return jsonError("刪除未成功，請重新載入。", 409);
+  await recordActivity(client, user.id, "task", existing.data.task_id, "step_deleted", "移除一個細步驟");
+  return Response.json({ deleted: true }, { headers: privateHeaders() });
 }
 
 async function resolveTaskDecision({ client, user }: RequestContext, body: Record<string, unknown>) {

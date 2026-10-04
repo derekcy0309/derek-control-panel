@@ -56,6 +56,7 @@ function TaskDetailContent() {
         allTasks={[data.task]}
         taskDependencies={data.taskDependencies}
         taskRecurrenceRules={data.taskRecurrenceRules}
+        taskSteps={data.taskSteps}
         onChanged={() => { void reload(); }}
         prominent
         detailLink={false}

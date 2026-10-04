@@ -729,7 +729,7 @@ test("Backup Restore is same-account, additive, audited and protected by RLS", (
   assert.doesNotMatch(backupRestoreMigration, /service_role|security\s+definer/);
   assert.match(backupRestoreRollback, /backup_restore_audit_exists/);
   assert.match(backupRoute, /eq\("owner_id",\s*user\.id\)/);
-  assert.match(backupRoute, /restore_backup_v1/);
+  assert.match(backupRoute, /restore_backup_v2/);
   assert.match(backupRoute, /content-disposition/);
   assert.doesNotMatch(backupRoute, /service_role/);
   assert.match(backupPanel, /confirmation\s*!==\s*"restore"/);

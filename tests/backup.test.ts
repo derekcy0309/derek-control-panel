@@ -23,7 +23,17 @@ test("backup parser accepts the matching account and normalizes missing collecti
   assert.equal(result.backup?.ownerId, userId);
   assert.equal(result.backup?.data.tasks.length, 1);
   assert.equal(result.backup?.data.checkpoints.length, 0);
+  assert.equal(result.backup?.data.taskSteps.length, 0);
   assert.deepEqual(backupRecordCounts(result.backup!.data).tasks, 1);
+});
+
+test("backup keeps task steps as a first-class collection", () => {
+  const backup = sampleBackup();
+  backup.data.taskSteps.push({ id: "00000000-0000-4000-8000-000000000003", task_id: "00000000-0000-4000-8000-000000000002", title: "打開文件" });
+  const parsed = parseBackup(backup, userId);
+  assert.equal(parsed.error, null);
+  assert.equal(parsed.backup?.data.taskSteps[0].title, "打開文件");
+  assert.equal(backupRecordCounts(parsed.backup!.data).taskSteps, 1);
 });
 
 test("backup parser rejects other accounts, unsupported versions and oversized collections", () => {

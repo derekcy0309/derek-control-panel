@@ -7,6 +7,7 @@
 - Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
 - Suki Minimum Viable Day：一項核心最低任務、最多兩項簡單選項、無罪疚休息、拆細、交接及指定日再處理
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
+- 任務細步驟：在同一任務內加入 5–25 分鐘的小步驟；一次只突出目前一步，可完成、等待結果、稍後處理或重新開始。完成一步不會自動結束原任務；雙人共同跟進可見進度，Today／Focus 會顯示目前一步。
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
 - 任務依賴與項目里程碑：明確的 blocked-by／blocks 關係、防循環檢查、Project War Room 里程碑，以及不會自動完成或改派的下一步提示
@@ -21,6 +22,7 @@
 - Focus Session History：持久保留每節專注的計劃／實際時間、暫停、結果、阻塞與 checkpoint，只用於恢復工作和個人估時
 - Offline Write Queue：離線安全保留純文字 Inbox、checkpoint 與 Focus 暫停／完成；恢復連線後按帳戶同步、衝突不覆蓋、登出即清除本機待同步資料
 - Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
+- 細步驟備份：JSON 包含本人任務內的細步驟；還原沿用原本「只新增、不覆蓋」流程，舊版 JSON 沒有細步驟亦可正常還原。
 - Capacity Overload Warning：以能量、可用時間、WIP、deadline、night-shift 及未來家庭／健康承諾作溫和容量提示；只建議可延期／交接項目，所有改動仍要本人確認
 - Life OS 權限分層：個人及工作預設私人；只有已接受家庭連結的 `family + household` 項目會共同可見，未整理 Inbox 永遠先保持私人
 - 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI
@@ -94,6 +96,7 @@ supabase/migrations/20260804200000_personal_work_queue.sql
 supabase/migrations/20260909120022_request_duty.sql
 supabase/migrations/20260910120000_visual_themes.sql
 supabase/migrations/20260910150051_routine_interval_schedule.sql
+supabase/migrations/20261004120000_task_steps.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
@@ -132,6 +135,7 @@ supabase/migrations/20260804160000_suki_workflow_followups.rollback.sql
 supabase/migrations/20260804200000_personal_work_queue.rollback.sql
 supabase/migrations/20260909120022_request_duty.rollback.sql
 supabase/migrations/20260910150051_routine_interval_schedule.rollback.sql
+supabase/migrations/20261004120000_task_steps.rollback.sql
 ```
 
 回退會移除新功能表、policy、trigger 與 function，但刻意保留舊表上新增的 nullable/default columns，避免回退本身刪除已寫入資料。示例資料在 `supabase/seed-operating-system.sql`；先替換兩個示例 user UUID，切勿在 production 直接使用佔位值。

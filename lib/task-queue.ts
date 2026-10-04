@@ -43,7 +43,7 @@ export function taskQueueBuckets(tasks: Task[], today: string): TaskQueueBuckets
       buckets.completed.push(task);
       continue;
     }
-    if (task.status === "waiting") {
+    if (task.status === "waiting" || task.current_step_status === "waiting") {
       buckets.waiting.push(task);
       continue;
     }

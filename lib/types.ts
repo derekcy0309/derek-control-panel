@@ -43,6 +43,8 @@ export type Task = {
   waiting_on?: string | null;
   status: TaskStatus;
   next_action: string | null;
+  current_step_title?: string | null;
+  current_step_status?: TaskStepStatus | "all_done" | null;
   risk: Risk;
   notes: string | null;
   completed_at: string | null;
@@ -848,6 +850,7 @@ export type TodayData = {
 export type TaskDetailData = {
   currentUser: CurrentUser;
   task: Task;
+  taskSteps: TaskStep[];
   participants: Array<{ user_id: string; display_name: string }>;
   assignments: Assignment[];
   handoffNotes: HandoffNote[];
@@ -855,6 +858,23 @@ export type TaskDetailData = {
   taskRecurrenceRules: TaskRecurrenceRule[];
   activityLogs: ActivityLog[];
   taskFollowers: TaskFollower[];
+};
+
+export type TaskStepStatus = "todo" | "waiting" | "later" | "done";
+
+export type TaskStep = {
+  id: string;
+  task_id: string;
+  sort_order: number;
+  title: string;
+  status: TaskStepStatus;
+  waiting_note: string | null;
+  follow_up_date: string | null;
+  completed_at: string | null;
+  created_by_id: string;
+  updated_by_id: string;
+  created_at: string;
+  updated_at: string;
 };
 
 export type ActivityLog = {

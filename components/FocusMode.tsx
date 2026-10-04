@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { hasCheckpointContent } from "@/lib/checkpoints";
 import { controlAction } from "@/lib/control-api";
 import { isOffline, queueFocusFinish, queueFocusPause } from "@/lib/offline-write-queue";
+import { taskVisibleNextAction } from "@/lib/task-steps";
 import type { Task, TaskCheckpoint } from "@/lib/types";
 import { useTaskCheckpoint } from "@/hooks/useTaskCheckpoint";
 
@@ -43,7 +44,7 @@ export function FocusMode({
   const [hasStarted, setHasStarted] = useState(false);
   const [message, setMessage] = useState("");
   const [blockedReason, setBlockedReason] = useState("缺資料");
-  const [activeStep, setActiveStep] = useState(task.next_action ?? "");
+  const [activeStep, setActiveStep] = useState(taskVisibleNextAction(task) ?? "");
   const [editorOpen, setEditorOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -101,7 +102,7 @@ export function FocusMode({
   }
 
   async function start(requestedStep?: string) {
-    const nextStep = requestedStep?.trim() || activeStep.trim() || task.next_action?.trim() || "";
+    const nextStep = requestedStep?.trim() || activeStep.trim() || taskVisibleNextAction(task) || "";
     if (!nextStep) {
       setMessage("開始前先加入一個清晰、可見的下一步。");
       return;
@@ -287,7 +288,7 @@ export function FocusMode({
     setBusy(true);
     const saved = await checkpoint.saveCheckpoint({
       currentPosition: checkpoint.form.currentPosition || "工作已暫停，等待處理阻塞",
-      nextMinimumStep: checkpoint.form.nextMinimumStep || activeStep || task.next_action || "",
+      nextMinimumStep: checkpoint.form.nextMinimumStep || activeStep || taskVisibleNextAction(task) || "",
       blockedReason
     });
     if (!saved) {

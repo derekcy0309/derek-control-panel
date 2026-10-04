@@ -1,7 +1,7 @@
 import type { Task } from "./types.ts";
 
 export function isTodayRunnableTask(task: Task) {
-  return !["done", "cancelled", "blocked", "waiting"].includes(task.status) && !task.blocked_reason?.trim();
+  return !["done", "cancelled", "blocked", "waiting"].includes(task.status) && task.current_step_status !== "waiting" && !task.blocked_reason?.trim();
 }
 
 export function currentAndNextTodayTask(sequence: Task[]) {

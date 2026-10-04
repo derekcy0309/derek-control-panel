@@ -37,6 +37,7 @@ import { controlAction } from "@/lib/control-api";
 import { assessCapacityOverload } from "@/lib/capacity-overload";
 import { formatDate } from "@/lib/date";
 import { currentAndNextTodayTask, remainingTodayTasks } from "@/lib/today-sequence";
+import { taskVisibleNextAction } from "@/lib/task-steps";
 import {
   activeWipCount,
   classifyDeadlineRisk,
@@ -287,7 +288,7 @@ function TodayCommandCenter() {
           ? "已記錄今次完成；這項恆常工作會按設定繼續提示。"
           : `「${task.title}」已完成。`;
       setActionMessage(followingTask && !minimumDay
-        ? `${completedMessage} 下一個做：${followingTask.title} — ${followingTask.next_action || "先打開任務，完成第一個可見動作"}`
+        ? `${completedMessage} 下一個做：${followingTask.title} — ${taskVisibleNextAction(followingTask) || "先打開任務，完成第一個可見動作"}`
         : completedMessage);
     } catch (caught) {
       setActionError(caught instanceof Error ? caught.message : "未能完成任務。");
@@ -922,7 +923,7 @@ function PrimaryTask({
           {minimumDay ? "最低完成標準" : "下一步"}
         </p>
         <p className="mt-2 text-base font-semibold leading-7 sm:text-lg">
-          {task.next_action || "先打開需要的頁面，寫下一個可見的第一步"}
+          {taskVisibleNextAction(task) || "先打開需要的頁面，寫下一個可見的第一步"}
         </p>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-600">
@@ -973,7 +974,7 @@ function PrimaryTask({
         <aside className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/70 p-4" aria-label="下一項工作">
           <p className="text-xs font-bold uppercase tracking-[.12em] text-indigo-700">{preview ? "確認後，完成這項再做" : "完成這項後，下一個做"}</p>
           <h3 className="mt-2 text-lg font-extrabold text-slate-900">{nextUp.title}</h3>
-          <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">下一步：{nextUp.next_action || "先打開任務，完成第一個可見動作"}</p>
+          <p className="mt-1 text-sm font-semibold leading-6 text-slate-700">下一步：{taskVisibleNextAction(nextUp) || "先打開任務，完成第一個可見動作"}</p>
         </aside>
       ) : null}
     </div>
@@ -1127,7 +1128,7 @@ function CompactTask({ task, onFocus }: { task: Task; onFocus: () => void }) {
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold text-slate-900">{task.title}</p>
         <p className="mt-1 truncate text-xs text-slate-500">
-          {task.next_action || `${task.estimated_minutes ?? 15} 分鐘 · ${task.context || "任何地方"}`}
+          {taskVisibleNextAction(task) || `${task.estimated_minutes ?? 15} 分鐘 · ${task.context || "任何地方"}`}
         </p>
       </div>
       {task.due_date ? (
@@ -1355,8 +1356,8 @@ function HandoffModal({
   onSaved: () => void;
 }) {
   const [note, setNote] = useState(
-    task.next_action
-      ? `我今日能量較低，請先接手：${task.next_action}`
+    taskVisibleNextAction(task)
+      ? `我今日能量較低，請先接手：${taskVisibleNextAction(task)}`
       : "我今日能量較低，請先幫我睇第一步。"
   );
   const [saving, setSaving] = useState(false);
@@ -1481,6 +1482,7 @@ function acceptedTodayPlan(data: TodayData, today: string) {
     .filter((task): task is Task => Boolean(task))
     .filter((task) =>
       !["blocked", "waiting", "cancelled"].includes(task.status)
+      && task.current_step_status !== "waiting"
       && !task.blocked_reason?.trim()
     );
   return {

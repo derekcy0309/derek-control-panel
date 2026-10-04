@@ -104,7 +104,7 @@ export function recommendTodayTasks(input: {
   const wipLimitReached = wipCount >= (input.settings.wip_limit ?? 3);
   const candidates = input.tasks.filter((task) => {
     if (["done","cancelled"].includes(task.status) || task.deleted_at || task.archived_at) return false;
-    if (["blocked", "waiting"].includes(task.status) || Boolean(task.blocked_reason?.trim())) return false;
+    if (["blocked", "waiting"].includes(task.status) || task.current_step_status === "waiting" || Boolean(task.blocked_reason?.trim())) return false;
     if (dependencyBlockedTaskIds.has(task.id)) return false;
     const owned = (task.owner_id ?? task.user_id) === input.currentUserId;
     const assignment = assignmentByResource.get(task.id);
@@ -228,7 +228,7 @@ export function recommendTodayTasks(input: {
   const eligibleMinutes = scored.reduce((sum, item) => sum + item.minutes, 0);
   const excludedBlocked = input.tasks.filter((task) =>
     !["done", "cancelled"].includes(task.status)
-    && (["blocked", "waiting"].includes(task.status) || Boolean(task.blocked_reason?.trim()) || dependencyBlockedTaskIds.has(task.id))
+    && (["blocked", "waiting"].includes(task.status) || task.current_step_status === "waiting" || Boolean(task.blocked_reason?.trim()) || dependencyBlockedTaskIds.has(task.id))
   ).length;
   const unplannedMinutes = Math.max(0, eligibleMinutes - usedMinutes);
   return {
