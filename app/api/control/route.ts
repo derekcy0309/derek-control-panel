@@ -5,6 +5,7 @@ import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/li
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { priorityValueForDueDate } from "@/lib/due-priority";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
+import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import type { BodyDoubleTaskOption } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -245,7 +246,7 @@ async function assignmentAlerts({ client, user }: RequestContext) {
   if (preference.error) return databaseError(preference.error);
   const taskIds = [...new Set((result.data ?? []).map((item) => item.resource_id))];
   const tasks = taskIds.length
-    ? await client.from("tasks").select("id,status,due_date,deleted_at,archived_at").in("id", taskIds)
+    ? await client.from("tasks").select("id,status,due_date,work_dates,deleted_at,archived_at").in("id", taskIds)
     : { data: [], error: null };
   if (tasks.error) return databaseError(tasks.error);
   const taskById = new Map((tasks.data ?? []).map((task) => [task.id, task]));
@@ -254,6 +255,7 @@ async function assignmentAlerts({ client, user }: RequestContext) {
     return {
       ...assignment,
       due_date: assignment.due_date ?? task?.due_date ?? null,
+      work_dates: task?.work_dates ?? null,
       task_active: Boolean(task && !["done", "cancelled"].includes(task.status) && !task.deleted_at && !task.archived_at)
     };
   });
@@ -874,6 +876,7 @@ export async function POST(request: NextRequest) {
     case "admin_reset_password": return adminResetPassword(context, body);
     case "capacity_checkin": return saveCapacity(context, body);
     case "accept_today_plan": return acceptTodayPlan(context, body);
+    case "reorder_today_tasks": return reorderTodayTasks(context, body);
     case "snooze_today_task": return snoozeTodayTask(context, body);
     case "save_checkpoint_draft": return saveTaskCheckpoint(context, body, "draft");
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
@@ -1137,6 +1140,8 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const area = categoryFields?.area ?? enumValue(body.area, ["work", "family", "personal"] as const, "personal");
   const sourceType = enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up", "duty_request"] as const, "follow_up");
   const dueDate = dateValue(body.dueDate);
+  const workSchedule = validateTaskWorkSchedule({ startDate: body.workStartDate, dueDate, workDates: body.workDates });
+  if (workSchedule.error) return jsonError(workSchedule.error, 422);
   if (sourceType === "duty_request" && !dueDate) return jsonError("請輸入 Request Duty 提醒日期。", 422);
   if (parentTaskId) {
     const parent = await client.from("tasks")
@@ -1168,6 +1173,8 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     owner: nullableText(body.owner),
     description: nullableText(body.description),
     due_date: dueDate,
+    work_start_date: workSchedule.startDate,
+    work_dates: workSchedule.workDates,
     follow_up_date: dateValue(body.followUpDate),
     waiting_for: resourceText(body.waitingFor, 200),
     waiting_on: resourceText(body.waitingOn, 1000),
@@ -1278,7 +1285,7 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
         .maybeSingle();
   if (activeHandler && activeHandler.error) return databaseError(activeHandler.error);
   const allowed = existing.data.owner_id === user.id
-    ? ["title","description","status","custom_status_label","next_action","definition_of_done","due_date","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","task_type_label","materials_required","rn_required","client_update_required"]
+    ? ["title","description","status","custom_status_label","next_action","definition_of_done","due_date","work_start_date","work_dates","follow_up_date","waiting_for","waiting_on","planned_date","estimated_minutes","energy_level","context","risk","requested_priority","critical_path","safety_impact","child_impact","legal_impact","blocked_reason","progress","actual_minutes","notes","archived_at","deleted_at","snoozed_until","last_progress_at","completed_at","project_id","case_code","task_type","task_type_label","materials_required","rn_required","client_update_required"]
     : activeHandler && activeHandler.data
       ? ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at","due_date","follow_up_date"]
       : ["status","blocked_reason","progress","actual_minutes","last_progress_at","completed_at"];
@@ -1308,6 +1315,16 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   }
   if (payload.status === "done") payload.completed_at = new Date().toISOString();
   const nextDueDate = "due_date" in payload ? dateValue(payload.due_date) : dateValue(existing.data.due_date);
+  if ("work_start_date" in payload || "work_dates" in payload || "due_date" in payload) {
+    const schedule = validateTaskWorkSchedule({
+      startDate: "work_start_date" in payload ? payload.work_start_date : existing.data.work_start_date,
+      dueDate: nextDueDate,
+      workDates: "work_dates" in payload ? payload.work_dates : existing.data.work_dates
+    });
+    if (schedule.error) return jsonError(schedule.error, 422);
+    payload.work_start_date = schedule.startDate;
+    payload.work_dates = schedule.workDates;
+  }
   const datedPriority = priorityValueForDueDate(nextDueDate, hkDateString());
   if (datedPriority) payload.requested_priority = datedPriority;
   payload.last_progress_at = new Date().toISOString();
@@ -2483,6 +2500,7 @@ async function snoozeTodayTask({ client, user }: RequestContext, body: Record<st
     snoozed_until: `${untilDate}T00:00:00+08:00`,
     plan_role: null,
     plan_source: null,
+    plan_position: null,
     accepted_at: null,
     plan_token: null,
     updated_at: new Date().toISOString()
@@ -2512,6 +2530,7 @@ async function setTodayTask({ client, user }: RequestContext, body: Record<strin
     planned_date: included ? hkDateString() : null,
     plan_role: included ? "later" : null,
     plan_source: included ? "manual" : null,
+    plan_position: null,
     accepted_at: included ? new Date().toISOString() : null,
     plan_token: null,
     hidden_from_today: false,
@@ -2520,6 +2539,19 @@ async function setTodayTask({ client, user }: RequestContext, body: Record<strin
   }, { onConflict: "user_id,resource_type,resource_id" });
   if (result.error) return databaseError(result.error);
   await recordActivity(client, user.id, "task", taskId, included ? "today_manual_add" : "today_manual_remove", included ? "手動加入 Today" : "手動移出 Today");
+  return Response.json({ ok: true }, { headers: privateHeaders() });
+}
+
+async function reorderTodayTasks({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskIds = Array.isArray(body.taskIds) ? body.taskIds.map(uuidValue) : [];
+  if (!taskIds.length || taskIds.length > 30 || taskIds.some((id) => !id) || new Set(taskIds).size !== taskIds.length) {
+    return jsonError("請選擇有效、無重複的今日任務次序。", 422);
+  }
+  const result = await client.rpc("reorder_today_tasks", { p_task_ids: taskIds });
+  if (result.error) return databaseError(result.error);
+  for (const taskId of taskIds as string[]) {
+    await recordActivity(client, user.id, "task", taskId, "today_manual_order", "手動調整今日任務次序");
+  }
   return Response.json({ ok: true }, { headers: privateHeaders() });
 }
 

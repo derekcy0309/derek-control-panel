@@ -2,11 +2,13 @@
 
 import { useEffect, useId, useState } from "react";
 import { DueDatePicker } from "@/components/forms/DueDatePicker";
+import { TaskWorkDaysPicker } from "@/components/forms/TaskWorkDaysPicker";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
 import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWeekdays, type RoutineIntervalUnit } from "@/lib/routine-interval";
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
+import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import type { Task } from "@/lib/types";
 
 export type TaskSaveResult = { task: Task; refreshRelated: boolean };
@@ -20,6 +22,8 @@ type TaskFormState = {
   title: string;
   owner: string;
   due_date: string;
+  work_start_date: string;
+  work_dates: string[];
   follow_up_date: string;
   waiting_for: string;
   waiting_on: string;
@@ -60,6 +64,8 @@ const defaultState: TaskFormState = {
   title: "",
   owner: "",
   due_date: "",
+  work_start_date: "",
+  work_dates: [],
   follow_up_date: "",
   waiting_for: "",
   waiting_on: "",
@@ -125,6 +131,8 @@ export function TaskForm({
           title: initialTask.title,
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
+          work_start_date: initialTask.work_start_date ?? "",
+          work_dates: initialTask.work_dates ?? [],
           follow_up_date: initialTask.follow_up_date ?? "",
           waiting_for: initialTask.waiting_for ?? "",
           waiting_on: initialTask.waiting_on ?? "",
@@ -268,6 +276,16 @@ export function TaskForm({
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    const workSchedule = validateTaskWorkSchedule({
+      startDate: form.work_start_date || null,
+      dueDate: form.due_date || null,
+      workDates: form.work_start_date ? form.work_dates : null
+    });
+    if (workSchedule.error) { setError(workSchedule.error); return; }
+    if ((form.recurrence_enabled || initialTask?.recurrence_rule_id) && workSchedule.startDate) {
+      setError("重複工作請用下方 Routine 設定；個別工作日只適用於一次性任務。");
+      return;
+    }
     if (!initialTask && form.handoff_to_user_id && !form.handoff_note.trim()) {
       setError("請填交接 notes，讓對方知道第一步要做甚麼。");
       return;
@@ -304,6 +322,8 @@ export function TaskForm({
       taskType: form.task_type_label.trim() || null,
       title: form.title.trim(),
       dueDate: form.due_date || null,
+      workStartDate: workSchedule.startDate,
+      workDates: workSchedule.workDates,
       followUpDate: form.follow_up_date || null,
       waitingFor: form.waiting_for.trim() || null,
       waitingOn: form.waiting_on.trim() || null,
@@ -333,7 +353,7 @@ export function TaskForm({
     try {
       if (initialTask) {
         const updated = await controlAction<{ task: Task }>("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
-          title: payload.title, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
+          title: payload.title, due_date: payload.dueDate, work_start_date: payload.workStartDate, work_dates: payload.workDates, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           status: payload.status, custom_status_label: payload.customStatusLabel,
           next_action: payload.nextAction,
@@ -459,6 +479,17 @@ export function TaskForm({
         </div>
       ) : null}
       {compact && !form.due_date ? <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} /> : null}
+      {!initialTask?.recurrence_rule_id ? (
+        <details className="rounded-2xl border border-slate-200 p-3">
+          <summary className="min-h-11 cursor-pointer py-2 font-extrabold text-slate-900">自訂哪幾日做／提醒{form.work_dates.length ? `（已揀 ${form.work_dates.length} 日）` : "（選填）"}</summary>
+          <TaskWorkDaysPicker
+            startDate={form.work_start_date}
+            dueDate={form.due_date}
+            workDates={form.work_dates}
+            onChange={(startDate, workDates) => setForm((current) => ({ ...current, work_start_date: startDate, work_dates: workDates.filter((date) => !current.due_date || date <= current.due_date) }))}
+          />
+        </details>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">系統狀態</span>

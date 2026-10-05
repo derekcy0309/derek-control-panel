@@ -2,14 +2,15 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, Check, ListPlus, Play, X } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarClock, Check, ListPlus, Play, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
 import { taskVisibleNextAction } from "@/lib/task-steps";
+import { orderTodayPlan } from "@/lib/today-plan-order";
+import { taskScheduledForDate } from "@/lib/task-work-schedule";
 import type { PlanningMetadata, Task } from "@/lib/types";
 
-const roleOrder = { now: 0, later: 1, quick_win: 2 } as const;
 const roleLabel = { now: "現在做", later: "稍後做", quick_win: "Quick Win" } as const;
 
 export function TodayAllTasks({
@@ -34,14 +35,15 @@ export function TodayAllTasks({
   const [error, setError] = useState("");
   const entries = useMemo(() => {
     const byId = new Map(tasks.map((task) => [task.id, task]));
-    return planning
+    return orderTodayPlan(planning
       .filter((item) => item.resource_type === "task" && item.planned_date === today && item.plan_role)
       .map((item) => ({ metadata: item, task: byId.get(item.resource_id) }))
-      .filter((entry): entry is { metadata: PlanningMetadata & { plan_role: NonNullable<PlanningMetadata["plan_role"]> }; task: Task } => Boolean(entry.task && entry.metadata.plan_role))
+      .filter((entry): entry is { metadata: PlanningMetadata & { plan_role: NonNullable<PlanningMetadata["plan_role"]> }; task: Task } => Boolean(entry.task && entry.metadata.plan_role && (entry.metadata.plan_source === "manual" || taskScheduledForDate(entry.task, today))))
+      .map((entry) => ({ ...entry, plan_role: entry.metadata.plan_role, plan_position: entry.metadata.plan_position, plan_source: entry.metadata.plan_source, resource_id: entry.metadata.resource_id })))
       .sort((left, right) => {
         const leftDone = ["done", "cancelled"].includes(left.task.status) ? 1 : 0;
         const rightDone = ["done", "cancelled"].includes(right.task.status) ? 1 : 0;
-        return leftDone - rightDone || roleOrder[left.metadata.plan_role] - roleOrder[right.metadata.plan_role];
+        return leftDone - rightDone;
       });
   }, [planning, tasks, today]);
 
@@ -72,6 +74,28 @@ export function TodayAllTasks({
     }
   }
 
+  async function move(taskId: string, direction: -1 | 1) {
+    if (busyId) return;
+    const active = entries.filter((entry) => !["done", "cancelled"].includes(entry.task.status));
+    const index = active.findIndex((entry) => entry.task.id === taskId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= active.length) return;
+    const ids = active.map((entry) => entry.task.id);
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    setBusyId(taskId);
+    setError("");
+    setMessage("");
+    try {
+      await controlAction("reorder_today_tasks", { taskIds: ids });
+      await onChanged();
+      setMessage("今日任務已按你揀的次序排列。第一項會成為「現在做」。");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "未能更改次序；原本排列仍然保留。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <section
       id="action-center-panel-today"
@@ -84,7 +108,7 @@ export function TodayAllTasks({
           <div>
             <p className="eyebrow">Today list</p>
             <h2 className="section-title mt-1">今日全部任務</h2>
-            <p className="muted mt-2 text-sm">只顯示已確認加入今日的項目；不會同步到 Google Calendar。</p>
+            <p className="muted mt-2 text-sm">由任務總表手動加入，再用上下按鈕自己排次序；第一項會顯示為「現在做」。不會同步到 Google Calendar。</p>
           </div>
           <Button onClick={onBrowseTasks}><ListPlus className="h-5 w-5" />由任務總表加入</Button>
         </div>
@@ -95,7 +119,7 @@ export function TodayAllTasks({
 
       {entries.length ? (
         <div className="grid gap-3">
-          {entries.map(({ metadata, task }) => {
+          {entries.map(({ metadata, task }, index) => {
             const completed = ["done", "cancelled"].includes(task.status);
             return (
               <article key={task.id} className={`panel flex flex-col gap-4 p-4 sm:flex-row sm:items-center ${completed ? "opacity-65" : ""}`}>
@@ -111,6 +135,8 @@ export function TodayAllTasks({
                   {taskVisibleNextAction(task) ? <p className="mt-1 text-sm text-slate-600">下一步：{taskVisibleNextAction(task)}</p> : null}
                 </div>
                 <div className="no-print flex shrink-0 flex-wrap gap-2">
+                  {!completed ? <button type="button" className="min-h-11 rounded-lg bg-slate-50 px-3 font-bold text-slate-700 disabled:opacity-40" disabled={Boolean(busyId) || index === 0} onClick={() => void move(task.id, -1)} aria-label={`將${task.title}移前`}><ArrowUp className="h-4 w-4" /></button> : null}
+                  {!completed ? <button type="button" className="min-h-11 rounded-lg bg-slate-50 px-3 font-bold text-slate-700 disabled:opacity-40" disabled={Boolean(busyId) || index === entries.filter((entry) => !["done", "cancelled"].includes(entry.task.status)).length - 1} onClick={() => void move(task.id, 1)} aria-label={`將${task.title}移後`}><ArrowDown className="h-4 w-4" /></button> : null}
                   {!completed && task.current_step_status !== "waiting" ? <Button variant="secondary" disabled={busyId === task.id} onClick={() => onStart(task)}><Play className="h-4 w-4" />開始</Button> : null}
                   {!completed && task.current_step_status === "waiting" ? <Link className="inline-flex min-h-11 items-center rounded-lg bg-slate-50 px-4 font-semibold text-slate-700" href={`/tasks/${task.id}`}>查看等待進度</Link> : null}
                   {!completed ? <Button disabled={busyId === task.id} onClick={() => void complete(task)}><Check className="h-4 w-4" />完成</Button> : null}

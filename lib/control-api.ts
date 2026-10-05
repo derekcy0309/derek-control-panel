@@ -63,6 +63,7 @@ export type AssignmentAlertRecord = {
   assigned_to_id: string;
   status: string;
   due_date: string | null;
+  work_dates?: string[] | null;
   accepted_at: string | null;
   acknowledged_at: string | null;
   created_at: string;

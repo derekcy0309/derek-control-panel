@@ -1,5 +1,6 @@
 import type { Assignment, CapacityCheckin, PlanningMetadata, Task, TaskDependency, UserSettings } from "./types.ts";
 import { effectiveTaskPriority } from "./due-priority.ts";
+import { taskScheduledForDate } from "./task-work-schedule.ts";
 
 const dayMs = 86_400_000;
 
@@ -115,6 +116,7 @@ export function recommendTodayTasks(input: {
     );
     if (!owned && !assigned) return false;
     const personal = planningByResource.get(task.id);
+    if (!taskScheduledForDate(task, today) && !(personal?.planned_date === today && personal?.plan_source === "manual")) return false;
     if (personal?.hidden_from_today) return false;
     if (personal?.snoozed_until && personal.snoozed_until > nowIso) return false;
     if (task.snoozed_until && task.snoozed_until > nowIso) return false;
@@ -147,6 +149,7 @@ export function recommendTodayTasks(input: {
     const assignment = assignmentByResource.get(task.id);
     if (assignment?.assigned_to_id === input.currentUserId) { score += 160; reasons.push("已接受指派"); }
     if (task.recurrence_rule_id && task.planned_date && task.planned_date <= today) { score += 260; reasons.push("定期工作已到提示時段"); }
+    else if (task.work_dates?.includes(today)) { score += 360; reasons.push("你選定今日處理"); }
     else if (task.planned_date === today || personal?.planned_date === today) { score += 260; reasons.push("已安排今日"); }
     if (personal) score += (6 - personal.personal_priority) * 35;
     if (energy && task.energy_level === energy) { score += 130; reasons.push("配合今日能量"); }

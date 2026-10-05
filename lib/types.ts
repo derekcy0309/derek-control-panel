@@ -38,6 +38,8 @@ export type Task = {
   title: string;
   owner: string | null;
   due_date: string | null;
+  work_start_date?: string | null;
+  work_dates?: string[] | null;
   follow_up_date: string | null;
   waiting_for?: string | null;
   waiting_on?: string | null;
@@ -589,6 +591,7 @@ export type PlanningMetadata = {
   pinned: boolean;
   hidden_from_today: boolean;
   plan_role?: TodayPlanRole | null;
+  plan_position?: number | null;
   plan_source?: "manual" | "auto_plan" | null;
   accepted_at?: string | null;
   plan_token?: string | null;

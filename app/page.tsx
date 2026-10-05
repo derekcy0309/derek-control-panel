@@ -38,6 +38,8 @@ import { assessCapacityOverload } from "@/lib/capacity-overload";
 import { formatDate } from "@/lib/date";
 import { currentAndNextTodayTask, remainingTodayTasks } from "@/lib/today-sequence";
 import { taskVisibleNextAction } from "@/lib/task-steps";
+import { orderTodayPlan } from "@/lib/today-plan-order";
+import { taskScheduledForDate } from "@/lib/task-work-schedule";
 import {
   activeWipCount,
   classifyDeadlineRisk,
@@ -1495,11 +1497,12 @@ function InlineAlert({ message }: { message: string }) {
 }
 
 function acceptedTodayPlan(data: TodayData, today: string) {
-  const metadata = data.planning.filter((item) =>
+  const metadata = orderTodayPlan(data.planning.filter((item) =>
     item.resource_type === "task"
     && item.planned_date === today
     && Boolean(item.plan_role)
-  );
+    && (item.plan_source === "manual" || taskScheduledForDate(data.tasks.find((task) => task.id === item.resource_id) ?? {}, today))
+  ));
   const taskFor = (role: TodayPlanRole) => metadata
     .filter((item) => item.plan_role === role)
     .map((item) => data.tasks.find((task) => task.id === item.resource_id))

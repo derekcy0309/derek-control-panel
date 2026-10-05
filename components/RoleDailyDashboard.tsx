@@ -9,6 +9,8 @@ import { riskLabels, taskStatusDetailLabels } from "@/lib/labels";
 import { buildSukiFollowupSummary, sukiFollowupCategoryLabels } from "@/lib/suki-followups";
 import { resolveWorkspaceRole, workspaceRoleLabels } from "@/lib/workspace-role";
 import { taskVisibleNextAction } from "@/lib/task-steps";
+import { taskScheduledForDate } from "@/lib/task-work-schedule";
+import { hkDateIso } from "@/lib/planning";
 import type { Assignment, Task, TodayData } from "@/lib/types";
 
 export function RoleDailyDashboard({
@@ -46,7 +48,7 @@ export function RoleDailyDashboard({
   const primaryTask = visibleTop[0] ?? null;
   const nextTasks = visibleTop.slice(1);
   const urgent = data.taskCatalog
-    .filter((task) => activeTask(task) && (role === "suki" && quietActive ? trulyUrgent(task) : task.risk === "high" || isOverdue(task.due_date)))
+    .filter((task) => activeTask(task) && taskScheduledForDate(task, hkDateIso()) && (role === "suki" && quietActive ? trulyUrgent(task) : task.risk === "high" || isOverdue(task.due_date)))
     .filter((task) => !visibleTop.some((top) => top.id === task.id))
     .slice(0, 3);
   const pending = data.assignments
@@ -56,7 +58,9 @@ export function RoleDailyDashboard({
     .filter((task) => task.needs_decision_from_id === data.currentUser.id && !task.decision_resolved_at && activeTask(task))
     .slice(0, 3);
   const roleCounts = role === "suki" && quietActive ? [] : roleCategoryCounts(role, data.taskCatalog);
-  const followupSummary = role === "suki" ? buildSukiFollowupSummary(data.taskCatalog) : null;
+  const followupSummary = role === "suki"
+    ? buildSukiFollowupSummary(data.taskCatalog.filter((task) => ["waiting", "blocked"].includes(task.status) || taskScheduledForDate(task, hkDateIso())))
+    : null;
 
   return (
     <section className="space-y-4" aria-label={workspaceRoleLabels[role]}>

@@ -47,6 +47,7 @@ function TaskDetailContent() {
         <p className="muted mt-2 text-sm">主頁只顯示摘要；這裡保留交接、checkpoint、資源、歷史及所有工作細節。</p>
       </section>
       {error ? <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">畫面未能更新：{error}。你可重新整理後再確認。</p> : null}
+      {data.task.work_dates?.length ? <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950" aria-label="任務工作日安排"><p className="font-extrabold">已自訂工作日</p><p className="mt-1">開始：{data.task.work_start_date} · 完成：{data.task.due_date}</p><p className="mt-1">提醒我做：{data.task.work_dates.join("、")}</p><p className="mt-2 text-indigo-800">只會喺以上日子自動建議／提醒；過咗選定日仍未完成，請入任務重新安排。</p></section> : null}
       {data.parentTask ? <Link className="inline-flex min-h-11 items-center font-semibold text-indigo-800 hover:underline" href={`/tasks/${data.parentTask.id}`}>← 返回上層任務：{data.parentTask.title}</Link> : null}
       <ChildTasksPanel parent={data.task} childTasks={data.childTasks} participants={data.participants} currentUserId={data.currentUser.id} onCreated={(task) => setData((previous) => previous ? { ...previous, childTasks: previous.childTasks.some((child) => child.id === task.id) ? previous.childTasks : [...previous.childTasks, task] } : previous)} />
       <TaskCard
