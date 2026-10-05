@@ -26,7 +26,7 @@ import { CapacityOverloadPanel } from "@/components/CapacityOverloadPanel";
 import { FocusMode } from "@/components/FocusMode";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
-import { TaskForm } from "@/components/forms/TaskForm";
+import { TaskForm, type TaskSaveResult } from "@/components/forms/TaskForm";
 import { TaskActionList } from "@/components/tasks/TaskActionList";
 import { ReminderPanel } from "@/components/ReminderPanel";
 import { RoleDailyDashboard } from "@/components/RoleDailyDashboard";
@@ -65,7 +65,7 @@ export default function HomePage() {
 }
 
 function TodayCommandCenter() {
-  const { data, loading, error, reload } = useTodayData();
+  const { data, loading, error, reload, saveTaskLocally } = useTodayData();
   const [adding, setAdding] = useState(false);
   const [voiceHandoffOpen, setVoiceHandoffOpen] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
@@ -85,6 +85,27 @@ function TodayCommandCenter() {
 
   const today = hkDateIso();
   const currentData = data;
+
+  useEffect(() => {
+    const openQuickTask = () => setAdding(true);
+    window.addEventListener("dcp:open-quick-task", openQuickTask);
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("quickTask") === "1") {
+      openQuickTask();
+      url.searchParams.delete("quickTask");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    }
+    return () => window.removeEventListener("dcp:open-quick-task", openQuickTask);
+  }, []);
+
+  function handleTaskSaved(result?: TaskSaveResult) {
+    if (!result) {
+      void reload();
+      return;
+    }
+    saveTaskLocally(result.task);
+    if (result.refreshRelated) void reload();
+  }
 
   useEffect(() => {
     if (!currentData || window.location.hash !== "#task-action-list") return;
@@ -142,7 +163,7 @@ function TodayCommandCenter() {
     [currentData, today]
   );
 
-  if (loading || error || !currentData || !recommendation) {
+  if (loading || !currentData || !recommendation) {
     return <LoadingState error={error} />;
   }
   const readyData: TodayData = currentData;
@@ -356,6 +377,7 @@ function TodayCommandCenter() {
           onCapacity={() => setCapacityOpen(true)}
           onAdd={() => setAdding(true)}
         />
+        {error ? <InlineAlert message={`資料同步暫時失敗；畫面保留上次內容。${error}`} /> : null}
         <ActionCenterTabs active={activeTab} todayCount={acceptedPlan.metadata.length} taskCount={currentData.taskQueueCatalog.filter((task) => !["done", "cancelled"].includes(task.status)).length} onChange={setActiveTab} />
         {activeTab === "focus" ? (
           <div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus" className="space-y-4">
@@ -384,7 +406,7 @@ function TodayCommandCenter() {
           <TodayAllTasks tasks={currentData.tasks} planning={currentData.planning} today={today} onChanged={reload} onStart={openFocus} onComplete={(task) => complete(task, null)} onBrowseTasks={() => setActiveTab("tasks")} />
         ) : null}
         {activeTab === "tasks" ? (
-          <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks"><TaskActionList data={currentData} onChanged={reload} restful /></div>
+          <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks"><TaskActionList data={currentData} onChanged={reload} onTaskSaved={handleTaskSaved} restful /></div>
         ) : null}
         {capacityOpen ? (
           <CapacityModal
@@ -402,9 +424,9 @@ function TodayCommandCenter() {
               userId={currentData.currentUser.id}
               participants={currentData.participants}
               compact
-              onSaved={() => {
+              onSaved={(result) => {
                 setAdding(false);
-                void reload();
+                handleTaskSaved(result);
               }}
               onCancel={() => setAdding(false)}
             />
@@ -422,6 +444,8 @@ function TodayCommandCenter() {
         onAdd={() => setAdding(true)}
         showActions={false}
       />
+
+      {error ? <InlineAlert message={`資料同步暫時失敗；畫面保留上次內容。${error}`} /> : null}
 
       {actionMessage ? (
         <p className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-sm font-semibold text-indigo-800" role="status">
@@ -667,7 +691,7 @@ function TodayCommandCenter() {
 
       {activeTab === "tasks" ? (
         <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks">
-          <TaskActionList data={currentData} onChanged={reload} />
+          <TaskActionList data={currentData} onChanged={reload} onTaskSaved={handleTaskSaved} />
         </div>
       ) : null}
 
@@ -694,9 +718,9 @@ function TodayCommandCenter() {
             userId={currentData.currentUser.id}
             participants={currentData.participants}
             compact
-            onSaved={() => {
+            onSaved={(result) => {
               setAdding(false);
-              void reload();
+              handleTaskSaved(result);
             }}
             onCancel={() => setAdding(false)}
           />

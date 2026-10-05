@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Check, ListPlus, Plus, Printer, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { SectionArtwork } from "@/components/SectionArtwork";
-import { TaskForm } from "@/components/forms/TaskForm";
+import { TaskForm, type TaskSaveResult } from "@/components/forms/TaskForm";
 import { TaskDueCalendar } from "@/components/tasks/TaskDueCalendar";
 import { TaskPrintSheet } from "@/components/tasks/TaskPrintSheet";
 import { TaskQueueSection } from "@/components/tasks/TaskQueueSection";
@@ -20,10 +20,12 @@ const primaryPreviewLimit = 5;
 export function TaskActionList({
   data,
   onChanged,
+  onTaskSaved,
   restful = false
 }: {
   data: TodayData;
   onChanged: () => Promise<unknown>;
+  onTaskSaved?: (result?: TaskSaveResult) => void;
   restful?: boolean;
 }) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -227,7 +229,7 @@ export function TaskActionList({
               participants={data.participants}
               preset={{ task_category: selectedCategory, area: categoryFields.area, scope: categoryFields.scope }}
               statusSuggestions={statusSuggestions}
-              onSaved={() => finish(onChanged, () => setIsAdding(false))}
+              onSaved={(result) => finish(result, onTaskSaved, onChanged, () => setIsAdding(false))}
               onCancel={() => setIsAdding(false)}
             />
           </Modal>
@@ -242,7 +244,7 @@ export function TaskActionList({
               initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)}
               initialFollowerUserIds={data.taskFollowers.filter((follower) => follower.task_id === editingTask.id).map((follower) => follower.follower_id)}
               statusSuggestions={statusSuggestions}
-              onSaved={() => finish(onChanged, () => setEditingTask(null))}
+              onSaved={(result) => finish(result, onTaskSaved, onChanged, () => setEditingTask(null))}
               onCancel={() => setEditingTask(null)}
             />
           </Modal>
@@ -254,7 +256,13 @@ export function TaskActionList({
   );
 }
 
-function finish(reload: () => Promise<unknown>, close: () => void) {
-  void reload();
+function finish(
+  result: TaskSaveResult | undefined,
+  onTaskSaved: ((result?: TaskSaveResult) => void) | undefined,
+  reload: () => Promise<unknown>,
+  close: () => void
+) {
   close();
+  if (onTaskSaved) onTaskSaved(result);
+  else void reload();
 }

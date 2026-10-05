@@ -9,6 +9,8 @@ import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWe
 import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import type { Task } from "@/lib/types";
 
+export type TaskSaveResult = { task: Task; refreshRelated: boolean };
+
 type TaskFormState = {
   scope: string;
   area: string;
@@ -109,7 +111,7 @@ export function TaskForm({
   participants?: Array<{ user_id: string; display_name: string }>;
   compact?: boolean;
   statusSuggestions?: string[];
-  onSaved: () => void;
+  onSaved: (result?: TaskSaveResult) => void;
   onCancel?: () => void;
 }) {
   const [form, setForm] = useState<TaskFormState>(() =>
@@ -327,9 +329,10 @@ export function TaskForm({
       noticeUserIds: form.notice_user_ids,
       followerUserIds: form.follower_user_ids
     };
+    let savedTask: Task | null = null;
     try {
       if (initialTask) {
-        await controlAction("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
+        const updated = await controlAction<{ task: Task }>("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
           title: payload.title, due_date: payload.dueDate, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           status: payload.status, custom_status_label: payload.customStatusLabel,
@@ -340,6 +343,7 @@ export function TaskForm({
           buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
           task_type_label: payload.taskType
         } });
+        savedTask = updated.task;
         if (form.recurrence_enabled && !initialTask.recurrence_rule_id) {
           try {
             await controlAction("save_task_recurrence", recurrencePayload(initialTask.id));
@@ -352,6 +356,7 @@ export function TaskForm({
         }
       } else {
         const created = await controlAction<{ task: Task }>("create_task", payload);
+        savedTask = created.task;
         sessionStorage.removeItem(draftKey);
         if (form.recurrence_enabled) {
           try {
@@ -374,7 +379,16 @@ export function TaskForm({
       sessionStorage.removeItem(draftKey);
       setForm(defaultState);
     }
-    onSaved();
+    if (savedTask) {
+      onSaved({
+        task: savedTask,
+        refreshRelated: form.recurrence_enabled || Boolean(form.handoff_to_user_id)
+          || form.notice_user_ids.length > 0 || initialNoticeUserIds.length > 0
+          || form.follower_user_ids.length > 0 || initialFollowerUserIds.length > 0
+      });
+    } else {
+      onSaved();
+    }
   }
 
   return (
@@ -386,7 +400,7 @@ export function TaskForm({
           <p className="mt-1 text-sm leading-6 text-amber-900">{recurrenceWarning || "任務沒有遺失；你可以重試，或先返回任務列表。"}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" onClick={() => void retryRecurrence()} disabled={saving}>{saving ? "設定中…" : "重試設定重複工作"}</Button>
-            <Button type="button" variant="secondary" onClick={onSaved}>先查看任務</Button>
+            <Button type="button" variant="secondary" onClick={() => onSaved()}>先查看任務</Button>
           </div>
         </section>
       ) : null}

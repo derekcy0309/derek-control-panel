@@ -175,6 +175,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .icon-button { display: grid; min-height: 44px; min-width: 44px; place-items: center; border-radius: .75rem; color: var(--muted); }
 .icon-button:hover { background: var(--surface-subtle); color: var(--ink); }
+.topbar-task-add, .topbar-capture { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: .35rem; border-radius: .75rem; padding: .45rem .7rem; font-size: .82rem; font-weight: 800; white-space: nowrap; }
+.topbar-task-add { background: var(--accent); color: white; box-shadow: 0 5px 14px color-mix(in srgb, var(--accent) 22%, transparent); }
+.topbar-task-add:hover { filter: brightness(.94); }
+.topbar-capture { border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
+.topbar-capture:hover { background: var(--surface-subtle); color: var(--ink); }
+.topbar-task-add:focus-visible, .topbar-capture:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, white); outline-offset: 2px; }
 .live-clock {
   display: flex;
   min-height: 44px;
@@ -508,6 +514,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .encouragement-glow-two { inset: auto auto -4rem 35%; width: 12rem; height: 8rem; background: rgba(45, 212, 191, .13); }
 
 @media (max-width: 640px) {
+  .topbar { flex-wrap: wrap; gap: .35rem; padding: .45rem .75rem; }
+  .topbar-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+  .topbar-actions .live-clock { margin-right: auto; }
+  .topbar-task-add, .topbar-capture { padding-inline: .55rem; font-size: .75rem; }
   .live-clock { gap: .4rem; padding-inline: .55rem; }
   .live-clock-time { font-size: .82rem; }
   .live-clock-date { font-size: .62rem; }
@@ -515,6 +525,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .encouragement-art { width: 6.5rem; margin-right: -1.5rem; opacity: .86; }
   .encouragement-quote-en { font-size: .8rem; }
   .encouragement-citation { flex-basis: 100%; }
+}
+
+@media (max-width: 380px) {
+  .topbar-actions .live-clock { padding-inline: .4rem; }
+  .topbar-actions .live-clock-icon, .topbar-actions .live-clock-date { display: none; }
+  .topbar-task-add, .topbar-capture { padding-inline: .45rem; }
 }
 
 .task-queue-section {

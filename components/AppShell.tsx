@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  PlusCircle, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
+  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -88,6 +88,7 @@ const mobileNav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [displayName, setDisplayName] = useState("我的");
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -143,6 +144,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.location.reload();
   }
 
+  function openQuickTask() {
+    if (pathname === "/") {
+      window.dispatchEvent(new Event("dcp:open-quick-task"));
+      return;
+    }
+    router.push("/?quickTask=1");
+  }
+
   return (
     <div className="app-frame min-h-screen bg-mist text-ink" data-section={sectionIdentityForPath(pathname)}>
       {mustChangePassword ? <PasswordChangeGate onComplete={() => setMustChangePassword(false)} /> : null}
@@ -159,10 +168,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="min-w-0 lg:pl-[17.5rem]">
         <header className="topbar">
           <Brand displayName={displayName} compact />
-          <div className="flex items-center gap-2">
+          <div className="topbar-actions flex items-center gap-2">
             <LiveClock />
             <OfflineWriteQueueStatus userId={currentUserId} />
-            <Link className="icon-button" href="/capture" aria-label="快速收集"><PlusCircle className="h-5 w-5" /></Link>
+            <button className="topbar-task-add" type="button" onClick={openQuickTask} aria-label="快速加任務"><Plus className="h-4 w-4" aria-hidden="true" /><span>加任務</span></button>
+            <Link className="topbar-capture" href="/capture" aria-label="Quick Capture：快速收集到收集箱"><Inbox className="h-4 w-4" aria-hidden="true" /><span>收集</span></Link>
             <Link className="icon-button" href="/search" aria-label="搜尋"><Search className="h-5 w-5" /></Link>
             <button className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:block lg:hidden" onClick={signOut}>登出</button>
           </div>
