@@ -5,7 +5,7 @@
 ## 主要能力
 
 - Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
-- 自訂工作日：一次性任務可設定開始日、完成日及中間真正要做的日子；Today 建議、瀏覽器通知與每日電郵只在選定日提示。舊任務保持原有提醒；使用者仍可明確手動加入 Today。
+- 自訂工作日：一次性任務可逐日加入真正要做的日子，完成日可留空，未填開始日時以第一個加入的日子為開始日；如有設定開始／完成日，仍會檢查日期範圍。Today 建議、瀏覽器通知與每日電郵只在選定日提示。舊任務保持原有提醒；使用者仍可明確手動加入 Today。修正及驗證見 [`docs/task-work-day-picker-fix.md`](docs/task-work-day-picker-fix.md)。
 - 手動排 Today：在「今日全部任務」由任務總表加入工作，再用上下按鈕排次序；第一項成為「現在做」。不會自行更改截止日期。
 - Suki Minimum Viable Day：一項核心最低任務、最多兩項簡單選項、無罪疚休息、拆細、交接及指定日再處理
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
@@ -101,6 +101,8 @@ supabase/migrations/20260910150051_routine_interval_schedule.sql
 supabase/migrations/20261004120000_task_steps.sql
 supabase/migrations/20261004150000_task_children_assignment_followups.sql
 supabase/migrations/20261005120000_task_work_days_manual_order.sql
+supabase/migrations/20261005150500_task_work_schedule_validation_grant.sql
+supabase/migrations/20261005160000_task_work_days_optional_deadline.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。

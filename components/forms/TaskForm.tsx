@@ -280,9 +280,9 @@ export function TaskForm({
     event.preventDefault();
     setError("");
     const workSchedule = validateTaskWorkSchedule({
-      startDate: form.work_start_date || null,
+      startDate: form.work_start_date || form.work_dates[0] || null,
       dueDate: form.due_date || null,
-      workDates: form.work_start_date ? form.work_dates : null
+      workDates: form.work_start_date || form.work_dates.length ? form.work_dates : null
     });
     if (workSchedule.error) { setError(workSchedule.error); return; }
     if ((form.recurrence_enabled || initialTask?.recurrence_rule_id) && workSchedule.startDate) {
@@ -495,7 +495,8 @@ export function TaskForm({
             startDate={form.work_start_date}
             dueDate={form.due_date}
             workDates={form.work_dates}
-            onChange={(startDate, workDates) => setForm((current) => ({ ...current, work_start_date: startDate, work_dates: workDates.filter((date) => !current.due_date || date <= current.due_date) }))}
+            disabled={saving}
+            onChange={(startDate, workDates) => setForm((current) => ({ ...current, work_start_date: startDate, work_dates: workDates }))}
           />
         </details>
       ) : null}
@@ -676,7 +677,7 @@ export function TaskForm({
           </div>
         </details>
       ) : null}
-      {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900">{error}</p> : null}
+      {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900" role="alert">{error}</p> : null}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" disabled={saving || Boolean(createdTaskId)}>
           {saving ? "儲存中..." : initialTask ? "儲存修改" : "新增任務"}

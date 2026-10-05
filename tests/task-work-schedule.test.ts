@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { recommendTodayTasks } from "../lib/planning.ts";
 import { nextAssignmentAlert } from "../lib/assignment-alerts.ts";
 import { orderTodayPlan } from "../lib/today-plan-order.ts";
-import { taskScheduledForDate, validateTaskWorkSchedule } from "../lib/task-work-schedule.ts";
+import { addTaskWorkDate, taskScheduledForDate, validateTaskWorkSchedule } from "../lib/task-work-schedule.ts";
 import type { Task, UserSettings } from "../lib/types.ts";
 
 const task: Task = {
@@ -61,6 +61,72 @@ test("legacy creation without schedule fields stays valid", () => {
   });
   assert.equal(validateTaskWorkSchedule({ startDate: undefined, dueDate: "2026-10-09", workDates: undefined }).error, null);
   assert.ok(validateTaskWorkSchedule({ startDate: undefined, dueDate: "2026-10-09", workDates: ["2026-10-05"] }).error);
+});
+
+test("selected work days save without an optional deadline", () => {
+  for (const dueDate of [null, undefined, ""]) {
+    assert.deepEqual(validateTaskWorkSchedule({ startDate: "2026-10-05", dueDate, workDates: ["2026-10-09", "2026-10-08"] }), {
+      startDate: "2026-10-05", workDates: ["2026-10-08", "2026-10-09"], error: null
+    });
+  }
+  assert.ok(validateTaskWorkSchedule({ startDate: "2026-10-05", dueDate: "invalid", workDates: ["2026-10-08"] }).error);
+});
+
+test("adding a date requires neither an optional deadline nor a prefilled start", () => {
+  assert.deepEqual(addTaskWorkDate({ startDate: "", dueDate: "", workDates: [], date: "2026-10-08" }), {
+    startDate: "2026-10-08", workDates: ["2026-10-08"], error: null
+  });
+  assert.deepEqual(addTaskWorkDate({ startDate: "2026-10-05", dueDate: "", workDates: ["2026-10-09"], date: "2026-10-08" }), {
+    startDate: "2026-10-05", workDates: ["2026-10-08", "2026-10-09"], error: null
+  });
+});
+
+test("date addition explains missing, duplicate and out-of-range selections without losing data", () => {
+  const input = { startDate: "2026-10-05", dueDate: "2026-10-09", workDates: ["2026-10-08"] };
+  for (const date of ["", "2026-02-30", "2026-10-04", "2026-10-10", "2026-10-08"]) {
+    const result = addTaskWorkDate({ ...input, date });
+    assert.ok(result.error);
+    assert.equal(result.startDate, input.startDate);
+    assert.deepEqual(result.workDates, ["2026-10-08"]);
+  }
+  assert.match(addTaskWorkDate({ ...input, date: "2026-10-10" }).error!, /完成日 2026-10-09/);
+  assert.match(addTaskWorkDate({ ...input, date: "2026-10-04" }).error!, /開始日 2026-10-05/);
+  assert.deepEqual(input.workDates, ["2026-10-08"]);
+});
+
+test("90 dates are supported and a 91st date is rejected without mutation", () => {
+  const dates = Array.from({ length: 90 }, (_, i) => new Date(Date.UTC(2026, 0, i + 1)).toISOString().slice(0, 10));
+  assert.equal(validateTaskWorkSchedule({ startDate: dates[0], dueDate: null, workDates: dates }).error, null);
+  const result = addTaskWorkDate({ startDate: dates[0], dueDate: "", workDates: dates, date: "2026-04-01" });
+  assert.ok(result.error);
+  assert.deepEqual(result.workDates, dates);
+});
+
+test("deadline-free schedules are suggested only on their chosen dates", () => {
+  const noDeadline = { ...task, due_date: null };
+  assert.equal(recommendTodayTasks({ tasks: [noDeadline], assignments: [], currentUserId: "derek", settings, capacity: null, today: "2026-10-05" }).now, null);
+  assert.equal(recommendTodayTasks({ tasks: [noDeadline], assignments: [], currentUserId: "derek", settings, capacity: null, today: "2026-10-08" }).now?.task.id, task.id);
+});
+
+test("picker and parent preserve selections and do not silently disable addition", () => {
+  const picker = readFileSync("components/forms/TaskWorkDaysPicker.tsx", "utf8");
+  const form = readFileSync("components/forms/TaskForm.tsx", "utf8");
+  assert.doesNotMatch(picker, /disabled=\{!startDate|!dueDate \|\| !validNext/);
+  assert.match(picker, /role="alert"/);
+  assert.match(picker, /event\.preventDefault\(\); addDate\(nextDate\)/);
+  assert.doesNotMatch(form, /work_dates: workDates\.filter/);
+});
+
+test("optional deadline migration changes only the invoker validator and preserves authenticated execute", () => {
+  const sql = readFileSync("supabase/migrations/20261005160000_task_work_days_optional_deadline.sql", "utf8").toLowerCase();
+  assert.match(sql, /p_due is null or p_start <= p_due/);
+  assert.match(sql, /p_due is not null and selected\.day > p_due/);
+  assert.match(sql, /security invoker/);
+  assert.match(sql, /grant execute.*to authenticated/);
+  assert.match(sql, /from public, anon/);
+  assert.doesNotMatch(sql, /security definer|update public\.tasks|delete from|drop table|disable row level security/);
+  const rollback = readFileSync("supabase/rollback-20261005160000-task-work-days-optional-deadline.sql", "utf8");
+  assert.match(rollback, /ROLLBACK_UNSAFE/);
 });
 
 test("manual Today order takes priority and legacy auto plan keeps role order", () => {
