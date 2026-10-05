@@ -37,6 +37,15 @@ test("an explicit manual Today choice may override a chosen work day", () => {
   assert.equal(result.now?.task.id, task.id);
 });
 
+test("a chosen work day remains visible when ordinary WIP capacity is full", () => {
+  const inProgress: Task = { ...task, id: "already-started", work_start_date: null, work_dates: null,
+    due_date: null, status: "in_progress" };
+  const result = recommendTodayTasks({ tasks: [task, inProgress], assignments: [],
+    currentUserId: "derek", settings: { ...settings, wip_limit: 1 }, capacity: null,
+    today: "2026-10-08" });
+  assert.ok(result.all.some((item) => item.task.id === task.id));
+});
+
 test("work schedule rejects missing, duplicate and out-of-range dates", () => {
   assert.equal(validateTaskWorkSchedule({ startDate: null, dueDate: "2026-10-09", workDates: null }).error, null);
   assert.ok(validateTaskWorkSchedule({ startDate: "2026-10-05", dueDate: "2026-10-09", workDates: [] }).error);

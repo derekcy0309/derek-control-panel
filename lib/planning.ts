@@ -121,7 +121,8 @@ export function recommendTodayTasks(input: {
     if (personal?.snoozed_until && personal.snoozed_until > nowIso) return false;
     if (task.snoozed_until && task.snoozed_until > nowIso) return false;
     const recurrencePromptReady = Boolean(task.recurrence_rule_id && task.planned_date && task.planned_date <= today);
-    if (wipLimitReached && task.status !== "in_progress" && assignment?.status !== "in_progress" && !recurrencePromptReady) return false;
+    const chosenWorkDay = Boolean(task.work_dates?.includes(today));
+    if (wipLimitReached && task.status !== "in_progress" && assignment?.status !== "in_progress" && !recurrencePromptReady && !chosenWorkDay) return false;
     return true;
   });
   const energy = input.capacity?.energy_level;
