@@ -84,7 +84,7 @@ test("PWA metadata describes personal work only", () => {
 test("task form starts with a clear task name and keeps follow-up simple", () => {
   const form = read("components/forms/TaskForm.tsx");
   assert.match(form, /任務名稱/);
-  assert.match(form, /何時完成（可留空）/);
+  assert.match(form, /完成／截止日（可留空）/);
   assert.match(form, /負責人/);
   assert.match(form, /共同跟進（可多選）/);
   assert.ok(form.indexOf("任務名稱") < form.indexOf("由誰共同跟進？"));
