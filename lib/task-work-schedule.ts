@@ -11,8 +11,8 @@ export function validateTaskWorkSchedule(input: {
   dueDate: unknown;
   workDates: unknown;
 }): { startDate: string | null; workDates: string[] | null; error: string | null } {
-  const startDate = input.startDate === null || input.startDate === "" ? null : input.startDate;
-  const dueDate = input.dueDate === null || input.dueDate === "" ? null : input.dueDate;
+  const startDate = input.startDate == null || input.startDate === "" ? null : input.startDate;
+  const dueDate = input.dueDate == null || input.dueDate === "" ? null : input.dueDate;
   const workDates = input.workDates === null || input.workDates === undefined ? null : input.workDates;
   if (startDate === null && workDates === null) return { startDate: null, workDates: null, error: null };
   if (!isCalendarDate(startDate) || !isCalendarDate(dueDate)) {

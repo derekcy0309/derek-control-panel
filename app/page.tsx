@@ -10,7 +10,6 @@ import {
   ChevronDown,
   Clock3,
   Coffee,
-  Plus,
   RefreshCw,
   Scissors,
   ShieldCheck,
@@ -89,15 +88,16 @@ function TodayCommandCenter() {
   const currentData = data;
 
   useEffect(() => {
-    const openQuickTask = () => setAdding(true);
-    window.addEventListener("dcp:open-quick-task", openQuickTask);
+    const openTaskForm = () => setAdding(true);
+    window.addEventListener("dcp:open-task-form", openTaskForm);
     const url = new URL(window.location.href);
-    if (url.searchParams.get("quickTask") === "1") {
-      openQuickTask();
+    if (url.searchParams.get("newTask") === "1" || url.searchParams.get("quickTask") === "1") {
+      openTaskForm();
+      url.searchParams.delete("newTask");
       url.searchParams.delete("quickTask");
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     }
-    return () => window.removeEventListener("dcp:open-quick-task", openQuickTask);
+    return () => window.removeEventListener("dcp:open-task-form", openTaskForm);
   }, []);
 
   function handleTaskSaved(result?: TaskSaveResult) {
@@ -377,7 +377,6 @@ function TodayCommandCenter() {
         <TodayHeader
           minimumDay
           onCapacity={() => setCapacityOpen(true)}
-          onAdd={() => setAdding(true)}
         />
         {error ? <InlineAlert message={`資料同步暫時失敗；畫面保留上次內容。${error}`} /> : null}
         <ActionCenterTabs active={activeTab} todayCount={acceptedPlan.metadata.length} taskCount={currentData.taskQueueCatalog.filter((task) => !["done", "cancelled"].includes(task.status)).length} onChange={setActiveTab} />
@@ -405,7 +404,7 @@ function TodayCommandCenter() {
           </div>
         ) : null}
         {activeTab === "today" ? (
-          <TodayAllTasks tasks={currentData.tasks} planning={currentData.planning} today={today} onChanged={reload} onStart={openFocus} onComplete={(task) => complete(task, null)} onBrowseTasks={() => setActiveTab("tasks")} />
+          <TodayAllTasks tasks={currentData.tasks} availableTasks={currentData.taskQueueCatalog} planning={currentData.planning} today={today} onChanged={reload} onStart={openFocus} onComplete={(task) => complete(task, null)} onBrowseTasks={() => setActiveTab("tasks")} />
         ) : null}
         {activeTab === "tasks" ? (
           <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks"><TaskActionList data={currentData} onChanged={reload} onTaskSaved={handleTaskSaved} restful /></div>
@@ -421,11 +420,11 @@ function TodayCommandCenter() {
           />
         ) : null}
         {adding ? (
-          <Modal title="快速新增任務" onClose={() => setAdding(false)}>
+          <Modal title="新增任務" onClose={() => setAdding(false)}>
             <TaskForm
               userId={currentData.currentUser.id}
               participants={currentData.participants}
-              compact
+              preset={{ add_to_today: activeTab === "today" }}
               onSaved={(result) => {
                 setAdding(false);
                 handleTaskSaved(result);
@@ -443,7 +442,6 @@ function TodayCommandCenter() {
       <TodayHeader
         minimumDay={minimumDay}
         onCapacity={() => setCapacityOpen(true)}
-        onAdd={() => setAdding(true)}
         showActions={false}
       />
 
@@ -470,7 +468,6 @@ function TodayCommandCenter() {
         topTasks={plannedSequence}
         busy={busy}
         onVoice={() => setVoiceHandoffOpen(true)}
-        onAdd={() => setAdding(true)}
         onStart={(task, minutes) => openFocus(task, minutes)}
         onNeedHelp={setSplitTask}
         onQuietMode={setQuietMode}
@@ -566,7 +563,6 @@ function TodayCommandCenter() {
                 text={recommendation.wipLimitReached
                   ? "WIP 已達上限；完成或暫停一項後，系統先會建議開新工作。"
                   : "可以調整今日容量，或新增一個 5–15 分鐘的清晰下一步。"}
-                onAdd={() => setAdding(true)}
               />
             )}
             {minimumDay && displayedNow && !showPreview ? (
@@ -682,6 +678,7 @@ function TodayCommandCenter() {
       {activeTab === "today" ? (
         <TodayAllTasks
           tasks={currentData.tasks}
+          availableTasks={currentData.taskQueueCatalog}
           planning={currentData.planning}
           today={today}
           onChanged={reload}
@@ -715,11 +712,11 @@ function TodayCommandCenter() {
       ) : null}
 
       {adding ? (
-        <Modal title="快速新增任務" onClose={() => setAdding(false)}>
+        <Modal title="新增任務" onClose={() => setAdding(false)}>
           <TaskForm
             userId={currentData.currentUser.id}
             participants={currentData.participants}
-            compact
+            preset={{ add_to_today: activeTab === "today" }}
             onSaved={(result) => {
               setAdding(false);
               handleTaskSaved(result);
@@ -799,12 +796,10 @@ function TodayCommandCenter() {
 function TodayHeader({
   minimumDay,
   onCapacity,
-  onAdd,
   showActions = true
 }: {
   minimumDay: boolean;
   onCapacity: () => void;
-  onAdd: () => void;
   showActions?: boolean;
 }) {
   return (
@@ -822,10 +817,6 @@ function TodayHeader({
         <Button variant="secondary" onClick={onCapacity}>
           <BatteryLow className="h-5 w-5" />
           今日容量
-        </Button>
-        <Button onClick={onAdd}>
-          <Plus className="h-5 w-5" />
-          快速新增
         </Button>
       </div> : null}
     </section>
@@ -1218,12 +1209,10 @@ function RiskPill({
 
 function EmptyState({
   title,
-  text,
-  onAdd
+  text
 }: {
   title: string;
   text: string;
-  onAdd: () => void;
 }) {
   return (
     <div className="py-8 text-center">
@@ -1232,10 +1221,6 @@ function EmptyState({
       </div>
       <h2 className="mt-4 text-xl font-bold">{title}</h2>
       <p className="muted mx-auto mt-2 max-w-md text-sm leading-6">{text}</p>
-      <Button className="mt-5" onClick={onAdd}>
-        <Plus className="h-5 w-5" />
-        新增任務
-      </Button>
     </div>
   );
 }

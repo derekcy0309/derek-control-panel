@@ -55,6 +55,14 @@ test("work schedule rejects missing, duplicate and out-of-range dates", () => {
   assert.deepEqual(validateTaskWorkSchedule({ startDate: "2026-10-05", dueDate: "2026-10-09", workDates: ["2026-10-09", "2026-10-08"] }).workDates, ["2026-10-08", "2026-10-09"]);
 });
 
+test("legacy creation without schedule fields stays valid", () => {
+  assert.deepEqual(validateTaskWorkSchedule({ startDate: undefined, dueDate: undefined, workDates: undefined }), {
+    startDate: null, workDates: null, error: null
+  });
+  assert.equal(validateTaskWorkSchedule({ startDate: undefined, dueDate: "2026-10-09", workDates: undefined }).error, null);
+  assert.ok(validateTaskWorkSchedule({ startDate: undefined, dueDate: "2026-10-09", workDates: ["2026-10-05"] }).error);
+});
+
 test("manual Today order takes priority and legacy auto plan keeps role order", () => {
   const base = { plan_role: "later" as const, plan_source: "manual" as const };
   const manual = orderTodayPlan([

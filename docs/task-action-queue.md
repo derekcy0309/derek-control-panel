@@ -35,3 +35,13 @@ The due-task calendar is the final section and is an internal view of unfinished
 ## Print
 
 The Tasks page prints the selected category as a compact A4 portrait action list. Navigation, buttons, cards, and the on-screen calendar are excluded. The print sheet contains all unfinished groups rather than only the five-item screen preview.
+
+## Unified entry and Today (2026-10-05)
+
+The global `新增任務` button is the single task-creation entry. It opens the full shared TaskForm; the separate compact quick-add flow and duplicate dashboard/list creation buttons have been removed. `Quick Capture` remains an Inbox capture workflow.
+
+New tasks can explicitly select `今日要做`. The create endpoint saves the user's existing planning metadata and the UI refreshes that related state after success. Existing tasks can be searched and added directly inside `今日全部`; the picker excludes completed, waiting and blocked work and shows at most eight matches. Manual Today inclusion leaves task deadlines unchanged.
+
+The work-date CHECK helper originally lacked EXECUTE for `authenticated`, causing SQL 42501 when a user saved selected work dates. Migration `20261005150500_task_work_schedule_validation_grant.sql` grants only that immutable date validator; no RLS or task data changes. An authenticated transaction verified insert, update and rejection of out-of-range dates, then rolled back all test data. Its rollback file restores the old grant state but would also restore the write failure, so prefer retaining this grant when rolling back only the UI.
+
+Older create-task clients may omit work-schedule fields entirely; omitted fields now normalize to null and retain ordinary task behavior.

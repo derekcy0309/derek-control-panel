@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ListPlus, Plus, Printer, X } from "lucide-react";
+import { Check, ListPlus, Printer, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { SectionArtwork } from "@/components/SectionArtwork";
 import { TaskForm, type TaskSaveResult } from "@/components/forms/TaskForm";
@@ -11,7 +11,7 @@ import { TaskQueueSection } from "@/components/tasks/TaskQueueSection";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { hkDateIso } from "@/lib/planning";
-import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
+import { taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
 import { taskQueueBuckets } from "@/lib/task-queue";
 import type { Task, TodayData } from "@/lib/types";
 
@@ -29,7 +29,6 @@ export function TaskActionList({
   restful?: boolean;
 }) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<TaskCategory>("personal");
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -53,7 +52,6 @@ export function TaskActionList({
   }, [data.taskQueueCatalog]);
 
   const categoryLabel = taskCategoryOptions.find((option) => option.value === selectedCategory)?.label ?? selectedCategory;
-  const categoryFields = taskCategoryFields(selectedCategory);
   const statusSuggestions = [...new Set(data.taskQueueCatalog.map((task) => task.custom_status_label?.trim()).filter((value): value is string => Boolean(value)))].sort();
   const datedTasks = tasksInCategory.filter((task) => task.due_date && task.status !== "done" && task.status !== "cancelled");
   const todayTaskIds = useMemo(() => new Set(
@@ -136,7 +134,6 @@ export function TaskActionList({
               {bulkMode ? <X className="h-5 w-5" /> : <ListPlus className="h-5 w-5" />}
               {bulkMode ? "取消多選" : "多選加入今日"}
             </Button>
-            <Button onClick={() => setIsAdding(true)}><Plus className="h-5 w-5" />新增任務</Button>
           </div>
           <SectionArtwork section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} compact />
         </section>
@@ -221,19 +218,6 @@ export function TaskActionList({
           </div>
           <TaskDueCalendar tasks={datedTasks} today={today} />
         </section>
-
-        {isAdding ? (
-          <Modal title={`新增${categoryLabel}任務`} onClose={() => setIsAdding(false)}>
-            <TaskForm
-              userId={data.currentUser.id}
-              participants={data.participants}
-              preset={{ task_category: selectedCategory, area: categoryFields.area, scope: categoryFields.scope }}
-              statusSuggestions={statusSuggestions}
-              onSaved={(result) => finish(result, onTaskSaved, onChanged, () => setIsAdding(false))}
-              onCancel={() => setIsAdding(false)}
-            />
-          </Modal>
-        ) : null}
 
         {editingTask ? (
           <Modal title="修改任務" onClose={() => setEditingTask(null)}>

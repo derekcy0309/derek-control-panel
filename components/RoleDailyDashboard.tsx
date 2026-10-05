@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, BellOff, BellRing, CalendarClock, Clock3, Mic, Plus, Scissors, ShieldCheck, UserRoundCheck } from "lucide-react";
+import { ArrowRight, BellOff, BellRing, CalendarClock, Clock3, Mic, Scissors, ShieldCheck, UserRoundCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SectionArtwork } from "@/components/SectionArtwork";
 import { formatDate, isOverdue } from "@/lib/date";
@@ -18,7 +18,6 @@ export function RoleDailyDashboard({
   topTasks,
   busy,
   onVoice,
-  onAdd,
   onStart,
   onNeedHelp,
   onQuietMode,
@@ -28,7 +27,6 @@ export function RoleDailyDashboard({
   topTasks: Task[];
   busy: boolean;
   onVoice: () => void;
-  onAdd: () => void;
   onStart: (task: Task, minutes: number) => void;
   onNeedHelp: (task: Task) => void;
   onQuietMode: (until: string | null) => Promise<void>;
@@ -71,9 +69,8 @@ export function RoleDailyDashboard({
             <h2 className="mt-1 text-2xl font-extrabold text-slate-950">{role === "suki" && quietActive ? "安靜模式：只顯示真正緊急事項" : "今日只先做一件，完成後再看下一步"}</h2>
             {roleCounts.length ? <p className="mt-2 text-sm text-slate-600">{roleCounts.join(" · ")}</p> : null}
           </div>
-          <div className="grid shrink-0 grid-cols-2 gap-2">
+          <div className="shrink-0">
             <Button type="button" className="min-h-14" onClick={onVoice}><Mic className="h-5 w-5" />語音交接</Button>
-            <Button type="button" className="min-h-14" variant="secondary" onClick={onAdd}><Plus className="h-5 w-5" />新增任務</Button>
           </div>
         </div>
         <SectionArtwork section="today" compact />

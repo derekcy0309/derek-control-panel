@@ -9,12 +9,14 @@ import { formatDate } from "@/lib/date";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import { orderTodayPlan } from "@/lib/today-plan-order";
 import { taskScheduledForDate } from "@/lib/task-work-schedule";
+import { todayPickMatches } from "@/lib/today-pick-list";
 import type { PlanningMetadata, Task } from "@/lib/types";
 
 const roleLabel = { now: "現在做", later: "稍後做", quick_win: "Quick Win" } as const;
 
 export function TodayAllTasks({
   tasks,
+  availableTasks,
   planning,
   today,
   onChanged,
@@ -23,6 +25,7 @@ export function TodayAllTasks({
   onBrowseTasks
 }: {
   tasks: Task[];
+  availableTasks: Task[];
   planning: PlanningMetadata[];
   today: string;
   onChanged: () => Promise<unknown>;
@@ -33,6 +36,12 @@ export function TodayAllTasks({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
+  const [query, setQuery] = useState("");
+  const includedIds = useMemo(() => new Set(planning
+    .filter((item) => item.resource_type === "task" && item.planned_date === today)
+    .map((item) => item.resource_id)), [planning, today]);
+  const matches = useMemo(() => todayPickMatches(availableTasks, includedIds, query), [availableTasks, includedIds, query]);
   const entries = useMemo(() => {
     const byId = new Map(tasks.map((task) => [task.id, task]));
     return orderTodayPlan(planning
@@ -58,6 +67,24 @@ export function TodayAllTasks({
       setMessage(`已將「${task.title}」移出今日；原本任務及到期日沒有改動。`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "未能移出今日。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function add(task: Task) {
+    if (busyId) return;
+    setBusyId(task.id);
+    setError("");
+    setMessage("");
+    try {
+      await controlAction("set_today_task", { taskId: task.id, included: true });
+      await onChanged();
+      setMessage(`已將「${task.title}」加入今日。`);
+      setQuery("");
+      setShowPicker(false);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "未能加入今日，請再試一次。");
     } finally {
       setBusyId(null);
     }
@@ -110,12 +137,26 @@ export function TodayAllTasks({
             <h2 className="section-title mt-1">今日全部任務</h2>
             <p className="muted mt-2 text-sm">由任務總表手動加入，再用上下按鈕自己排次序；第一項會顯示為「現在做」。不會同步到 Google Calendar。</p>
           </div>
-          <Button onClick={onBrowseTasks}><ListPlus className="h-5 w-5" />由任務總表加入</Button>
+          <Button onClick={() => setShowPicker((value) => !value)}><ListPlus className="h-5 w-5" />加入現有任務</Button>
         </div>
       </div>
 
       {message ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800" role="status">{message}</p> : null}
       {error ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800" role="alert">{error}</p> : null}
+      {showPicker ? <section className="panel space-y-3 p-4" aria-label="加入今日任務">
+        <label className="block font-bold text-slate-900">搜尋要加入今日的任務
+          <input className="field mt-2" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="輸入任務名稱" autoFocus />
+        </label>
+        <div className="space-y-2">
+          {matches.map((task) => <div key={task.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+            <span className="min-w-0 font-semibold text-slate-900">{task.title}</span>
+            <Button type="button" variant="secondary" disabled={Boolean(busyId)} onClick={() => void add(task)}>{busyId === task.id ? "加入中…" : "＋今日"}</Button>
+          </div>)}
+          {!matches.length ? <p className="py-3 text-sm text-slate-600">沒有符合的可處理任務；等待及阻塞中的任務不會加入今日。</p> : null}
+        </div>
+        {matches.length === 8 ? <p className="text-xs text-slate-500">只顯示首 8 項；輸入名稱可找其他任務。</p> : null}
+        <Button type="button" variant="ghost" onClick={onBrowseTasks}>查看任務總表</Button>
+      </section> : null}
 
       {entries.length ? (
         <div className="grid gap-3">
@@ -150,8 +191,8 @@ export function TodayAllTasks({
         <div className="panel p-8 text-center sm:p-10">
           <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-sky-50 text-sky-700"><ListPlus className="h-6 w-6" /></div>
           <h3 className="mt-4 text-lg font-extrabold text-slate-900">今日清單仍然是空的</h3>
-          <p className="muted mx-auto mt-2 max-w-lg text-sm leading-6">到「任務總表」按＋今日，或在「今日重點」確認系統建議。</p>
-          <Button className="mt-5" onClick={onBrowseTasks}>前往任務總表</Button>
+          <p className="muted mx-auto mt-2 max-w-lg text-sm leading-6">可以直接搜尋並加入現有任務，或在「今日重點」確認系統建議。</p>
+          <Button className="mt-5" onClick={() => setShowPicker(true)}>加入現有任務</Button>
         </div>
       )}
     </section>

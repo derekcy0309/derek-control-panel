@@ -1132,6 +1132,9 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     }
   }
   const status = enumValue(body.status, ["not_started", "in_progress", "waiting", "done", "blocked", "cancelled"], "not_started");
+  if (body.addToToday === true && !["not_started", "in_progress"].includes(status!)) {
+    return jsonError("等待、阻塞或已完成的任務不能列為今日要做；請取消「今日要做」或更改狀態。", 422);
+  }
   const nextAction = nullableText(body.nextAction);
   if (status === "in_progress" && !nextAction) return jsonError("開始任務前必須設定清晰的下一步。", 422);
   const requestedTaskCategory = body.taskCategory === undefined ? null : taskCategoryValue(body.taskCategory);
@@ -1236,6 +1239,13 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     await client.from("tasks").delete().eq("id", result.data.id);
     return followerError;
   }
+  if (body.addToToday === true) {
+    const planningError = await upsertTodayPlanning(client, user.id, result.data.id, true);
+    if (planningError) {
+      await client.from("tasks").delete().eq("id", result.data.id);
+      return databaseError(planningError);
+    }
+  }
   let assignmentId: string | null = null;
   if (handoffTarget && handoffNote) {
     const handoff = await client.rpc("start_task_handoff", {
@@ -1245,12 +1255,17 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
       p_due_date: payload.due_date
     });
     if (handoff.error) {
+      if (body.addToToday === true) {
+        await client.from("user_planning_metadata").delete()
+          .eq("user_id", user.id).eq("resource_type", "task").eq("resource_id", result.data.id);
+      }
       await client.from("tasks").delete().eq("id", result.data.id);
       return databaseError(handoff.error);
     }
     assignmentId = handoff.data;
   }
   await recordActivity(client, user.id, "task", result.data.id, "create", "建立任務");
+  if (body.addToToday === true) await recordActivity(client, user.id, "task", result.data.id, "today_manual_add", "建立時加入 Today");
   if (assignmentId) await recordActivity(client, user.id, "task", result.data.id, "handoff", "建立後直接交俾對方跟進");
   return Response.json({ task: result.data, assignmentId }, { status: 201, headers: privateHeaders() });
 }
@@ -2513,18 +2528,28 @@ async function snoozeTodayTask({ client, user }: RequestContext, body: Record<st
 async function setTodayTask({ client, user }: RequestContext, body: Record<string, unknown>) {
   const taskId = uuidValue(body.taskId);
   if (!taskId) return jsonError("任務識別碼不正確。", 400);
+  if (typeof body.included !== "boolean") return jsonError("請選擇加入或移出今日。", 422);
+  const included = body.included;
   const task = await client.from("tasks")
-    .select("id,status")
+    .select("id,status,blocked_reason")
     .eq("id", taskId)
     .is("deleted_at", null)
     .is("archived_at", null)
     .maybeSingle();
   if (task.error) return databaseError(task.error);
   if (!task.data) return jsonError("找不到任務或你沒有權限。", 404);
-  if (["done", "cancelled"].includes(task.data.status)) return jsonError("已完成或取消的任務不能加入 Today。", 422);
-  const included = Boolean(body.included);
+  if (included && (["done", "cancelled", "waiting", "blocked"].includes(task.data.status) || task.data.blocked_reason?.trim())) {
+    return jsonError("這項任務目前未能開始；請先在任務詳情更新等待或阻塞狀態。", 422);
+  }
+  const planningError = await upsertTodayPlanning(client, user.id, taskId, included);
+  if (planningError) return databaseError(planningError);
+  await recordActivity(client, user.id, "task", taskId, included ? "today_manual_add" : "today_manual_remove", included ? "手動加入 Today" : "手動移出 Today");
+  return Response.json({ ok: true }, { headers: privateHeaders() });
+}
+
+async function upsertTodayPlanning(client: SupabaseClient, userId: string, taskId: string, included: boolean) {
   const result = await client.from("user_planning_metadata").upsert({
-    user_id: user.id,
+    user_id: userId,
     resource_type: "task",
     resource_id: taskId,
     planned_date: included ? hkDateString() : null,
@@ -2537,9 +2562,7 @@ async function setTodayTask({ client, user }: RequestContext, body: Record<strin
     snoozed_until: null,
     updated_at: new Date().toISOString()
   }, { onConflict: "user_id,resource_type,resource_id" });
-  if (result.error) return databaseError(result.error);
-  await recordActivity(client, user.id, "task", taskId, included ? "today_manual_add" : "today_manual_remove", included ? "手動加入 Today" : "手動移出 Today");
-  return Response.json({ ok: true }, { headers: privateHeaders() });
+  return result.error;
 }
 
 async function reorderTodayTasks({ client, user }: RequestContext, body: Record<string, unknown>) {

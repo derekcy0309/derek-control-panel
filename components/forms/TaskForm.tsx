@@ -20,6 +20,7 @@ type TaskFormState = {
   source_type: string;
   task_type_label: string;
   title: string;
+  add_to_today: boolean;
   owner: string;
   due_date: string;
   work_start_date: string;
@@ -62,6 +63,7 @@ const defaultState: TaskFormState = {
   source_type: "follow_up",
   task_type_label: "",
   title: "",
+  add_to_today: false,
   owner: "",
   due_date: "",
   work_start_date: "",
@@ -129,6 +131,7 @@ export function TaskForm({
           source_type: initialTask.source_type,
           task_type_label: initialTask.task_type_label ?? "",
           title: initialTask.title,
+          add_to_today: false,
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
           work_start_date: initialTask.work_start_date ?? "",
@@ -321,6 +324,7 @@ export function TaskForm({
       sourceType: form.source_type,
       taskType: form.task_type_label.trim() || null,
       title: form.title.trim(),
+      addToToday: form.add_to_today,
       dueDate: form.due_date || null,
       workStartDate: workSchedule.startDate,
       workDates: workSchedule.workDates,
@@ -402,7 +406,7 @@ export function TaskForm({
     if (savedTask) {
       onSaved({
         task: savedTask,
-        refreshRelated: form.recurrence_enabled || Boolean(form.handoff_to_user_id)
+        refreshRelated: form.add_to_today || form.recurrence_enabled || Boolean(form.handoff_to_user_id)
           || form.notice_user_ids.length > 0 || initialNoticeUserIds.length > 0
           || form.follower_user_ids.length > 0 || initialFollowerUserIds.length > 0
       });
@@ -428,6 +432,10 @@ export function TaskForm({
         <span className="label">任務名稱</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
       </label>
+      {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
+        <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
+        今日要做（建立後直接顯示在「今日全部」）
+      </label> : null}
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <DueDatePicker
           value={form.due_date}
@@ -494,7 +502,10 @@ export function TaskForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <label>
           <span className="label">系統狀態</span>
-          <select className="field mt-2" value={form.status} onChange={(event) => update("status", event.target.value)}>
+          <select className="field mt-2" value={form.status} onChange={(event) => {
+            const status = event.target.value;
+            setForm((current) => ({ ...current, status, add_to_today: ["not_started", "in_progress"].includes(status) && current.add_to_today }));
+          }}>
             {taskStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <span className="mt-1 block text-xs leading-5 text-slate-500">系統用這個狀態判斷 Today、Waiting、Blocked 及完成項目。</span>
