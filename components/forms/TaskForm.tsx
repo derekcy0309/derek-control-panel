@@ -431,6 +431,7 @@ export function TaskForm({
       {!compact ? <div className="grid gap-4 sm:grid-cols-2">
         <DueDatePicker
           value={form.due_date}
+          label="完成／截止日（可留空）"
           onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))}
         />
         <label>
@@ -474,7 +475,7 @@ export function TaskForm({
       ) : null}
       {compact ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          <DueDatePicker value={form.due_date} label="何時完成（可留空）" onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))} />
+          <DueDatePicker value={form.due_date} label="完成／截止日（可留空）" onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))} />
           <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
         </div>
       ) : null}
