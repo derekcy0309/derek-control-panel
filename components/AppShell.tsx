@@ -1,5 +1,7 @@
 "use client";
 
+import { clearNoteDrafts } from "@/lib/notes";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -136,6 +138,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:new`);
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:waiting`);
         sessionStorage.removeItem(`dcp:assignment-alerts:v1:${currentUserId}`);
+        clearNoteDrafts(sessionStorage, currentUserId);
         localStorage.removeItem(`dcp:assignment-alerts:v1:${currentUserId}`);
       } catch {
         // Sign-out must still complete if browser storage is unavailable.

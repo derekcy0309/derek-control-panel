@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadControlData } from "@/lib/control-api";
-import type { ControlData } from "@/lib/types";
+import type { ControlData, OperatingItem } from "@/lib/types";
 
 export function useControlData() {
   const [data, setData] = useState<ControlData | null>(null);
@@ -24,5 +24,8 @@ export function useControlData() {
   }, []);
 
   useEffect(() => { void reload(); }, [reload]);
-  return { data, loading, error, reload };
+  const upsertOperatingItem = useCallback((item: OperatingItem) => {
+    setData((current) => current ? { ...current, operatingItems: [...current.operatingItems.filter((entry) => entry.id !== item.id), item] } : current);
+  }, []);
+  return { data, loading, error, reload, upsertOperatingItem };
 }

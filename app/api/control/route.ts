@@ -6,6 +6,7 @@ import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { priorityValueForDueDate } from "@/lib/due-priority";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
+import { noteMetadata, validateNoteInput } from "@/lib/notes";
 import type { BodyDoubleTaskOption } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -1911,7 +1912,14 @@ async function createOperatingItem({ client, user }: RequestContext, body: Recor
   if (title instanceof Response) return title;
   const itemType = enumValue(body.itemType, itemTypes, "note");
   if (itemType === "project") return jsonError("項目已併入任務；請直接建立任務。", 422);
-  const area = enumValue(body.area, ["work","family","personal"] as const, "personal");
+  const isNote = itemType === "note";
+  const metadata = objectValue(body.metadata);
+  const category = body.noteCategory ?? metadata.noteCategory;
+  if (isNote) {
+    const error = validateNoteInput({ title: body.title, description: body.description, category });
+    if (error) return jsonError(error, 422);
+  }
+  const area = isNote ? "personal" : enumValue(body.area, ["work","family","personal"] as const, "personal");
   const access = await defaultResourceAccess(client, user.id, area);
   if (access instanceof Response) return access;
   const scheduleStartAt = timestampValue(body.scheduleStartAt);
@@ -1931,16 +1939,16 @@ async function createOperatingItem({ client, user }: RequestContext, body: Recor
     item_type: itemType,
     title,
     description: nullableText(body.description),
-    status: enumValue(body.status, ["inbox","active","waiting","blocked","review","completed","cancelled"], "active"),
+    status: isNote ? "active" : enumValue(body.status, ["inbox","active","waiting","blocked","review","completed","cancelled"], "active"),
     area,
     owner_id: user.id,
     created_by_id: user.id,
     visibility: access.visibility,
     household_id: access.householdId,
-    due_date: dateValue(body.dueDate),
-    next_action: nullableText(body.nextAction),
-    sensitive: Boolean(body.sensitive),
-    metadata: objectValue(body.metadata),
+    due_date: isNote ? null : dateValue(body.dueDate),
+    next_action: isNote ? null : nullableText(body.nextAction),
+    sensitive: isNote || Boolean(body.sensitive),
+    metadata: isNote ? noteMetadata(metadata, category as string | undefined) : metadata,
     last_progress_at: new Date().toISOString(),
     schedule_start_at: itemType === "event" ? scheduleStartAt : null,
     schedule_end_at: itemType === "event" ? scheduleEndAt : null,
@@ -1972,6 +1980,17 @@ async function updateOperatingItem({ client, user }: RequestContext, body: Recor
   const owner = existing.data.owner_id === user.id;
   const changes = objectValue(body.changes);
   const payload = pick(changes, owner ? ["title","description","status","due_date","next_action","metadata","archived_at","last_progress_at","schedule_start_at","schedule_end_at","schedule_timezone","schedule_status","calendar_target"] : ["status","last_progress_at"]);
+  if (existing.data.item_type === "note" && ("noteCategory" in body || "title" in payload || "description" in payload)) {
+    if (!owner) return jsonError("只有筆記擁有者可以修改內容或分類。", 403);
+    const category = "noteCategory" in body ? body.noteCategory : objectValue(existing.data.metadata).noteCategory;
+    const title = "title" in payload ? payload.title : existing.data.title;
+    const description = "description" in payload ? payload.description : existing.data.description;
+    const error = validateNoteInput({ title, description, category });
+    if (error) return jsonError(error, 422);
+    if ("title" in payload) payload.title = String(title).trim();
+    if ("description" in payload) payload.description = nullableText(description);
+    if ("noteCategory" in body) payload.metadata = noteMetadata(objectValue(existing.data.metadata), category as string | null | undefined);
+  }
   const scheduleTouched = owner && existing.data.item_type === "event" && (
     "schedule_status" in payload
     || "schedule_start_at" in payload

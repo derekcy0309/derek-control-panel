@@ -13,6 +13,9 @@ import { Modal } from "@/components/Modal";
 import { SectionArtwork } from "@/components/SectionArtwork";
 import { TaskForm } from "@/components/forms/TaskForm";
 import { DueDatePicker } from "@/components/forms/DueDatePicker";
+import { NoteEditor } from "@/components/notes/NoteEditor";
+import { NoteCard } from "@/components/notes/NoteCard";
+import { filterNotes, noteCategories, noteCategory } from "@/lib/notes";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
@@ -39,7 +42,7 @@ const views: Record<string, ViewConfig> = {
   health: { title: "健康行政", eyebrow: "Personal", description: "整理個人預約、文件及一般跟進。所有內容預設私人。", area: "personal", itemType: "health", addLabel: "新增健康行政", sensitive: true },
   document: { title: "文件", eyebrow: "Personal", description: "追蹤發出日、到期日及遮罩編號；檔案分享需要另行確認。", area: "personal", itemType: "document", addLabel: "新增文件", sensitive: true },
   vehicle: { title: "車輛", eyebrow: "Personal", description: "管理牌照、保險、驗車、保養、維修及費用。", area: "personal", itemType: "vehicle", addLabel: "新增車輛事項" },
-  note: { title: "私人筆記", eyebrow: "Personal", description: "筆記不會出現在對方搜尋、共享預覽或通知內容。", area: "personal", itemType: "note", addLabel: "新增私人筆記", sensitive: true }
+  note: { title: "私人筆記", eyebrow: "Notes", description: "純粹記事，按分類找回內容；不設死線、urgency 或工作狀態。筆記保持私人。", area: "personal", itemType: "note", addLabel: "新增筆記", sensitive: true }
 };
 
 export default function WorkspacePage() { return <AuthGate><WorkspaceContent /></AuthGate>; }
@@ -55,15 +58,19 @@ function WorkspaceContent() {
 }
 
 function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
-  const { data, loading, error, reload } = useControlData();
+  const { data, loading, error, reload, upsertOperatingItem } = useControlData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("active");
+  const [category, setCategory] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
   const [editing, setEditing] = useState<OperatingItem | null>(null);
   const [adding, setAdding] = useState(false);
   const today = hkDateIso();
+  const isNoteView = config.itemType === "note";
 
   const items = useMemo(() => {
     if (!data) return [];
+    if (isNoteView) return filterNotes(data.operatingItems.filter((item) => item.owner_id === data.currentUser.id), query, category);
     return data.operatingItems.filter((item) => {
       if (item.area !== config.area) return false;
       if (config.itemType && item.item_type !== config.itemType) return false;
@@ -74,17 +81,23 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
     }).sort((left, right) => priorityRank(operatingItemPriorityBand(left, today)) - priorityRank(operatingItemPriorityBand(right, today))
       || (left.due_date ?? "9999-12-31").localeCompare(right.due_date ?? "9999-12-31")
       || left.title.localeCompare(right.title));
-  }, [config, data, query, status, today]);
+  }, [category, config, data, isNoteView, query, status, today]);
 
   if (loading || error || !data) return <LoadingState error={error} />;
   async function update(item: OperatingItem, changes: Record<string, unknown>) { await controlAction("update_item", { id: item.id, changes }); await reload(); }
   const customStatusSuggestions = [...new Set(data.operatingItems.map((item) => customStatusForItem(item)).filter((value): value is string => Boolean(value)))].sort();
   const familyPriorityView = config.area === "family" && !config.itemType;
+  const categorySuggestions = [...new Set([...noteCategories, ...data.operatingItems.filter((item) => item.item_type === "note" && item.owner_id === data.currentUser.id).map(noteCategory).filter(Boolean)])];
 
   return <div className="space-y-5">
     <section className="section-hero flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="relative z-10"><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title mt-1">{config.title}</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">{config.description}</p></div><Button className="relative z-10" onClick={() => setAdding(true)}><Plus className="h-5 w-5" />{config.addLabel}</Button><SectionArtwork section={config.itemType === "health" ? "health" : config.area} compact /></section>
     {config.itemType === "project" ? <ProjectMilestonesPanel projects={items} milestones={data.projectMilestones} tasks={data.tasks} onChanged={() => void reload()} /> : null}
-    <section className="panel flex flex-col gap-3 p-3 sm:flex-row"><label className="relative flex-1"><span className="sr-only">搜尋此頁</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜尋標題、內容或下一步" /></label><label className="relative sm:w-48"><span className="sr-only">狀態</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><select className="field pl-10" value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="all">全部</option></select></label></section>
+    <section className="panel flex flex-col gap-3 p-3 sm:flex-row">
+      <label className="relative flex-1"><span className="sr-only">搜尋此頁</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isNoteView ? "搜尋筆記標題、內容或分類" : "搜尋標題、內容或下一步"} /></label>
+      {isNoteView ? <label className="relative sm:w-48"><span className="sr-only">筆記分類</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><select aria-label="筆記分類" className="field pl-10" value={category} onChange={(event) => setCategory(event.target.value)}><option value="">全部分類</option><option value="__uncategorized">未分類</option>{categorySuggestions.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+        : <label className="relative sm:w-48"><span className="sr-only">狀態</span><Filter className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><select className="field pl-10" value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">進行中</option><option value="waiting">等待中</option><option value="blocked">受阻</option><option value="review">待檢視</option><option value="completed">已完成</option><option value="all">全部</option></select></label>}
+    </section>
+    {saveMessage ? <p role="status" className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800">{saveMessage}</p> : null}
     {familyPriorityView && items.length ? (
       <section className="grid gap-4">
         {(["high", "medium", "low"] as const).map((band) => (
@@ -92,7 +105,11 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
         ))}
       </section>
     ) : <section className="grid gap-3 xl:grid-cols-2">{items.length ? items.map((item) => <ItemCard key={item.id} item={item} today={today} currentUserId={data.currentUser.id} onEdit={() => setEditing(item)} onComplete={() => update(item, { status: "completed" })} onArchive={() => update(item, { archived_at: new Date().toISOString() })} />) : <div className="panel col-span-full p-8 text-center"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-500"><Plus className="h-5 w-5" /></div><h2 className="mt-4 text-lg font-bold">目前沒有{config.title}項目</h2><p className="muted mt-2 text-sm">你可以新增第一項，或調整上方篩選。</p><Button className="mt-5" onClick={() => setAdding(true)}>{config.addLabel}</Button></div>}</section>}
-    {adding || editing ? <ItemModal config={config} item={editing} customStatusSuggestions={customStatusSuggestions} currentUserId={data.currentUser.id} onClose={() => { setAdding(false); setEditing(null); }} onSaved={() => { setAdding(false); setEditing(null); void reload(); }} /> : null}
+    {adding || editing ? <ItemModal config={config} item={editing} customStatusSuggestions={customStatusSuggestions} categorySuggestions={categorySuggestions} currentUserId={data.currentUser.id} onClose={() => { setAdding(false); setEditing(null); }} onSaved={(savedItem) => {
+      setAdding(false); setEditing(null);
+      if (savedItem) { upsertOperatingItem(savedItem); setSaveMessage("筆記已儲存。"); }
+      else void reload();
+    }} /> : null}
   </div>;
 }
 
@@ -296,6 +313,7 @@ function PriorityItemSection({ band, items, currentUserId, onEdit, onUpdate }: {
 
 function ItemCard({ item, today = hkDateIso(), currentUserId, onEdit, onComplete, onArchive }: { item: OperatingItem; today?: string; currentUserId: string; onEdit: () => void; onComplete: () => void; onArchive: () => void }) {
   const owner = item.owner_id === currentUserId;
+  if (item.item_type === "note") return <NoteCard item={item} onOpen={owner ? onEdit : undefined} />;
   const age = item.item_type === "waiting" && typeof item.metadata.lastContactDate === "string" ? waitingAge(item.metadata.lastContactDate) : null;
   const mobileCapture = item.metadata.mobileCapture;
   const hasPrivateCaptureFile = owner
@@ -330,14 +348,23 @@ function ItemCard({ item, today = hkDateIso(), currentUserId, onEdit, onComplete
   );
 }
 
-function ItemModal({ config, item, customStatusSuggestions = [], onClose, onSaved }: {
+type ItemModalProps = {
   config: ViewConfig;
   item: OperatingItem | null;
   currentUserId: string;
   customStatusSuggestions?: string[];
+  categorySuggestions?: string[];
   onClose: () => void;
-  onSaved: () => void;
-}) {
+  onSaved: (item?: OperatingItem) => void;
+};
+
+function ItemModal(props: ItemModalProps) {
+  const itemType = props.item?.item_type ?? props.config.itemType ?? (props.config.area === "family" ? "event" : "note");
+  if (itemType === "note") return <NoteEditor item={props.item} userId={props.currentUserId} categorySuggestions={props.categorySuggestions} onClose={props.onClose} onSaved={props.onSaved} />;
+  return <GenericItemModal {...props} />;
+}
+
+function GenericItemModal({ config, item, customStatusSuggestions = [], onClose, onSaved }: ItemModalProps) {
   const statusListId = useId();
   const [form, setForm] = useState({
     title: item?.title ?? "",

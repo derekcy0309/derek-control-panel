@@ -4,6 +4,7 @@
 
 ## 主要能力
 
+- 私人筆記：只填標題、內容及可選分類／Remark（車輛、個人財務、公司、工作、個人、家庭或自訂）；支援分類搜尋及同分頁草稿，儲存後不整頁重新載入。分類不會建立財務紀錄或改變分享權限。詳見 [`docs/simple-notes.md`](docs/simple-notes.md)。
 - Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
 - 自訂工作日：一次性任務可逐日加入真正要做的日子，完成日可留空，未填開始日時以第一個加入的日子為開始日；如有設定開始／完成日，仍會檢查日期範圍。Today 建議、瀏覽器通知與每日電郵只在選定日提示。舊任務保持原有提醒；使用者仍可明確手動加入 Today。修正及驗證見 [`docs/task-work-day-picker-fix.md`](docs/task-work-day-picker-fix.md)。
 - 手動排 Today：在「今日全部任務」由任務總表加入工作，再用上下按鈕排次序；第一項成為「現在做」。不會自行更改截止日期。
