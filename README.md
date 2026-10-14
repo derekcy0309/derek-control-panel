@@ -4,6 +4,7 @@
 
 ## 主要能力
 
+- 交辦確認：已修正「確認收到」被舊資料庫 guard 誤擋；收件人可先確認再接受，派出者可收到去重回覆。真實 RLS／trigger 測試、migration 及回復見 [`docs/assignment-acknowledgement-fix.md`](docs/assignment-acknowledgement-fix.md)。
 - 私人筆記：只填標題、內容及可選分類／Remark（車輛、個人財務、公司、工作、個人、家庭或自訂）；支援分類搜尋及同分頁草稿，儲存後不整頁重新載入。分類不會建立財務紀錄或改變分享權限。詳見 [`docs/simple-notes.md`](docs/simple-notes.md)。
 - Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
 - 自訂工作日：一次性任務可逐日加入真正要做的日子，完成日可留空，未填開始日時以第一個加入的日子為開始日；如有設定開始／完成日，仍會檢查日期範圍。Today 建議、瀏覽器通知與每日電郵只在選定日提示。舊任務保持原有提醒；使用者仍可明確手動加入 Today。修正及驗證見 [`docs/task-work-day-picker-fix.md`](docs/task-work-day-picker-fix.md)。
@@ -104,6 +105,7 @@ supabase/migrations/20261004150000_task_children_assignment_followups.sql
 supabase/migrations/20261005120000_task_work_days_manual_order.sql
 supabase/migrations/20261005150500_task_work_schedule_validation_grant.sql
 supabase/migrations/20261005160000_task_work_days_optional_deadline.sql
+supabase/migrations/20261014065549_assignment_acknowledgement_permission.sql
 ```
 
 升級檔是 additive migration：保留舊表與資料，回填 `tasks.owner_id`，加入雙帳戶 profile／planning／sharing／operating item schema，並重建 private-by-default RLS。套用前請先備份及在 staging 驗證。
