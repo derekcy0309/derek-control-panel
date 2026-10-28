@@ -5,6 +5,7 @@ import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
+import { googleLoginError } from "@/lib/google-login";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
@@ -17,8 +18,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [submitting, setSubmitting] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   useEffect(() => {
+    const currentUrl = new URL(window.location.href);
+    const loginError = currentUrl.searchParams.get("login_error");
+    if (loginError) {
+      setMessage(googleLoginError(loginError));
+      currentUrl.searchParams.delete("login_error");
+      window.history.replaceState({}, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
     let active = true;
     let refreshInFlight = false;
     async function renewSession({ initial = false, adoptBrowserSession = false }: { initial?: boolean; adoptBrowserSession?: boolean } = {}) {
@@ -62,13 +71,40 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("focus", renewWhenReturning);
     document.addEventListener("visibilitychange", renewWhenReturning);
+    const restoreGoogleButton = () => setGoogleSubmitting(false);
+    window.addEventListener("pageshow", restoreGoogleButton);
     return () => {
       active = false;
       window.clearInterval(keepAlive);
       window.removeEventListener("focus", renewWhenReturning);
       document.removeEventListener("visibilitychange", renewWhenReturning);
+      window.removeEventListener("pageshow", restoreGoogleButton);
     };
   }, []);
+
+  async function signInWithGoogle() {
+    if (googleSubmitting || submitting) return;
+    setGoogleSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch("/api/auth/google", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ next: window.location.pathname })
+      });
+      const result = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !result.url) {
+        setMessage(result.error || googleLoginError("failed"));
+        setGoogleSubmitting(false);
+        return;
+      }
+      // Keep the same browser context so the HttpOnly PKCE cookie accompanies
+      // the callback. Google Calendar permissions are a separate opt-in flow.
+      window.location.assign(result.url);
+    } catch {
+      setGoogleSubmitting(false);
+      setMessage(googleLoginError("network"));
+    }
+  }
 
   async function sendLoginCode(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,10 +164,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-mist px-4 py-8">
       <div className="pointer-events-none absolute left-1/2 top-[-12rem] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
-      <form className="panel relative w-full max-w-md p-6 sm:p-8" onSubmit={authMode === "password" ? signInWithPassword : otpSent ? verifyLoginCode : sendLoginCode}>
+      <div className="panel relative w-full max-w-md p-6 [--section-accent:var(--accent)] [--section-soft:var(--accent-soft)] sm:p-8">
         <div className="mb-6 flex items-center gap-3"><div className="brand-mark h-11 w-11"><KeyRound className="h-5 w-5" /></div><div><p className="eyebrow">Derek Control Panel</p><h1 className="text-2xl font-bold tracking-tight">登入你的 Panel</h1></div></div>
-        <p className="text-sm leading-6 text-slate-600">每個帳戶的 Dashboard、私人資料、排序及設定完全獨立。所有內容預設只限自己查看。</p>
-        <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
+        <p className="text-sm leading-6 text-slate-600">使用與原有 Panel 帳戶相同的 Google 電郵，登入後直接進入系統。原有任務、資料及權限保持不變。</p>
+        <Button className="mt-5 w-full" type="button" disabled={googleSubmitting || submitting} onClick={() => { void signInWithGoogle(); }}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M21.8 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.5a4.7 4.7 0 0 1-2 3.1c-.9.6-2 1-3.5 1a6.2 6.2 0 1 1 0-12.4c1.5 0 2.8.5 3.9 1.5l3-2.9A10.2 10.2 0 1 0 12 22.2c3 0 5.5-1 7.3-2.7 1.7-1.8 2.5-4.2 2.5-7.3Z" /></svg>
+          {googleSubmitting ? "正在前往 Google…" : "使用 Google 登入"}
+        </Button>
+        <p className="mt-3 text-xs leading-5 text-slate-500">不需要輸入 Panel 密碼，也不會取得 Gmail 郵件或 Google Calendar 內容。</p>
+        {message ? <p className="mt-4 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800" role="alert">{message}</p> : null}
+        <details className="mt-5 border-t border-slate-200 pt-4">
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-slate-600">其他登入方法（後備）</summary>
+          <form onSubmit={authMode === "password" ? signInWithPassword : otpSent ? verifyLoginCode : sendLoginCode}>
+          <fieldset disabled={googleSubmitting || submitting}>
+        <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
           <button className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${authMode === "password" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`} type="button" onClick={() => { setAuthMode("password"); setOtpSent(false); }}>密碼登入</button>
           <button className={`min-h-11 rounded-lg px-3 text-sm font-semibold ${authMode === "otp" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`} type="button" onClick={() => setAuthMode("otp")}>Email 登入</button>
         </div>
@@ -141,9 +187,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         ) : otpSent ? <label className="mt-4 block"><span className="label">6 位驗證碼（如電郵提供）</span><input className="field mt-2" inputMode="numeric" autoComplete="one-time-code" value={otpCode} onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} required /></label> : null}
         <Button className="mt-5 w-full" type="submit" disabled={submitting}>{submitting ? "處理中…" : authMode === "password" ? "登入" : otpSent ? "驗證並登入" : "發送登入電郵"}</Button>
         {authMode === "otp" && otpSent ? <button className="mt-3 min-h-11 w-full text-sm font-semibold text-indigo-700" type="button" onClick={() => { setOtpSent(false); setOtpCode(""); setMessage(""); }}>重新發送登入電郵</button> : null}
-        {message ? <p className="mt-4 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800" role="alert">{message}</p> : null}
+          </fieldset>
+          </form>
+        </details>
         <div className="mt-5 flex items-start gap-2 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>登入資料使用 HttpOnly cookie 保存；敏感 session 不會寫入 localStorage。</p></div>
-      </form>
+      </div>
     </div>
   );
 }

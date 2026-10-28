@@ -1,10 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { refreshCookie, setSession, clearSession } from "@/lib/server/auth-cookies";
 
 export const dynamic = "force-dynamic";
-
-const accessCookie = "dcp_access";
-const refreshCookie = "dcp_refresh";
 
 export async function GET(request: NextRequest) {
   const client = serverClient();
@@ -77,21 +75,6 @@ function serverClient() {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-}
-
-function setSession(response: NextResponse, accessToken: string, refreshToken: string) {
-  const secure = process.env.NODE_ENV === "production";
-  // Keep both HttpOnly cookies for the rolling session window.  Supabase still
-  // issues short-lived JWTs; GET above renews them from the refresh token.
-  response.cookies.set(accessCookie, accessToken, { httpOnly: true, secure, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
-  response.cookies.set(refreshCookie, refreshToken, { httpOnly: true, secure, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30 });
-  return response;
-}
-
-function clearSession(response: NextResponse) {
-  response.cookies.set(accessCookie, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
-  response.cookies.set(refreshCookie, "", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 0 });
-  return response;
 }
 
 function inferName(user: { email?: string; user_metadata?: Record<string, unknown> }) {
