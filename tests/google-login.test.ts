@@ -82,3 +82,14 @@ test("Google routes verify state, remote user and active RLS profile before sett
   assert.match(cookieSource, /httpOnly: true, secure, sameSite: "lax"/);
   assert.doesNotMatch(start + callback, /SERVICE_ROLE|\.insert\(|\.upsert\(|\.update\(|createUser|signUp\(/);
 });
+
+test("only an active administrator on the same origin may invite additional accounts", async () => {
+  const invite = await readFile(new URL("../app/api/admin/invite/route.ts", import.meta.url), "utf8");
+  assert.match(invite, /request\.headers\.get\("origin"\) !== request\.nextUrl\.origin/);
+  assert.match(invite, /select\("is_admin,active"\)/);
+  assert.match(invite, /!profile\.data\?\.is_admin \|\| !profile\.data\.active/);
+  assert.ok(invite.indexOf("!profile.data?.is_admin") < invite.indexOf("inviteUserByEmail"));
+  assert.match(invite, /account_invited/);
+  assert.match(invite, /auditRecorded = !audit\.error/);
+  assert.doesNotMatch(invite, /summary:.*email/);
+});

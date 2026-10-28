@@ -172,7 +172,7 @@ export async function controlAction<T = Record<string, unknown>>(action: string,
 }
 
 export async function invitePortalUser(payload: { email: string; displayName: string }) {
-  return controlRequest<{ userId: string }>("/api/admin/invite", {
+  return controlRequest<{ userId: string; auditRecorded: boolean }>("/api/admin/invite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
