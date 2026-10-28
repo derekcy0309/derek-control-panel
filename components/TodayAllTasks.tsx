@@ -137,7 +137,7 @@ export function TodayAllTasks({
             <h2 className="section-title mt-1">今日全部任務</h2>
             <p className="muted mt-2 text-sm">由任務總表手動加入，再用上下按鈕自己排次序；第一項會顯示為「現在做」。不會同步到 Google Calendar。</p>
           </div>
-          <Button onClick={() => setShowPicker((value) => !value)}><ListPlus className="h-5 w-5" />加入現有任務</Button>
+          <div className="flex flex-wrap items-center gap-2"><Link href="/todo-list" className="button-secondary inline-flex min-h-11 items-center rounded-lg px-4 py-2 text-sm font-semibold">列印 To-do List</Link><Button onClick={() => setShowPicker((value) => !value)}><ListPlus className="h-5 w-5" />加入現有任務</Button></div>
         </div>
       </div>
 

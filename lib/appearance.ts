@@ -22,7 +22,7 @@ export function cssColourMode(theme: VisualTheme) {
 }
 
 export function sectionIdentityForPath(pathname: string): SectionIdentity {
-  if (pathname === "/") return "today";
+  if (pathname === "/" || pathname === "/todo-list") return "today";
   if (pathname === "/cashflow") return "finance";
   if (pathname === "/medications" || pathname.startsWith("/workspace/health")) return "health";
   if (/^\/workspace\/(family|school|pet|household|shopping)/.test(pathname) || pathname === "/request-duty") return "family";
