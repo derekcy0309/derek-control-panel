@@ -165,6 +165,20 @@ npm run build
 
 ## 部署
 
+### Google 帳戶登入
+
+登入頁以「使用 Google 登入」為主要入口，密碼／Email 保留在後備選項。成功後返回原本頁面，使用現有 HttpOnly session；Google Calendar 連接是另一項獨立功能。
+
+- Supabase Authentication → Sign In / Providers → Google：啟用並填入 Google OAuth Web Client ID/Secret（只在供應商後台設定，不放前端／Git）。
+- Google OAuth Authorized redirect URI：`https://ygsfertgpaofaanvxjkg.supabase.co/auth/v1/callback`。
+- Supabase Redirect URLs：加入 `https://derek-control-panel.vercel.app/api/auth/google/callback` 及獲批准 Preview 的相同 callback path。隨機 state 是 query parameter；如設定需要 glob，僅限該 callback 路徑的 query，不開放其他網域。
+- 保持「Allow new users to sign up」關閉；登入 endpoint 會檢查此限制，未關閉時拒絕啟動 OAuth。新帳戶仍由管理員建立／邀請。
+- 使用原有帳戶相同的已驗證 Google 電郵，由 Supabase 自動連結 identity，保留 user UUID、RLS、資料及權限；不依靠姓名猜測或搬移資料。不同電郵須另行確認安全連結方案。
+- OAuth 使用 S256 PKCE、10 分鐘 HttpOnly flow cookie、state 驗證及 RLS active profile 檢查；不要求 Gmail／Calendar scopes，不記錄 token 或完整 provider error。
+- 不需要 database migration、新增套件或新的 Vercel secret。沿用既有 public Supabase URL/key。
+- 驗證：`npm run test:auth`；`tests/browser/google-login.mjs` 是本機 mock Supabase 協定 + 真實 Next.js route／瀏覽器的測試，不等於 Google production 登入驗收。
+- 上線前仍須啟用 provider、驗證三個真實帳戶登入及原有資料，才可部署 Production。回復時還原本功能 commit；後備登入一直保留，沒有資料需要還原。
+
 Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 public Supabase environment variables。部署網址必須加入 Supabase Auth URL Configuration。Service worker 不 cache API、Dashboard、任務或其他私人頁面資料。Settings 的 About 區會顯示 app version、build time、Git commit SHA 及 environment，正式部署必須對應一個已推送 commit。
 
 通知另需設定 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT` 和 `CRON_SECRET`。前者可公開，後三者只可放在 Vercel server environment；同一個 `CRON_SECRET` 的雜湊保存在 `private.notification_dispatch_config`，原值保存在 Supabase Vault。正式 Vercel route 就緒後，才可設定 Supabase Cron 每五分鐘以帶有 Bearer secret 的 HTTP request 呼叫 `/api/cron/notifications`；job 可安全重覆執行，發送工作以 dedupe key 及 claim lock 防止重複。
