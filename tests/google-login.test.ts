@@ -76,6 +76,8 @@ test("Google routes verify state, remote user and active RLS profile before sett
   assert.match(start, /request\.headers\.get\("origin"\) !== request\.nextUrl\.origin/);
   assert.match(callback, /timingSafeEqual/);
   assert.match(callback, /auth\.getUser\(result\.data\.session\.access_token\)/);
+  assert.match(callback, /identity\.identity_data\?\.email_verified === true/);
+  assert.match(callback, /identity\.identity_data\.email\.toLowerCase\(\) === user\.email\?\.toLowerCase\(\)/);
   assert.match(callback, /from\("user_profiles"\)[\s\S]*eq\("user_id", user\.id\)/);
   assert.match(callback, /profile\?\.data\?\.active/);
   assert.ok(callback.indexOf('return failure("account")') < callback.indexOf("setSession(response"));

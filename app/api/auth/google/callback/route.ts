@@ -33,7 +33,11 @@ export async function GET(request: NextRequest) {
     const verified = await client.auth.getUser(result.data.session.access_token);
     const user = verified.data.user;
     const profile = user ? await client.from("user_profiles").select("user_id,active").eq("user_id", user.id).maybeSingle() : null;
-    if (verified.error || !user?.email_confirmed_at || !user.identities?.some(identity => identity.provider === "google")
+    const verifiedGoogleIdentity = user?.identities?.some(identity => identity.provider === "google"
+      && identity.identity_data?.email_verified === true
+      && typeof identity.identity_data?.email === "string"
+      && identity.identity_data.email.toLowerCase() === user.email?.toLowerCase());
+    if (verified.error || !user?.email_confirmed_at || !verifiedGoogleIdentity
       || profile?.error || !profile?.data?.active || profile.data.user_id !== user.id) {
       await client.auth.signOut({ scope: "local" });
       return failure("account");

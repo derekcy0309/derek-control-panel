@@ -14,7 +14,7 @@ let exchanges = 0;
 let invitations = 0;
 const codes = new Map();
 const ids = { derek: '11111111-1111-4111-8111-111111111111', suki: '22222222-2222-4222-8222-222222222222', amigo: '33333333-3333-4333-8333-333333333333' };
-function user() { return { id: ids[scenario] ?? ids.derek, aud: 'authenticated', role: 'authenticated', email: `${scenario}@example.test`, email_confirmed_at: '2026-01-01T00:00:00Z', app_metadata: { provider: 'google', providers: ['email', 'google'] }, user_metadata: {}, identities: scenario === 'wrong-provider' ? [{ provider: 'email' }] : [{ provider: 'google' }] }; }
+function user() { const email = `${scenario}@example.test`; return { id: ids[scenario] ?? ids.derek, aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: '2026-01-01T00:00:00Z', app_metadata: { provider: 'google', providers: ['email', 'google'] }, user_metadata: {}, identities: scenario === 'wrong-provider' ? [{ provider: 'email' }] : [{ provider: 'google', identity_data: { email: scenario === 'mismatch-google' ? 'other@example.test' : email, email_verified: scenario !== 'unverified-google' } }] }; }
 function session() {
   const payload = { sub: user().id, exp: Math.floor(Date.now() / 1000) + 3600, role: 'authenticated' };
   const token = `${Buffer.from('{"alg":"HS256"}').toString('base64url')}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.mock`;
@@ -132,7 +132,7 @@ try {
     console.log(`PASS simulated Google → existing ${role} identity → app → reload (${width}px)`);
     await context.close();
   }
-  for (const failure of ['cancelled', 'inactive', 'missing-profile', 'wrong-provider']) {
+  for (const failure of ['cancelled', 'inactive', 'missing-profile', 'wrong-provider', 'unverified-google', 'mismatch-google']) {
     scenario = failure;
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage();
