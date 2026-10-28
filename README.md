@@ -165,6 +165,13 @@ npm run build
 
 ## 部署
 
+### 紙本 To-do List
+
+「計劃與跟進 → 列印 To-do」或「今日全部 → 列印 To-do List」可開啟 `/todo-list`。預設使用本人今日已確認的未完成任務；亦可自行剔選任務，按個人／家庭／SEC／Wecare 分組列印。每項含完成格、現有下一小步、期限、手寫「幾點至幾點」時段及備註位置。瀏覽器列印視窗可選 A4 或儲存為 PDF。
+
+這是現有 Work Queue 的唯讀列印檢視，沒有新增任務來源、資料表或 migration；不包含任務完整私人備註、財務／藥物資料，不會寫回紙本時段或完成狀態。等待、受阻、已完成及封存任務不列入待辦。選取器每頁 20 項，資料範圍沿用任務總表的現有載入上限（最多 1,000 項）；列印前可確認下方預覽。紙本需自行保管，並在 Panel 更新完成進度。
+
+單元測試見 `tests/todo-print.test.ts`；手機／桌面、三人流程及 A4 列印的模擬資料驗證見 `tests/browser/todo-print.mjs`。
 Vercel build command 使用 `npm run build`，並配置與本機相同的兩個 public Supabase environment variables。部署網址必須加入 Supabase Auth URL Configuration。Service worker 不 cache API、Dashboard、任務或其他私人頁面資料。Settings 的 About 區會顯示 app version、build time、Git commit SHA 及 environment，正式部署必須對應一個已推送 commit。
 
 通知另需設定 `NEXT_PUBLIC_VAPID_PUBLIC_KEY`、`VAPID_PRIVATE_KEY`、`VAPID_SUBJECT` 和 `CRON_SECRET`。前者可公開，後三者只可放在 Vercel server environment；同一個 `CRON_SECRET` 的雜湊保存在 `private.notification_dispatch_config`，原值保存在 Supabase Vault。正式 Vercel route 就緒後，才可設定 Supabase Cron 每五分鐘以帶有 Bearer secret 的 HTTP request 呼叫 `/api/cron/notifications`；job 可安全重覆執行，發送工作以 dedupe key 及 claim lock 防止重複。

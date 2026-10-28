@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill
+  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -39,6 +39,7 @@ const navGroups: NavGroupData[] = [
     items: [
       { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
       { href: "/calendar", label: "日曆", icon: CalendarDays },
+      { href: "/todo-list", label: "列印 To-do", icon: Printer },
       { href: "/request-duty", label: "Request Duty", icon: ClipboardCheck },
     ]
   },
