@@ -23,3 +23,10 @@ export function todayPrintableTasks(tasks: Task[], planning: PlanningMetadata[],
     return [task];
   });
 }
+
+/** Keep today's explicitly ordered tasks in order even in the custom picker. */
+export function customPrintableTasks(tasks: Task[], orderedToday: Task[]): Task[] {
+  const byId = new Map(tasks.map(task => [task.id, task]));
+  const todayIds = new Set(orderedToday.map(task => task.id));
+  return [...orderedToday.flatMap(task => byId.has(task.id) ? [byId.get(task.id)!] : []), ...tasks.filter(task => !todayIds.has(task.id))];
+}

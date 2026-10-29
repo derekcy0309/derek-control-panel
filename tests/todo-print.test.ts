@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { printableTaskPool, todayPrintableTasks } from "../lib/todo-print.ts";
+import { customPrintableTasks, printableTaskPool, todayPrintableTasks } from "../lib/todo-print.ts";
 import type { Task, PlanningMetadata, TaskDependency } from "../lib/types.ts";
 
 const task = (id: string, values: Partial<Task> = {}) => ({ id, title: id, status: "not_started", ...values } as Task);
@@ -27,12 +27,21 @@ test("automatic off-day, hidden and snoozed tasks do not get printed as today's 
   assert.deepEqual(todayPrintableTasks(tasks, [], "me", "2026-10-28"), []);
 });
 
+test("custom selection keeps today's arranged tasks in their order before other tasks", () => {
+  const items = [task("family"), task("personal"), task("work"), task("other")];
+  const ordered = [items[2], items[0], items[1]];
+  assert.deepEqual(customPrintableTasks(items, ordered).map(item => item.id), ["work", "family", "personal", "other"]);
+  assert.deepEqual(items.map(item => item.id), ["family", "personal", "work", "other"]);
+});
+
 test("paper includes handwritten start/end times, next step and notes space but no private notes or finance fields", async () => {
   const sheet = await readFile(new URL("../components/tasks/TodoPrintSheet.tsx", import.meta.url), "utf8");
   const page = await readFile(new URL("../app/todo-list/page.tsx", import.meta.url), "utf8");
   assert.match(sheet, /____：____ 至 ____：____/);
   assert.match(sheet, /taskVisibleNextAction\(task\)/);
   assert.match(sheet, /完成勾選格/);
+  assert.match(sheet, /tasks\.map\(\(task, index\)/);
+  assert.doesNotMatch(sheet, /taskCategoryOptions\.map|tasks\.filter/);
   assert.doesNotMatch(sheet, /task\.notes|task\.description|cashflow|transactions|user_id/);
   assert.doesNotMatch(page, /controlAction|localStorage|sessionStorage/);
   assert.match(page, /useTodayData\(\)/);

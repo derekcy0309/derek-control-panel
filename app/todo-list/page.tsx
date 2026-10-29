@@ -10,7 +10,7 @@ import { TodoPrintSheet } from "@/components/tasks/TodoPrintSheet";
 import { useTodayData } from "@/hooks/useTodayData";
 import { hkDateIso } from "@/lib/planning";
 import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
-import { printableTaskPool, todayPrintableTasks } from "@/lib/todo-print";
+import { customPrintableTasks, printableTaskPool, todayPrintableTasks } from "@/lib/todo-print";
 import type { TodayData } from "@/lib/types";
 
 export default function TodoListPage() {
@@ -34,7 +34,7 @@ function TodoListContent({ data }: { data: TodayData }) {
   const [printError, setPrintError] = useState("");
   const pool = useMemo(() => printableTaskPool([...data.taskQueueCatalog, ...data.tasks], data.taskDependencies), [data]);
   const todayTasks = useMemo(() => todayPrintableTasks(pool, data.planning, data.currentUser.id, today), [pool, data.planning, data.currentUser.id, today]);
-  const candidates = scope === "today" ? todayTasks : pool;
+  const candidates = scope === "today" ? todayTasks : customPrintableTasks(pool, todayTasks);
   const selected = candidates.filter(task => selectedIds === null || selectedIds.has(task.id));
   const visible = candidates.filter(task => (category === "all" || taskCategoryFor(task) === category)
     && task.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
@@ -72,7 +72,7 @@ function TodoListContent({ data }: { data: TodayData }) {
       <p className="muted mt-3 text-sm">已完成、等待中、受阻及封存項目不列入待辦清單。今日清單沿用你已確認的安排。</p>
       {candidates.length ? <>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label><span className="label">分類</span><select aria-label="分類" className="field mt-1" value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}><option value="all">全部分類（列印時分組）</option>{taskCategoryOptions.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label><span className="label">分類</span><select aria-label="分類" className="field mt-1" value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}><option value="all">全部分類（跟隨已安排次序）</option>{taskCategoryOptions.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           <label><span className="label">搜尋任務</span><input className="field mt-1" type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="輸入任務名稱" /></label>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3"><p className="text-sm font-semibold" role="status">已選 {selected.length} 項（包括其他分類及頁面）</p><Button variant="ghost" onClick={() => setSelectedIds(new Set())}>清除選取</Button></div>

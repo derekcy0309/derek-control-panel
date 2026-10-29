@@ -24,7 +24,8 @@ try {
     const userId = '11111111-1111-4111-8111-111111111111';
     const tasks = Array.from({ length: 45 }, (_, index) => ({ id: `task-${index}`, title: index === 1 ? '整理本週文件，核對資料後再保存到正確的資料夾，以便下次可以直接繼續處理' : `待辦工作 ${index + 1}`, user_id: userId, owner_id: userId, scope: 'home', area: index < 3 ? 'personal' : index < 5 ? 'family' : 'work', status: index === 44 ? 'waiting' : index === 43 ? 'done' : 'not_started', due_date: index === 0 ? null : today, next_action: '先打開需要使用的文件', current_step_title: index === 0 ? '先用 5 分鐘整理第一頁' : null, notes: 'PRIVATE-NOTES-MUST-NOT-PRINT', deleted_at: null, archived_at: null, created_at: `${today}T00:00:00Z`, updated_at: `${today}T00:00:00Z` }));
     let empty = false; let fail = false; let writes = 0;
-    const planning = Array.from({ length: 5 }, (_, index) => ({ user_id: userId, resource_type: 'task', resource_id: `task-${index}`, planned_date: today, plan_role: index === 0 ? 'now' : 'later', plan_source: 'manual', plan_position: index }));
+    const order = [3, 0, 4, 1, 2]; // Family and personal alternate; grouping must never change this order.
+    const planning = order.map((id, index) => ({ user_id: userId, resource_type: 'task', resource_id: `task-${id}`, planned_date: today, plan_role: index === 0 ? 'now' : 'later', plan_source: 'manual', plan_position: index + 1 }));
     await page.route('**/api/**', async route => {
       if (route.request().method() !== 'GET') writes++;
       const url = new URL(route.request().url());
@@ -36,6 +37,10 @@ try {
     const paper = page.getByRole('region', { name: 'To-do List 紙本預覽' });
     await page.getByRole('button', { name: '列印／儲存 PDF（5）', exact: true }).waitFor();
     assert.equal(await paper.locator('article').count(), 5);
+    assert.deepEqual(await paper.locator('article h4').allTextContents(), [
+      '1. 待辦工作 4', '2. 待辦工作 1', '3. 待辦工作 5',
+      '4. 整理本週文件，核對資料後再保存到正確的資料夾，以便下次可以直接繼續處理', '5. 待辦工作 3'
+    ]);
     assert.equal(await paper.getByText('____：____ 至 ____：____', { exact: true }).count(), 5);
     assert.equal(await paper.getByText('PRIVATE-NOTES-MUST-NOT-PRINT').count(), 0);
     assert.equal(await paper.getByText('先用 5 分鐘整理第一頁', { exact: false }).count(), 1);
@@ -47,6 +52,12 @@ try {
     assert.equal(await page.getByRole('heading', { name: '列印 To-do List', exact: true }).isVisible(), false);
     assert.equal(await page.getByRole('banner').isVisible(), false);
     assert.equal(await paper.isVisible(), true);
+    assert.deepEqual(await paper.locator('article h4').allTextContents(), [
+      '1. 待辦工作 4', '2. 待辦工作 1', '3. 待辦工作 5',
+      '4. 整理本週文件，核對資料後再保存到正確的資料夾，以便下次可以直接繼續處理', '5. 待辦工作 3'
+    ]);
+    const padding = await paper.evaluate(element => getComputedStyle(element.closest('.app-frame > div')).paddingLeft);
+    assert.equal(padding, '0px', 'navigation padding must not shrink print output');
     if (role === 'Derek' && width === 1280 && process.env.PRINT_PDF) await page.pdf({ path: process.env.PRINT_PDF, format: 'A4', preferCSSPageSize: true, printBackground: false });
     await page.emulateMedia({ media: 'screen' });
     await page.getByRole('button', { name: '自行揀選任務', exact: true }).click();
@@ -59,7 +70,7 @@ try {
     assert.equal(await paper.locator('article').count(), 2);
     await page.getByLabel('分類', { exact: true }).selectOption('family');
     assert.equal(await paper.locator('article').count(), 2); // Selection survives filters.
-    await page.getByRole('checkbox').first().check();
+    await page.locator('input[type="checkbox"]:not(:checked)').first().check();
     assert.equal(await paper.locator('article').count(), 3);
     await page.getByRole('button', { name: '清除選取', exact: true }).click();
     assert.equal(await paper.locator('article').count(), 0);
