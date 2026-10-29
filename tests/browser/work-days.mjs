@@ -71,6 +71,10 @@ try {
     await page.getByRole('button', { name: '新增任務', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '新增任務' });
     await dialog.getByLabel('任務名稱', { exact: true }).fill('驗證用今日新任務');
+    const category = dialog.getByLabel('分類（必填）');
+    assert.equal(await category.inputValue(), '');
+    assert.equal(await category.evaluate(element => element.validity.valueMissing), true);
+    await category.selectOption('personal');
     assert.equal(await dialog.getByRole('checkbox', { name: /今日要做/ }).isChecked(), true);
     await dialog.getByText('自訂哪幾日做／提醒', { exact: false }).click();
     await dialog.getByLabel('任務開始日').fill(today);
