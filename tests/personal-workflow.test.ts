@@ -73,6 +73,20 @@ test("task categories use the existing area and scope fields without a database 
   assert.doesNotMatch(categories, /supabase|migration/i);
 });
 
+test("task category is visible immediately after the name and required for new tasks", () => {
+  const form = read("components/forms/TaskForm.tsx");
+  const name = form.indexOf('<span className="label">任務名稱</span>');
+  const category = form.indexOf('<span className="label">分類（必填）</span>');
+  const today = form.indexOf('今日要做（建立後直接顯示在「今日全部」）');
+  assert.ok(name >= 0 && category > name && category < today);
+  assert.match(form.slice(category, today), /<select[\s\S]*? required>/);
+  assert.match(form.slice(category, today), /<option value="">請選擇分類<\/option>/);
+  assert.match(form, /task_category: ""/);
+  assert.match(form, /task_category: taskCategoryFor\(initialTask\)/);
+  assert.match(form, /taskCategoryOptions\.some\(\(option\) => option\.value === form\.task_category\)/);
+  assert.doesNotMatch(form.slice(form.indexOf('更多選項')), /<span className="label">分類/);
+});
+
 test("PWA metadata describes personal work only", () => {
   const manifest = read("app/manifest.ts");
   const layout = read("app/layout.tsx");

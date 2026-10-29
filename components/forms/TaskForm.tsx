@@ -16,7 +16,7 @@ export type TaskSaveResult = { task: Task; refreshRelated: boolean };
 type TaskFormState = {
   scope: string;
   area: string;
-  task_category: TaskCategory;
+  task_category: TaskCategory | "";
   source_type: string;
   task_type_label: string;
   title: string;
@@ -59,7 +59,7 @@ type TaskFormState = {
 const defaultState: TaskFormState = {
   scope: "home",
   area: "personal",
-  task_category: "personal",
+  task_category: "",
   source_type: "follow_up",
   task_type_label: "",
   title: "",
@@ -166,7 +166,7 @@ export function TaskForm({
           notice_user_ids: initialNoticeUserIds,
           follower_user_ids: initialFollowerUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.task_category ?? (preset?.area === "family" ? "family" : preset?.area === "work" || preset?.scope === "company" ? "wecare" : "personal") }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.task_category ?? "" }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -184,7 +184,11 @@ export function TaskForm({
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
 
-  function setTaskCategory(category: TaskCategory) {
+  function setTaskCategory(category: TaskCategory | "") {
+    if (!category) {
+      setForm((current) => ({ ...current, task_category: "" }));
+      return;
+    }
     const fields = taskCategoryFields(category);
     setForm((current) => ({ ...current, task_category: category, area: fields.area, scope: fields.scope }));
   }
@@ -279,6 +283,10 @@ export function TaskForm({
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    if (!taskCategoryOptions.some((option) => option.value === form.task_category)) {
+      setError("請選擇任務分類。");
+      return;
+    }
     const workSchedule = validateTaskWorkSchedule({
       startDate: form.work_start_date || form.work_dates[0] || null,
       dueDate: form.due_date || null,
@@ -431,6 +439,13 @@ export function TaskForm({
       <label>
         <span className="label">任務名稱</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
+      </label>
+      <label>
+        <span className="label">分類（必填）</span>
+        <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory | "")} required>
+          <option value="">請選擇分類</option>
+          {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </select>
       </label>
       {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
         <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
@@ -641,16 +656,10 @@ export function TaskForm({
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
             更多選項
-            <span className="ml-2 text-xs font-medium text-slate-500">分類、類型、備註及通知</span>
+            <span className="ml-2 text-xs font-medium text-slate-500">類型、備註及通知</span>
           </summary>
           <div className="mt-4 grid gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label>
-              <span className="label">分類</span>
-              <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory)}>
-                {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
             <label>
               <span className="label">任務類型（可留空）</span>
               <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
