@@ -671,7 +671,8 @@ button.task-complete-button:hover { border-color: #10b981; background: #ecfdf5; 
   body:has(.todo-print-root) #main-content > :not(.todo-print-root) { display: none !important; }
   body:has(.todo-print-root) .app-frame > :has(.todo-print-root) { padding: 0 !important; }
   .todo-print-root { max-width: none !important; margin: 0 !important; }
-  .todo-paper { width: 100% !important; max-width: none !important; margin: 0 !important; border: 0; border-radius: 0; padding: 0; color: #000; }
+  /* Keep content inside the printable area even if the print dialog overrides @page margins to zero. */
+  .todo-paper { box-sizing: border-box; box-decoration-break: clone; -webkit-box-decoration-break: clone; width: 100% !important; max-width: none !important; margin: 0 !important; border: 0; border-radius: 0; padding: 8mm !important; color: #000; }
   .todo-paper-header { padding-bottom: 3mm; }
   .todo-paper-header h2 { font-size: 16pt; }
   .todo-paper-instruction { margin-top: 3mm; font-size: 9pt; }

@@ -47,4 +47,6 @@ test("paper includes handwritten start/end times, next step and notes space but 
   assert.match(page, /useTodayData\(\)/);
   assert.match(page, /slice\(currentPage \* 20/);
   assert.match(page, /window\.print\(\)/);
+  const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
+  assert.match(css, /\.todo-paper \{ box-sizing: border-box;[^}]*box-decoration-break: clone;[^}]*padding: 8mm !important/);
 });
