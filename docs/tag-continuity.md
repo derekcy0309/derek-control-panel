@@ -10,6 +10,8 @@
 
 ## 驗證
 
+一般 regression 可用 `pnpm test:tags`、`pnpm test:backup-api`。隔離 SQL fixture 需先提供 `PGLITE_MODULE`（測試工具，不是 app／付費依賴）；瀏覽器 fixture 可用現有 Playwright runtime 及 Chrome。
+
 - `tests/backup.test.ts`：JSON round-trip、舊格式、帳戶隔離、非法連結、同名／改名／已刪除 Tags、零 Tags marker。
 - `tests/tag-continuity.test.ts`：API、分頁、私有 trigger、明確還原確認及無 definer／RLS 放寬合約。
 - `tests/sql/tag-continuity.mjs`：本機隔離 PostgreSQL，三角色、真實 recurrence generator、每日／週／月／自訂／interval、無期限、交接者完成、私隱、重試不重複、只新增還原及整筆 rollback。V2 只用最小測試替身；正式 V1／V2 鏈另用 Supabase ROLLBACK transaction 驗證。
