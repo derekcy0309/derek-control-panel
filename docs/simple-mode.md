@@ -35,13 +35,21 @@ Migration：`20261113172120_personal_task_tags.sql`（已套用於 Derek self）
 - `tests/browser/todo-print.mjs`：三人手機／桌面、Today 次序、Tags 篩選、A4 print CSS／PDF、分頁、空白及錯誤重試，無 live writes。
 - 最終完整單元測試 308／308 通過，lint、typecheck 及 Next.js production build 通過。工作日舊流程亦完成三人 390／1280 px 的修改／重新讀取、無 Deadline、範圍與重複提示回歸測試。
 
-### Preview 登入限制
+### Preview 真實登入驗收
 
-Git Preview 已成功 build。實際從 Preview 按 Google 登入後，Supabase 會導回正式網站 `/?code=…`，無法在原 Preview 完成 PKCE callback；這是現有 redirect 白名單限制，本次沒有更改 Google provider、OAuth credentials、正式網址或登入名單。
+2026-11-14：使用者明確批准後，只新增以下一條 Supabase redirect URL：
 
-已另外在正式網站完成原有 Derek Google 登入，確認帳戶正常；三角色新介面使用隔離 fixture 驗證，真實 DB 以三個 authenticated 身分在 rollback transaction 驗證。未將這些測試冒稱為三個真人帳戶的 Preview 登入。
+`https://derek-control-panel-9np0k0vgn-derekcy0309-4881s-projects.vercel.app/api/auth/google/callback?state=*`
 
-Production gate：需批准在 Supabase 為這條功能分支的固定 Preview 網址加入 callback（只限本專案的該分支），再完成真實 Preview 讀取後才發布正式版本。固定網址由 Vercel deployment alias 提供，見交付訊息。
+原有四條 redirect URL 及正式 Site URL 全部保留；沒有更改 Google provider、OAuth credentials、帳戶或登入名單，也沒有加入整個 Vercel 網域或其他 Preview。
+
+獲批 Preview（commit `2d05028`）已完成 Derek 的真實 Google 登入：callback 留在同一 Preview，Dashboard 讀到原有工作、私人 Tags、任務詳情、修改表單及原本已選的 Tag，console 無錯誤。未在真實帳戶建立永久測試 Task，也沒有按完成或交接。
+
+最新功能 commit `aed9ed7` 另補強純前端 Today 隱藏／snooze 篩選及 regression tests；Auth、API、DB 與已登入驗收的 Preview 相同。其 Preview build、308 個完整單元測試及三人隔離 browser fixture 均通過。這個紀錄不將三角色 fixture／SQL 身分測試冒稱為三個真人的 Google 登入。
+
+真實 DB 額外以 authenticated Derek 在 rollback transaction 建立臨時 Task／Tag、設定 Tag，再驗證 Suki／Amigo 不可讀取或標記該私人 Task；整個交易回滾後，75 個 Task、35 筆收支、11 條恆常支出及 1 條恆常收入的完整內容 fingerprint 不變。
+
+Security Advisor：新增 Tags 表及 RPC 沒有 finding。原有專案仍有舊 SECURITY DEFINER 執行權及 leaked-password-protection 警告，與本次變更無關，沒有擅改現有通知或帳戶權限。
 
 ## 部署及回復
 
