@@ -3,7 +3,8 @@ import { NextRequest } from "next/server";
 import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
-import { priorityValueForDueDate } from "@/lib/due-priority";
+import { taskTagNameError } from "@/lib/simple-mode";
+import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/server/task-tags";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import { noteMetadata, validateNoteInput } from "@/lib/notes";
@@ -29,6 +30,13 @@ export async function GET(request: NextRequest) {
   if (view === "archived_transactions") return archivedTransactions(context, request.nextUrl.searchParams);
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
   if (view === "today") return todayDashboard(context);
+  if (view === "task_tags") {
+    const taskId = request.nextUrl.searchParams.get("taskId");
+    if (taskId && !uuidValue(taskId)) return jsonError("任務識別碼不正確。", 400);
+    const result = await readMyTaskTags(context.client, context.user, taskId ? [taskId] : []);
+    if (result.error) return databaseError(result.error);
+    return Response.json({ tags: result.tags, taskTagIds: taskId ? result.byTask.get(taskId) ?? [] : [] }, { headers: privateHeaders() });
+  }
   if (view === "weekly_review") return weeklyReview(context, request.nextUrl.searchParams);
   if (view === "body_double") return bodyDouble(context, request.nextUrl.searchParams.get("sessionId"));
   if (view !== "bootstrap") return jsonError("不支援的資料檢視。", 400);
@@ -175,7 +183,7 @@ async function taskDetail(
   if (task.error) return databaseError(task.error);
   if (!task.data) return jsonError("找不到任務或你沒有查看權限。", 404);
 
-  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps, childTasks, parentTask] = await Promise.all([
+  const [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps, childTasks, parentTask, taskNoticeRecipients] = await Promise.all([
     client.from("user_profiles").select("display_name").eq("user_id", user.id).maybeSingle(),
     client.rpc("participant_profiles"),
     client.from("assignments")
@@ -208,11 +216,14 @@ async function taskDetail(
     client.from("tasks").select("*").eq("parent_task_id", taskId).is("deleted_at", null).is("archived_at", null).order("created_at", { ascending: true }).limit(100),
     task.data.parent_task_id
       ? client.from("tasks").select("id,title").eq("id", task.data.parent_task_id).maybeSingle()
-      : Promise.resolve({ data: null, error: null })
+      : Promise.resolve({ data: null, error: null }),
+    client.from("task_notice_recipients").select("*").eq("task_id", taskId)
   ]);
-  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps, childTasks, parentTask]
+  const firstError = [profile, participants, assignments, handoffNotes, dependencies, recurrenceRules, activityLogs, taskFollowers, taskSteps, childTasks, parentTask, taskNoticeRecipients]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
+  const tagData = await readMyTaskTags(client, user, [taskId]);
+  if (tagData.error) return databaseError(tagData.error);
 
   return Response.json({
     currentUser: {
@@ -220,7 +231,9 @@ async function taskDetail(
       email: user.email ?? "",
       displayName: profile.data?.display_name ?? inferDisplayName(user)
     },
-    task: { ...task.data, current_step_title: currentTaskStep(taskSteps.data ?? [])?.title ?? null, current_step_status: currentTaskStep(taskSteps.data ?? [])?.status ?? ((taskSteps.data ?? []).length ? "all_done" : null), follow_up_date: currentTaskStep(taskSteps.data ?? [])?.follow_up_date ?? task.data.follow_up_date },
+    task: { ...task.data, personal_tag_ids: tagData.byTask.get(taskId) ?? [], current_step_title: currentTaskStep(taskSteps.data ?? [])?.title ?? null, current_step_status: currentTaskStep(taskSteps.data ?? [])?.status ?? ((taskSteps.data ?? []).length ? "all_done" : null), follow_up_date: currentTaskStep(taskSteps.data ?? [])?.follow_up_date ?? task.data.follow_up_date },
+    taskTags: tagData.tags,
+    taskNoticeRecipients: taskNoticeRecipients.data ?? [],
     taskSteps: taskSteps.data ?? [],
     childTasks: childTasks.data ?? [],
     parentTask: parentTask.data ?? null,
@@ -283,7 +296,7 @@ async function todayDashboard({ client, user }: RequestContext) {
         .eq("user_id", user.id)
         .eq("resource_type", "task")
         .eq("planned_date", today)
-        .limit(20),
+        .limit(100),
       client.from("daily_capacity_checkins")
         .select("*")
         .eq("user_id", user.id)
@@ -355,8 +368,8 @@ async function todayDashboard({ client, user }: RequestContext) {
     .is("deleted_at", null)
     .is("archived_at", null)
     .not("status", "in", "(done,cancelled,blocked,waiting)")
-    .order("critical_path", { ascending: false })
-    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("requested_priority", { ascending: true })
+    .order("created_at", { ascending: true })
     .limit(200);
   if (activeTasks.error) return databaseError(activeTasks.error);
   const [taskQueueCatalog, taskNoticeRecipients, taskFollowers, currentSteps] = await Promise.all([
@@ -364,7 +377,8 @@ async function todayDashboard({ client, user }: RequestContext) {
       .select("*")
       .is("deleted_at", null)
       .is("archived_at", null)
-      .order("due_date", { ascending: true, nullsFirst: false })
+      .order("requested_priority", { ascending: true })
+      .order("created_at", { ascending: true })
       .limit(1000),
     client.from("task_notice_recipients").select("*").limit(1000),
     client.from("task_followers").select("*").limit(1000),
@@ -417,7 +431,7 @@ async function todayDashboard({ client, user }: RequestContext) {
         .in("id", plannedIds)
         .is("deleted_at", null)
         .is("archived_at", null)
-        .limit(20)
+        .limit(100)
     : { data: [] as Array<Record<string, unknown>>, error: null };
   if (plannedTasks.error) return databaseError(plannedTasks.error);
 
@@ -454,6 +468,16 @@ async function todayDashboard({ client, user }: RequestContext) {
     planningMap.set(String(item.resource_id), item);
   }
 
+  const tagData = await readMyTaskTags(client, user, [...new Set([...taskMap.keys(), ...(taskQueueCatalog.data ?? []).map((task) => String(task.id))])]);
+  if (tagData.error) return databaseError(tagData.error);
+  const decorateTask = (task: Record<string, unknown>) => ({
+    ...task,
+    personal_tag_ids: tagData.byTask.get(String(task.id)) ?? [],
+    current_step_title: currentStepByTaskId.get(String(task.id))?.title ?? null,
+    current_step_status: currentStepByTaskId.get(String(task.id))?.status ?? null,
+    follow_up_date: currentStepByTaskId.get(String(task.id))?.follow_up_date ?? task.follow_up_date
+  });
+
   return Response.json({
     currentUser: {
       id: user.id,
@@ -462,9 +486,10 @@ async function todayDashboard({ client, user }: RequestContext) {
     },
     profile: profile.data,
     settings: settings.data,
-    tasks: [...taskMap.values()].map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(String(task.id))?.title ?? null, current_step_status: currentStepByTaskId.get(String(task.id))?.status ?? null, follow_up_date: currentStepByTaskId.get(String(task.id))?.follow_up_date ?? task.follow_up_date })),
-    taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
-    taskQueueCatalog: (taskQueueCatalog.data ?? []).map((task) => ({ ...task, current_step_title: currentStepByTaskId.get(task.id)?.title ?? null, current_step_status: currentStepByTaskId.get(task.id)?.status ?? null, follow_up_date: currentStepByTaskId.get(task.id)?.follow_up_date ?? task.follow_up_date })),
+    tasks: [...taskMap.values()].map(decorateTask),
+    taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))).map(decorateTask),
+    taskQueueCatalog: (taskQueueCatalog.data ?? []).map(decorateTask),
+    taskTags: tagData.tags,
     taskNoticeRecipients: taskNoticeRecipients.data ?? [],
     taskFollowers: taskFollowers.data ?? [],
     shares: shares.data ?? [],
@@ -837,6 +862,8 @@ export async function POST(request: NextRequest) {
   }
   const action = stringValue(body.action);
   switch (action) {
+    case "manage_task_tag": return manageTaskTag(context, body);
+    case "set_task_tags": return setTaskTags(context, body);
     case "create_task": return createTask(context, body);
     case "update_task": return updateTask(context, body);
     case "create_task_step": return createTaskStep(context, body);
@@ -1095,6 +1122,12 @@ async function undoInboxProcessing(
 async function createTask({ client, user }: RequestContext, body: Record<string, unknown>) {
   const title = requiredText(body.title, "請輸入任務標題。");
   if (title instanceof Response) return title;
+  const tagIds = body.tagIds === undefined ? undefined : parseTaskTagIds(body.tagIds);
+  if (tagIds === null || (tagIds && !tagIds.length)) return jsonError("請揀最少一個 Tag。", 422);
+  if (tagIds) {
+    const tagError = await validateMyTaskTags(client, user.id, tagIds);
+    if (tagError) return jsonError(tagError, 422);
+  }
   const requestedClientRequestId = nullableText(body.clientRequestId);
   const clientRequestId = requestedClientRequestId ? uuidValue(requestedClientRequestId) : null;
   if (requestedClientRequestId && !clientRequestId) return jsonError("防重複提交識別碼不正確。", 400);
@@ -1111,7 +1144,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   }
   const requestedHandoffTarget = nullableText(body.handoffToUserId);
   const handoffTarget = requestedHandoffTarget ? uuidValue(requestedHandoffTarget) : null;
-  const handoffNote = nullableText(body.handoffNote);
+  const handoffNote = nullableText(body.handoffNote) ?? title;
   const requestedProjectId = nullableText(body.projectId);
   const projectId = requestedProjectId ? uuidValue(requestedProjectId) : null;
   const requestedParentTaskId = nullableText(body.parentTaskId);
@@ -1190,7 +1223,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     energy_level: enumValue(body.energyLevel, ["low", "medium", "high"], null),
     context: nullableText(body.context),
     risk: enumValue(body.risk, ["low", "medium", "high"], "low"),
-    requested_priority: priorityValueForDueDate(dueDate, hkDateString()) ?? integerValue(body.requestedPriority, 1, 5) ?? 3,
+    requested_priority: integerValue(body.requestedPriority, 1, 5) ?? 3,
     critical_path: Boolean(body.criticalPath),
     safety_impact: Boolean(body.safetyImpact),
     child_impact: Boolean(body.childImpact),
@@ -1240,6 +1273,13 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     await client.from("tasks").delete().eq("id", result.data.id);
     return followerError;
   }
+  if (tagIds) {
+    const tagsSaved = await client.rpc("set_my_task_tags", { p_task_id: result.data.id, p_tag_ids: tagIds });
+    if (tagsSaved.error) {
+      await client.from("tasks").delete().eq("id", result.data.id);
+      return databaseError(tagsSaved.error);
+    }
+  }
   if (body.addToToday === true) {
     const planningError = await upsertTodayPlanning(client, user.id, result.data.id, true);
     if (planningError) {
@@ -1268,7 +1308,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   await recordActivity(client, user.id, "task", result.data.id, "create", "建立任務");
   if (body.addToToday === true) await recordActivity(client, user.id, "task", result.data.id, "today_manual_add", "建立時加入 Today");
   if (assignmentId) await recordActivity(client, user.id, "task", result.data.id, "handoff", "建立後直接交俾對方跟進");
-  return Response.json({ task: result.data, assignmentId }, { status: 201, headers: privateHeaders() });
+  return Response.json({ task: { ...result.data, ...(tagIds ? { personal_tag_ids: tagIds } : {}) }, assignmentId }, { status: 201, headers: privateHeaders() });
 }
 
 async function updateTask({ client, user }: RequestContext, body: Record<string, unknown>) {
@@ -1277,6 +1317,12 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   const existing = await client.from("tasks").select("*").eq("id", id).maybeSingle();
   if (existing.error) return databaseError(existing.error);
   if (!existing.data) return jsonError("找不到任務或你沒有權限。", 404);
+  const tagIds = body.tagIds === undefined ? undefined : parseTaskTagIds(body.tagIds);
+  if (tagIds === null) return jsonError("Tags 格式不正確。", 422);
+  if (tagIds) {
+    const tagError = await validateMyTaskTags(client, user.id, tagIds);
+    if (tagError) return jsonError(tagError, 422);
+  }
 
   const expectedLastProgressAt = body.expectedLastProgressAt === undefined ? null : timestampValue(body.expectedLastProgressAt);
   if (body.expectedLastProgressAt !== undefined && !expectedLastProgressAt) return jsonError("離線同步版本資料不正確。", 400);
@@ -1341,8 +1387,11 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
     payload.work_start_date = schedule.startDate;
     payload.work_dates = schedule.workDates;
   }
-  const datedPriority = priorityValueForDueDate(nextDueDate, hkDateString());
-  if (datedPriority) payload.requested_priority = datedPriority;
+  if ("requested_priority" in payload) {
+    const priority = integerValue(payload.requested_priority, 1, 5);
+    if (priority === null) return jsonError("Priority 請揀 P1、P2 或 P3。", 422);
+    payload.requested_priority = priority;
+  }
   payload.last_progress_at = new Date().toISOString();
   const result = await client.from("tasks").update(payload).eq("id", id).select("*").maybeSingle();
   if (result.error) return databaseError(result.error);
@@ -1351,8 +1400,42 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   if (noticeError) return noticeError;
   const followerError = await syncTaskFollowers(client, id, body.followerUserIds);
   if (followerError) return followerError;
+  if (tagIds) {
+    const tagsSaved = await client.rpc("set_my_task_tags", { p_task_id: id, p_tag_ids: tagIds });
+    if (tagsSaved.error) return databaseError(tagsSaved.error);
+  }
   await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
-  return Response.json({ task: result.data }, { headers: privateHeaders() });
+  return Response.json({ task: { ...result.data, ...(tagIds ? { personal_tag_ids: tagIds } : {}) } }, { headers: privateHeaders() });
+}
+
+async function manageTaskTag({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const operation = enumValue(body.operation, ["create", "rename", "delete"] as const, null);
+  if (!operation) return jsonError("Tag 操作不正確。", 400);
+  const id = uuidValue(body.tagId);
+  if (operation !== "create" && !id) return jsonError("Tag 識別碼不正確。", 400);
+  if (operation !== "delete") {
+    const error = taskTagNameError(body.name);
+    if (error) return jsonError(error, 422);
+  }
+  const initialized = await readMyTaskTags(client, user);
+  if (initialized.error) return databaseError(initialized.error);
+  const result = await client.rpc("manage_my_task_tag", { p_action: operation, p_tag_id: id, p_name: operation === "delete" ? null : String(body.name).trim() });
+  if (result.error?.code === "23505") return jsonError("你已有同名 Tag，請用另一個名。", 409);
+  if (result.error) return databaseError(result.error);
+  const tag = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (!tag?.id) return jsonError("Tag 已處理但未能讀取結果，請重新打開 Tags 確認。", 500);
+  return Response.json({ tag }, { headers: privateHeaders() });
+}
+
+async function setTaskTags({ client, user }: RequestContext, body: Record<string, unknown>) {
+  const taskId = uuidValue(body.taskId);
+  const tagIds = parseTaskTagIds(body.tagIds);
+  if (!taskId || !tagIds) return jsonError("任務或 Tags 格式不正確。", 422);
+  const error = await validateMyTaskTags(client, user.id, tagIds);
+  if (error) return jsonError(error, 422);
+  const result = await client.rpc("set_my_task_tags", { p_task_id: taskId, p_tag_ids: tagIds });
+  if (result.error) return databaseError(result.error);
+  return Response.json({ taskId, tagIds }, { headers: privateHeaders() });
 }
 
 async function createTaskStep({ client, user }: RequestContext, body: Record<string, unknown>) {

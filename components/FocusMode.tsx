@@ -547,7 +547,7 @@ export function FocusMode({
               <option className="text-slate-900">不知道怎樣做</option>
               <option className="text-slate-900">任務太大</option>
               <option className="text-slate-900">沒有時間</option>
-              <option className="text-slate-900">今日能量不足</option>
+              <option className="text-slate-900">需要稍後繼續</option>
               <option className="text-slate-900">應該交辦</option>
               <option className="text-slate-900">其他</option>
             </select>

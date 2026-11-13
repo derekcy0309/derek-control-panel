@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
 import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWeekdays, type RoutineIntervalUnit } from "@/lib/routine-interval";
-import { taskCategoryFields, taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
+import { taskCategoryFor, type TaskCategory } from "@/lib/task-categories";
+import { TaskTagPicker } from "@/components/tasks/TaskTagPicker";
+import { simplePriorities } from "@/lib/simple-mode";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import type { Task } from "@/lib/types";
 
@@ -17,6 +19,8 @@ type TaskFormState = {
   scope: string;
   area: string;
   task_category: TaskCategory | "";
+  tag_ids: string[];
+  client_request_id: string;
   source_type: string;
   task_type_label: string;
   title: string;
@@ -60,6 +64,8 @@ const defaultState: TaskFormState = {
   scope: "home",
   area: "personal",
   task_category: "",
+  tag_ids: [],
+  client_request_id: "",
   source_type: "follow_up",
   task_type_label: "",
   title: "",
@@ -128,6 +134,8 @@ export function TaskForm({
           scope: initialTask.scope,
           area: initialTask.area ?? (initialTask.scope === "company" ? "work" : "family"),
           task_category: taskCategoryFor(initialTask),
+          tag_ids: initialTask.personal_tag_ids ?? [],
+          client_request_id: initialTask.client_request_id ?? "",
           source_type: initialTask.source_type,
           task_type_label: initialTask.task_type_label ?? "",
           title: initialTask.title,
@@ -166,7 +174,7 @@ export function TaskForm({
           notice_user_ids: initialNoticeUserIds,
           follower_user_ids: initialFollowerUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.task_category ?? "" }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.task_category ?? "", client_request_id: crypto.randomUUID() }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -174,6 +182,8 @@ export function TaskForm({
   const [recurrenceWarning, setRecurrenceWarning] = useState("");
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const [tagsReady, setTagsReady] = useState(false);
   const customStatusListId = useId();
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
   const nextRoutineDueDate = form.due_date
@@ -183,15 +193,6 @@ export function TaskForm({
     : null;
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
-
-  function setTaskCategory(category: TaskCategory | "") {
-    if (!category) {
-      setForm((current) => ({ ...current, task_category: "" }));
-      return;
-    }
-    const fields = taskCategoryFields(category);
-    setForm((current) => ({ ...current, task_category: category, area: fields.area, scope: fields.scope }));
-  }
 
   useEffect(() => {
     if (!draftEligible) { setDraftReady(true); return; }
@@ -204,8 +205,9 @@ export function TaskForm({
           setDraftRestored(true);
         }
       }
+      setForm((current) => ({ ...current, client_request_id: current.client_request_id || crypto.randomUUID() }));
     } catch {
-      sessionStorage.removeItem(draftKey);
+      setDraftError("瀏覽器未能保留草稿，離開前請先儲存 Task。");
     } finally {
       setDraftReady(true);
     }
@@ -217,8 +219,9 @@ export function TaskForm({
     try {
       if (hasContent) sessionStorage.setItem(draftKey, JSON.stringify(form));
       else sessionStorage.removeItem(draftKey);
+      setDraftError("");
     } catch {
-      // The form stays usable when private browsing blocks session storage.
+      setDraftError("草稿未能自動儲存，離開前請先儲存 Task。");
     }
   }, [draftEligible, draftKey, draftReady, form]);
 
@@ -282,9 +285,10 @@ export function TaskForm({
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving || createdTaskId) return;
     setError("");
-    if (!taskCategoryOptions.some((option) => option.value === form.task_category)) {
-      setError("請選擇任務分類。");
+    if (!tagsReady || form.tag_ids.length === 0) {
+      setError("請揀最少一個 Tag；未有合適的可按「管理我的 Tags」新增。");
       return;
     }
     const workSchedule = validateTaskWorkSchedule({
@@ -295,10 +299,6 @@ export function TaskForm({
     if (workSchedule.error) { setError(workSchedule.error); return; }
     if ((form.recurrence_enabled || initialTask?.recurrence_rule_id) && workSchedule.startDate) {
       setError("重複工作請用下方 Routine 設定；個別工作日只適用於一次性任務。");
-      return;
-    }
-    if (!initialTask && form.handoff_to_user_id && !form.handoff_note.trim()) {
-      setError("請填交接 notes，讓對方知道第一步要做甚麼。");
       return;
     }
     if (form.recurrence_enabled) {
@@ -328,7 +328,8 @@ export function TaskForm({
 
     const payload = {
       area: form.area,
-      taskCategory: form.task_category,
+      tagIds: form.tag_ids,
+      clientRequestId: form.client_request_id || crypto.randomUUID(),
       sourceType: form.source_type,
       taskType: form.task_type_label.trim() || null,
       title: form.title.trim(),
@@ -342,37 +343,25 @@ export function TaskForm({
       status: form.status,
       customStatusLabel: form.custom_status_label.trim() || null,
       nextAction: form.next_action.trim() || null,
-      risk: form.risk,
       requestedPriority: Number(form.requested_priority),
       notes: form.notes.trim() || null,
       owner: form.owner.trim() || null,
       completedAt,
-      estimatedMinutes: form.estimated_minutes ? Number(form.estimated_minutes) : null,
-      actualMinutes: form.actual_minutes ? Number(form.actual_minutes) : null,
-      energyLevel: form.energy_level,
-      context: form.context,
-      definitionOfDone: form.definition_of_done.trim() || null,
-      estimatedDurationDays: form.estimated_duration_days ? Number(form.estimated_duration_days) : null,
-      bufferDays: Number(form.buffer_days || 0),
-      criticalPath: form.critical_path,
-      projectId: form.project_id || null,
       handoffToUserId: form.handoff_to_user_id || null,
-      handoffNote: form.handoff_note.trim() || null,
+      handoffNote: form.handoff_note.trim() || form.title.trim(),
       noticeUserIds: form.notice_user_ids,
       followerUserIds: form.follower_user_ids
     };
     let savedTask: Task | null = null;
     try {
       if (initialTask) {
-        const updated = await controlAction<{ task: Task }>("update_task", { id: initialTask.id, taskCategory: payload.taskCategory, noticeUserIds: payload.noticeUserIds, changes: {
+        const updated = await controlAction<{ task: Task }>("update_task", { id: initialTask.id, tagIds: payload.tagIds, noticeUserIds: payload.noticeUserIds, followerUserIds: payload.followerUserIds, changes: {
           title: payload.title, due_date: payload.dueDate, work_start_date: payload.workStartDate, work_dates: payload.workDates, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           status: payload.status, custom_status_label: payload.customStatusLabel,
           next_action: payload.nextAction,
           notes: payload.notes, completed_at: payload.completedAt,
           requested_priority: payload.requestedPriority,
-          estimated_minutes: payload.estimatedMinutes, actual_minutes: payload.actualMinutes, energy_level: payload.energyLevel,
-          buffer_days: payload.bufferDays, critical_path: payload.criticalPath, project_id: payload.projectId,
           task_type_label: payload.taskType
         } });
         savedTask = updated.task;
@@ -409,7 +398,7 @@ export function TaskForm({
     setSaving(false);
     if (!initialTask) {
       sessionStorage.removeItem(draftKey);
-      setForm(defaultState);
+      setForm({ ...defaultState, client_request_id: crypto.randomUUID() });
     }
     if (savedTask) {
       onSaved({
@@ -425,7 +414,9 @@ export function TaskForm({
 
   return (
     <form className="grid gap-4" onSubmit={save}>
+      <p className="text-sm leading-6 text-slate-500">寫低件事、揀 Tags 就加得。可用手機或電腦鍵盤的語音聽寫，確認文字後先儲存。</p>
       {draftRestored ? <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" role="status">已恢復上次未送出的任務草稿；成功儲存前會繼續自動保留。</p> : null}
+      {draftError ? <p role="status" className="text-sm text-amber-800">{draftError}</p> : null}
       {createdTaskId ? (
         <section className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4" aria-live="polite">
           <p className="font-extrabold text-amber-950">任務已建立，但重複工作尚未設定。</p>
@@ -440,41 +431,38 @@ export function TaskForm({
         <span className="label">任務名稱</span>
         <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
       </label>
-      <label>
-        <span className="label">分類（必填）</span>
-        <select className="field mt-2" value={form.task_category} onChange={(event) => setTaskCategory(event.target.value as TaskCategory | "")} required>
-          <option value="">請選擇分類</option>
-          {taskCategoryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
-      </label>
+      <TaskTagPicker value={form.tag_ids} taskId={initialTask?.id} disabled={saving} onReady={setTagsReady} onChange={(tag_ids) => setForm((current) => ({ ...current, tag_ids }))} />
+      <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} />
       {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
         <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
-        今日要做（建立後直接顯示在「今日全部」）
+        加入今日 Today
       </label> : null}
-      {!compact ? <div className="grid gap-4 sm:grid-cols-2">
+      <details className="rounded-2xl border border-slate-200 p-3">
+        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期／邊個跟 <span className="text-xs font-normal text-slate-500">{form.due_date || "無 Deadline"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
+      <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <DueDatePicker
           value={form.due_date}
-          label="完成／截止日（可留空）"
-          onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))}
+          label="Deadline（可留空）"
+          onChange={(value) => update("due_date", value)}
         />
-        <label>
-          <span className="label">跟進日</span>
-          <input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} />
-        </label>
-      </div> : null}
-      {!compact && !form.due_date ? <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} /> : null}
-      {!compact && !initialTask ? <label>
-        <span className="label">負責人</span>
+      {!initialTask ? <label>
+        <span className="label">邊個跟？</span>
         <select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}>
           <option value="">我自己</option>
           {otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}
         </select>
         <span className="mt-1 block text-xs leading-5 text-slate-600">選另一位會在建立後直接交給對方確認及跟進。</span>
+      </label> : <p className="self-center text-sm text-slate-500">轉交工作請用 Task 詳情內的「交接」，保留完整紀錄。</p>}
+      </div>
+      {!initialTask && form.handoff_to_user_id ? <label>
+        <span className="label">交接 Notes（可留空）</span>
+        <textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="有咩要對方留意？留空會用任務名稱交接。" maxLength={500} />
       </label> : null}
-      {!compact && !initialTask && form.handoff_to_user_id ? <label>
-        <span className="label">交接備註</span>
-        <textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="讓對方知道第一步要做甚麼" maxLength={500} required />
-      </label> : null}
+      </details>
+      <details className="rounded-2xl border border-slate-200 bg-white p-4" open={initialTask?.status === "waiting" || undefined}>
+        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">更多設定 <span className="ml-1 text-xs font-normal text-slate-500">備註、工作日、重複、共同跟進</span></summary>
+        <div className="mt-3 grid gap-4">
+      <label><span className="label">Follow-up 跟進日</span><input className="field mt-2" type="date" value={form.follow_up_date} onChange={(event) => update("follow_up_date", event.target.value)} /></label>
       {!compact && otherParticipants.length ? (
         <fieldset className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <legend className="px-1 font-extrabold text-slate-900">由誰共同跟進？</legend>
@@ -496,13 +484,6 @@ export function TaskForm({
           </div>
         </fieldset>
       ) : null}
-      {compact ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <DueDatePicker value={form.due_date} label="完成／截止日（可留空）" onChange={(value, band) => setForm((current) => ({ ...current, due_date: value, requested_priority: band ? priorityForBand(band) : current.requested_priority }))} />
-          <label><span className="label">負責人</span><select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}><option value="">我自己</option>{otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}</select></label>
-        </div>
-      ) : null}
-      {compact && !form.due_date ? <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} /> : null}
       {!initialTask?.recurrence_rule_id ? (
         <details className="rounded-2xl border border-slate-200 p-3">
           <summary className="min-h-11 cursor-pointer py-2 font-extrabold text-slate-900">自訂哪幾日做／提醒{form.work_dates.length ? `（已揀 ${form.work_dates.length} 日）` : "（選填）"}</summary>
@@ -560,7 +541,6 @@ export function TaskForm({
         </div>
       ) : null}
       {compact && otherParticipants.length ? <fieldset className="rounded-xl border border-slate-200 bg-slate-50 p-3"><legend className="px-1 text-sm font-extrabold text-slate-900">共同跟進（可多選）</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{otherParticipants.map((participant) => <label className="flex items-center gap-3 rounded-lg bg-white p-3 text-sm font-semibold text-slate-800" key={participant.user_id}><input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.follower_user_ids.includes(participant.user_id)} onChange={() => toggleFollower(participant.user_id)} />{participant.display_name}</label>)}</div></fieldset> : null}
-      {compact && form.handoff_to_user_id ? <label><span className="label">交接 notes</span><textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="寫低對方第一步要做甚麼" maxLength={500} required /></label> : null}
       {!initialTask?.recurrence_rule_id ? (
         <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4">
           <label className="flex cursor-pointer items-start gap-3">
@@ -647,11 +627,6 @@ export function TaskForm({
           ) : null}
         </fieldset>
       ) : null}
-      {!compact ? <div className={`grid gap-4 ${initialTask ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-        <label><span className="label">預計時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.estimated_minutes} onChange={(event) => update("estimated_minutes", event.target.value)} /></label>
-        {initialTask ? <label><span className="label">實際時間（分鐘）</span><input className="field mt-2" type="number" min="1" value={form.actual_minutes} onChange={(event) => update("actual_minutes", event.target.value)} /><span className="mt-1 block text-xs text-slate-500">只用於你自己的估時學習</span></label> : null}
-        <label><span className="label">能量</span><select className="field mt-2" value={form.energy_level} onChange={(event) => update("energy_level", event.target.value)}><option value="low">低</option><option value="medium">中</option><option value="high">高</option></select></label>
-      </div> : null}
       {!compact ? (
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
@@ -686,10 +661,12 @@ export function TaskForm({
           </div>
         </details>
       ) : null}
+        </div>
+      </details>
       {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900" role="alert">{error}</p> : null}
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={saving || Boolean(createdTaskId)}>
-          {saving ? "儲存中..." : initialTask ? "儲存修改" : "新增任務"}
+      <div className="sticky bottom-0 z-10 flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+        <Button type="submit" disabled={saving || !tagsReady || Boolean(createdTaskId)}>
+          {saving ? "儲存中..." : initialTask ? "儲存修改" : "加 Task"}
         </Button>
         {onCancel ? (
           <Button type="button" variant="secondary" onClick={onCancel}>
@@ -702,22 +679,17 @@ export function TaskForm({
 }
 
 function UrgencyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const options = [
-    { value: "1", label: "Urgent", description: "需要盡快處理", className: "border-rose-300 bg-rose-50 text-rose-900" },
-    { value: "3", label: "Semi-urgent", description: "近期應推進", className: "border-amber-300 bg-amber-50 text-amber-950" },
-    { value: "5", label: "Non-urgent", description: "未有即時壓力", className: "border-slate-200 bg-slate-50 text-slate-800" }
-  ];
+  const options = simplePriorities;
   return (
     <fieldset>
-      <legend className="label">沒有到期日：緊急程度</legend>
-      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+      <legend className="label">Priority 優先次序</legend>
+      <div className="mt-2 grid grid-cols-3 gap-2">
         {options.map((option) => {
-          const selected = value === option.value;
+          const selected = Number(value) === option.value;
           return (
-            <label key={option.value} className={`cursor-pointer rounded-xl border-2 p-3 ${option.className} ${selected ? "ring-2 ring-indigo-300 ring-offset-1" : "opacity-75"}`}>
-              <input className="sr-only" type="radio" name="task-urgency" value={option.value} checked={selected} onChange={() => onChange(option.value)} />
-              <span className="block font-extrabold">{option.label}</span>
-              <span className="mt-0.5 block text-xs font-semibold">{option.description}</span>
+            <label key={option.value} className={`cursor-pointer rounded-xl border p-3 text-sm focus-within:ring-2 focus-within:ring-indigo-500 ${selected ? "border-indigo-500 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-500" : "border-slate-200 bg-white text-slate-600"}`}>
+              <input className="sr-only" type="radio" name="task-priority" value={option.value} checked={selected} onChange={() => onChange(String(option.value))} />
+              <span className="block font-bold">{option.label}</span>
             </label>
           );
         })}
@@ -730,8 +702,4 @@ function urgencyPriorityValue(value: number | undefined) {
   if ((value ?? 3) <= 2) return "1";
   if ((value ?? 3) <= 4) return "3";
   return "5";
-}
-
-function priorityForBand(band: "high" | "medium" | "low") {
-  return band === "high" ? "1" : band === "medium" ? "3" : "5";
 }

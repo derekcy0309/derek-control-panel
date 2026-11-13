@@ -5,6 +5,7 @@ function upsert(tasks: Task[], task: Task) {
   if (index < 0) return [task, ...tasks];
   return tasks.map((item, position) => position === index ? {
     ...task,
+    personal_tag_ids: task.personal_tag_ids ?? item.personal_tag_ids,
     current_step_title: task.current_step_title ?? item.current_step_title,
     current_step_status: task.current_step_status ?? item.current_step_status,
     follow_up_date: item.current_step_title ? item.follow_up_date : task.follow_up_date

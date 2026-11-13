@@ -162,7 +162,7 @@ test("handoff picker exposes only explicit trusted connections", () => {
 });
 
 test("new tasks can start a trusted handoff from every task form", () => {
-  assert.match(taskForm, /負責人/);
+  assert.match(taskForm, /邊個跟/);
   assert.match(taskForm, /建立後直接交給對方確認及跟進/);
   assert.match(taskForm, /handoff_to_user_id/);
   assert.match(taskForm, /handoff_note/);
@@ -334,31 +334,24 @@ test("Today Auto-Plan changes only personal planning metadata after confirmation
   assert.match(todayPlanMigration, /revoke\s+all\s+on\s+function\s+public\.accept_today_auto_plan[\s\S]*from\s+public,\s*anon/);
 });
 
-test("Minimum Viable Day persists rest without moving or completing tasks", () => {
+test("legacy rest data remains compatible while simple mode removes capacity questions", () => {
   assert.match(todayPlanMigration, /add\s+column\s+if\s+not\s+exists\s+rest_day\s+boolean/);
   assert.match(controlRoute, /rest_day:\s*boolean\(body\.restday\)/);
-  assert.match(todayPage, /今日休息/);
-  assert.match(todayPage, /今日核心責任已完成/);
-  assert.match(todayPage, /只完成第一步/);
-  assert.match(todayPage, /請.*接手/);
-  assert.match(todayPage, /延至指定日/);
-  assert.match(todayPage, /沒有自動移動任何任務/);
+  assert.match(todayPage, /simpletoday/);
+  assert.doesNotMatch(todayPage, /capacity_checkin|capacitymodal|energy_level|recommendtodaytasks/);
 });
 
-test("Today UI requires confirmation and exposes transparent replanning controls", () => {
+test("Today retains authenticated manual planning and starts suggestions only after an explicit action", () => {
   assert.match(controlRoute, /view\s*===\s*"today"/);
   assert.match(controlRoute, /function\s+todaydashboard/);
   assert.match(controlRoute, /\.not\("status",\s*"in",\s*"\(done,cancelled,blocked,waiting\)"\)/);
   assert.match(controlRoute, /\.limit\(200\)/);
   assert.match(controlRoute, /case\s+"accept_today_plan"/);
   assert.match(controlRoute, /client\.rpc\("accept_today_auto_plan"/);
-  assert.match(todayPage, /確認加入 today/);
-  assert.match(todayPage, /重新安排/);
-  assert.match(todayPage, /太難/);
-  assert.match(todayPage, /換一件/);
-  assert.match(todayPage, /拆細一點/);
-  assert.match(todayPage, /預留 buffer/);
-  assert.match(todayPage, /被阻塞任務已排除/);
+  assert.match(todayPage, /set_today_task/);
+  assert.match(todayPage, /自己排今日/);
+  assert.match(todayPage, /建議，未加入今日/);
+  assert.match(todayPage, /onstart/);
 });
 
 test("Today Auto-Plan rollback preserves all core work data", () => {

@@ -5,9 +5,7 @@ import Link from "next/link";
 import { CalendarClock, Check, Leaf, ListPlus, Pencil } from "lucide-react";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
-import { duePriorityBand } from "@/lib/due-priority";
-import { hkDateIso } from "@/lib/planning";
-import { undatedUrgencyFor } from "@/lib/task-queue";
+import { simplePriorities, simplePriority } from "@/lib/simple-mode";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import type { Task } from "@/lib/types";
 
@@ -41,8 +39,6 @@ export function TaskQueueRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [justCompleted, setJustCompleted] = useState(false);
-  const urgency = !task.due_date ? undatedUrgencyFor(task) : null;
-  const datedPriority = duePriorityBand(task.due_date, hkDateIso());
   const canAddToday = !completed && !["waiting", "blocked", "done", "cancelled"].includes(task.status) && task.current_step_status !== "waiting" && !task.blocked_reason?.trim();
 
   async function complete() {
@@ -92,10 +88,8 @@ export function TaskQueueRow({
           {task.parent_task_id ? <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-800">子任務</span> : null}
           {task.due_date ? (
             <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{formatDate(task.due_date)}</span>
-          ) : urgency ? (
-            <span>{urgency === "urgent" ? "Urgent" : urgency === "semi_urgent" ? "Semi-urgent" : "Non-urgent"}</span>
           ) : null}
-          {datedPriority ? <span className={`priority-inline priority-inline-${datedPriority}`}>自動{datedPriority === "high" ? "高" : datedPriority === "medium" ? "中" : "低"} priority</span> : null}
+          <span>{simplePriorities.find((p) => p.value === simplePriority(task.requested_priority))?.label}</span>
           {task.custom_status_label ? <span className="rounded-full bg-fuchsia-50 px-2 py-0.5 text-fuchsia-800">{task.custom_status_label}</span> : null}
           {task.status === "in_progress" ? <span className="text-indigo-700">進行中</span> : null}
           {completed ? <span>{task.status === "cancelled" ? "已取消" : "已完成"}</span> : null}

@@ -1,8 +1,8 @@
 import type { TaskQueueBuckets } from "@/lib/task-queue";
 import type { Task } from "@/lib/types";
 
-export function TaskPrintSheet({ categoryLabel, buckets, printedOn }: { categoryLabel: string; buckets: TaskQueueBuckets; printedOn: string }) {
-  const sections: Array<{ title: string; tasks: Task[]; undated?: boolean }> = [
+export function TaskPrintSheet({ categoryLabel, buckets, groups, printedOn }: { categoryLabel: string; buckets: TaskQueueBuckets; groups?: Array<{ title: string; tasks: Task[] }>; printedOn: string }) {
+  const sections: Array<{ title: string; tasks: Task[]; undated?: boolean }> = (groups ?? [
     { title: "已逾期", tasks: buckets.overdue },
     { title: "今日至未來 7 日", tasks: buckets.dueWithin7Days },
     { title: "第 8 至 14 日", tasks: buckets.dueWithin14Days },
@@ -12,7 +12,7 @@ export function TaskPrintSheet({ categoryLabel, buckets, printedOn }: { category
     { title: "Non-urgent（無日期）", tasks: buckets.nonUrgent, undated: true },
     { title: "Waiting", tasks: buckets.waiting },
     { title: "Blocked", tasks: buckets.blocked }
-  ].filter((section) => section.tasks.length);
+  ]).filter((section) => section.tasks.length);
 
   return (
     <section className="task-print-sheet hidden" aria-hidden="true">

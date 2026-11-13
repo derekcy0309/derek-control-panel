@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadTodayData } from "@/lib/control-api";
 import { withSavedTask } from "@/lib/today-task-cache";
-import type { Task, TodayData } from "@/lib/types";
+import type { PersonalTaskTag, Task, TodayData } from "@/lib/types";
 
 export function useTodayData() {
   const [data, setData] = useState<TodayData | null>(null);
@@ -39,6 +39,19 @@ export function useTodayData() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    const updateTags = (event: Event) => {
+      const tags = (event as CustomEvent<{ tags: PersonalTaskTag[] }>).detail?.tags;
+      if (!tags) return;
+      const active = new Set(tags.map((tag) => tag.id));
+      const clean = (task: Task) => ({ ...task, personal_tag_ids: task.personal_tag_ids?.filter((id) => active.has(id)) });
+      requestId.current += 1;
+      setData((current) => current ? { ...current, taskTags: tags, tasks: current.tasks.map(clean), taskCatalog: current.taskCatalog.map(clean), taskQueueCatalog: current.taskQueueCatalog.map(clean) } : current);
+    };
+    window.addEventListener("dcp:task-tags-updated", updateTags);
+    return () => window.removeEventListener("dcp:task-tags-updated", updateTags);
+  }, []);
 
   return { data, loading, error, reload, saveTaskLocally };
 }

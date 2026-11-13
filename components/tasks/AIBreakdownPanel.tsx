@@ -120,6 +120,7 @@ export function AIBreakdownPanel({ parent, childTasks, onCreated }: {
           parentTaskId: parent.id,
           title: step.title.trim(),
           taskCategory: taskCategoryFor(parent),
+          ...(parent.personal_tag_ids?.length ? { tagIds: parent.personal_tag_ids } : {}),
           sourceType: parent.source_type,
           dueDate: parent.source_type === "duty_request" ? parent.due_date : null,
           estimatedMinutes: step.minutes

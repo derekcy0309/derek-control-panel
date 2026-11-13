@@ -70,9 +70,10 @@ test("home is progressive, caps the primary list at three and keeps advanced too
   assert.match(dashboard, /真正緊急或已逾期/);
   assert.match(dashboard, /新交接/);
   assert.match(dashboard, /等待本人決定或確認/);
-  assert.match(home, /重新安排或查看完整 Today 工具/);
-  assert.match(home, /RoleDailyDashboard/);
-  assert.match(home, /AIDailyPlanner/);
+  assert.match(home, /SimpleDashboard/);
+  assert.match(home, /simpleToday/);
+  assert.match(home, /提醒及活動/);
+  assert.doesNotMatch(home, /AIDailyPlanner|energy_level/);
   assert.match(home, /TodayAllTasks/);
   assert.match(home, /ActionCenterTabs/);
 });

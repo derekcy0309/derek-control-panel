@@ -175,7 +175,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="topbar-actions flex items-center gap-2">
             <LiveClock />
             <OfflineWriteQueueStatus userId={currentUserId} />
-            <button className="topbar-task-add" type="button" onClick={openTaskForm} aria-label="新增任務"><Plus className="h-4 w-4" aria-hidden="true" /><span>新增任務</span></button>
+            <button className="topbar-task-add" type="button" onClick={openTaskForm} aria-label="加 Task"><Plus className="h-4 w-4" aria-hidden="true" /><span>加 Task</span></button>
             <Link className="topbar-capture" href="/capture" aria-label="Quick Capture：快速收集到收集箱"><Inbox className="h-4 w-4" aria-hidden="true" /><span>收集</span></Link>
             <Link className="icon-button" href="/search" aria-label="搜尋"><Search className="h-5 w-5" /></Link>
             <button className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:block lg:hidden" onClick={signOut}>登出</button>

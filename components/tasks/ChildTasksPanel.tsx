@@ -39,6 +39,7 @@ export function ChildTasksPanel({ parent, childTasks, participants, currentUserI
         parentTaskId: parent.id,
         title: title.trim(),
         taskCategory: taskCategoryFor(parent),
+        ...(parent.personal_tag_ids?.length ? { tagIds: parent.personal_tag_ids } : {}),
         sourceType: parent.source_type,
         dueDate: dueDate || null,
         handoffToUserId: assigneeId || null,

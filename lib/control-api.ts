@@ -5,6 +5,7 @@ import type {
   AdminAccountUser,
   ControlData,
   FocusSession,
+  PersonalTaskTag,
   InboxCaptureFile,
   InboxProcessingBundle,
   InboxProcessingEvent,
@@ -47,6 +48,12 @@ export async function deleteAdminAccount(targetUserId: string, confirmEmail: str
 
 export async function loadTodayData(): Promise<TodayData> {
   return controlRequest<TodayData>("/api/control?view=today", { method: "GET" });
+}
+
+export async function loadTaskTags(taskId?: string) {
+  return controlRequest<{ tags: PersonalTaskTag[]; taskTagIds: string[] }>(
+    `/api/control?view=task_tags${taskId ? `&taskId=${encodeURIComponent(taskId)}` : ""}`, { method: "GET" }
+  );
 }
 
 export async function loadTaskDetail(taskId: string): Promise<TaskDetailData> {

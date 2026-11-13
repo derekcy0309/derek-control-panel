@@ -22,7 +22,7 @@ try {
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => { window.__printCount = 0; window.print = () => { window.__printCount++; }; });
     const userId = '11111111-1111-4111-8111-111111111111';
-    const tasks = Array.from({ length: 45 }, (_, index) => ({ id: `task-${index}`, title: index === 1 ? '整理本週文件，核對資料後再保存到正確的資料夾，以便下次可以直接繼續處理' : `待辦工作 ${index + 1}`, user_id: userId, owner_id: userId, scope: 'home', area: index < 3 ? 'personal' : index < 5 ? 'family' : 'work', status: index === 44 ? 'waiting' : index === 43 ? 'done' : 'not_started', due_date: index === 0 ? null : today, next_action: '先打開需要使用的文件', current_step_title: index === 0 ? '先用 5 分鐘整理第一頁' : null, notes: 'PRIVATE-NOTES-MUST-NOT-PRINT', deleted_at: null, archived_at: null, created_at: `${today}T00:00:00Z`, updated_at: `${today}T00:00:00Z` }));
+    const tasks = Array.from({ length: 45 }, (_, index) => ({ id: `task-${index}`, title: index === 1 ? '整理本週文件，核對資料後再保存到正確的資料夾，以便下次可以直接繼續處理' : `待辦工作 ${index + 1}`, user_id: userId, owner_id: userId, scope: 'home', area: index < 3 ? 'personal' : index < 5 ? 'family' : 'work', personal_tag_ids: [index < 3 ? 'personal' : index < 5 ? 'family' : 'work'], status: index === 44 ? 'waiting' : index === 43 ? 'done' : 'not_started', due_date: index === 0 ? null : today, next_action: '先打開需要使用的文件', current_step_title: index === 0 ? '先用 5 分鐘整理第一頁' : null, notes: 'PRIVATE-NOTES-MUST-NOT-PRINT', deleted_at: null, archived_at: null, created_at: `${today}T00:00:00Z`, updated_at: `${today}T00:00:00Z` }));
     let empty = false; let fail = false; let writes = 0;
     const order = [3, 0, 4, 1, 2]; // Family and personal alternate; grouping must never change this order.
     const planning = order.map((id, index) => ({ user_id: userId, resource_type: 'task', resource_id: `task-${id}`, planned_date: today, plan_role: index === 0 ? 'now' : 'later', plan_source: 'manual', plan_position: index + 1 }));
@@ -31,7 +31,7 @@ try {
       const url = new URL(route.request().url());
       if (url.pathname === '/api/auth') return route.fulfill({ json: { user: { id: userId } } });
       if (url.searchParams.get('view') === 'today' && fail) return route.fulfill({ status: 503, json: { error: '測試網絡錯誤，請重試。' } });
-      await route.fulfill({ json: { currentUser: { id: userId, email: 'test@example.test', displayName: role }, profile: { user_id: userId, active: true, workspace_role: role.toLowerCase() }, settings: {}, tasks, taskQueueCatalog: tasks, taskCatalog: tasks, planning: empty ? [] : planning, taskDependencies: [], assignments: [], currentUserId: userId, quietModeUntil: null } });
+      await route.fulfill({ json: { currentUser: { id: userId, email: 'test@example.test', displayName: role }, profile: { user_id: userId, active: true, workspace_role: role.toLowerCase() }, settings: {}, tasks, taskQueueCatalog: tasks, taskCatalog: tasks, taskTags: [{id:'personal',name:'個人'},{id:'family',name:'My custom tag'},{id:'work',name:'Wecare'}], planning: empty ? [] : planning, taskDependencies: [], assignments: [], currentUserId: userId, quietModeUntil: null } });
     });
     await page.goto(`${base}/todo-list`);
     const paper = page.getByRole('region', { name: 'To-do List 紙本預覽' });

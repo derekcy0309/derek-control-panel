@@ -1,10 +1,10 @@
 "use client";
 
 import { CalendarDays, X } from "lucide-react";
-import { duePriorityBand, shiftIsoDate, type PriorityBand } from "@/lib/due-priority";
+import { shiftIsoDate, type PriorityBand } from "@/lib/due-priority";
 import { hkDateIso } from "@/lib/planning";
 
-const quickDates = [7, 14, 21, 30] as const;
+const quickDates = [{ days: 0, label: "今日" }, { days: 1, label: "聽日" }, { days: 7, label: "下星期" }] as const;
 
 export function DueDatePicker({ value, onChange, disabled = false, label = "到期日（可留空）" }: {
   value: string;
@@ -13,27 +13,26 @@ export function DueDatePicker({ value, onChange, disabled = false, label = "到�
   label?: string;
 }) {
   const today = hkDateIso();
-  const band = duePriorityBand(value, today);
 
   function choose(date: string) {
-    onChange(date, duePriorityBand(date, today));
+    onChange(date, null);
   }
 
   return (
     <fieldset disabled={disabled}>
       <legend className="label">{label}</legend>
       <div className="mt-2 flex flex-wrap gap-2" aria-label="快速選擇到期日">
-        {quickDates.map((days) => {
+        {quickDates.map(({ days, label: quickLabel }) => {
           const date = shiftIsoDate(today, days);
           const selected = value === date;
           return (
             <button
               key={days}
               type="button"
-              className={`due-quick-button due-quick-${days} ${selected ? "is-selected" : ""}`}
+              className={`due-quick-button ${selected ? "is-selected" : ""}`}
               onClick={() => choose(date)}
             >
-              {days} 日
+              {quickLabel}
             </button>
           );
         })}
@@ -46,11 +45,6 @@ export function DueDatePicker({ value, onChange, disabled = false, label = "到�
         <CalendarDays className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" />
         <input className="field pl-10" type="date" value={value} onChange={(event) => choose(event.target.value)} />
       </label>
-      {value ? (
-        <p className={`priority-band-hint priority-band-${band ?? "low"}`}>
-          系統會按距離每日自動更新：目前為{band === "high" ? "高" : band === "medium" ? "中" : "低"} priority
-        </p>
-      ) : null}
     </fieldset>
   );
 }

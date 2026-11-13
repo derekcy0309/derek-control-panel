@@ -8,6 +8,8 @@ import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { TaskCard } from "@/components/items/TaskCard";
 import { ChildTasksPanel } from "@/components/tasks/ChildTasksPanel";
+import { Modal } from "@/components/Modal";
+import { TaskForm } from "@/components/forms/TaskForm";
 import { loadTaskDetail } from "@/lib/control-api";
 import type { TaskDetailData } from "@/lib/types";
 
@@ -21,6 +23,7 @@ function TaskDetailContent() {
   const [data, setData] = useState<TaskDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [editing, setEditing] = useState(false);
 
   const reload = useCallback(async () => {
     if (!taskId) return;
@@ -56,15 +59,18 @@ function TaskDetailContent() {
         participants={data.participants}
         assignments={data.assignments}
         taskFollowers={data.taskFollowers}
+        taskTags={data.taskTags}
         handoffNotes={data.handoffNotes}
         allTasks={[data.task]}
         taskDependencies={data.taskDependencies}
         taskRecurrenceRules={data.taskRecurrenceRules}
         taskSteps={data.taskSteps}
         onChanged={() => { void reload(); }}
+        onEdit={(data.task.owner_id ?? data.task.user_id) === data.currentUser.id ? () => setEditing(true) : undefined}
         prominent
         detailLink={false}
       />
+      {editing ? <Modal title="修改 Task" onClose={() => setEditing(false)}><TaskForm userId={data.currentUser.id} initialTask={data.task} participants={data.participants} initialNoticeUserIds={(data.taskNoticeRecipients ?? []).map((recipient) => recipient.recipient_id)} initialFollowerUserIds={data.taskFollowers.map((follower) => follower.follower_id)} onCancel={() => setEditing(false)} onSaved={() => { setEditing(false); void reload(); }} /></Modal> : null}
       <details className="panel group overflow-hidden">
         <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4"><span><span className="block font-extrabold text-slate-900">歷史紀錄</span><span className="mt-1 block text-xs text-slate-500">顯示建立、交接、更新、確認及完成的 audit log；預設收起。</span></span><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{data.activityLogs.length}</span></summary>
         <div className="border-t border-slate-100 p-4 sm:p-5">

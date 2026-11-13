@@ -164,3 +164,8 @@ drop policy if exists "user_settings_update_own" on public.user_settings;
 create policy "user_settings_update_own" on public.user_settings for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "user_settings_delete_own" on public.user_settings;
 create policy "user_settings_delete_own" on public.user_settings for delete using (auth.uid() = user_id);
+-- Personal task tags (2026-11-14): additive schema is defined in
+-- migrations/20261113172120_personal_task_tags.sql. It adds personal_task_tags,
+-- task_tag_preferences (one-time seed marker), task_tag_assignments and three
+-- authenticated SECURITY INVOKER RPCs. Labels are viewer-private and must never
+-- grant task access or replace the legacy area/scope/visibility columns.

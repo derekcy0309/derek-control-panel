@@ -4,18 +4,21 @@
 
 ## 主要能力
 
+- 簡易模式（2026-11-14）：Dashboard 用三個概覽卡及最多三件重點；跟 Priority 建議，已手動排好的 Today 次序優先。加 Task 只必填名稱及 Tags，P2 為預設；日期／負責人、Routine、工作日及共同跟進按需要打開。不再要求能量、估時或工作模式。詳見 [`docs/simple-mode.md`](docs/simple-mode.md)。
+- 私人 Tags：全部可以新增、改名、移除。Derek 首次保留原有四個分類；其他用戶首次只設「個人、Wecare」。刪除後不會重建預設，不改 Task、scope、area 或分享權限。
+
 - 交辦確認：已修正「確認收到」被舊資料庫 guard 誤擋；收件人可先確認再接受，派出者可收到去重回覆。真實 RLS／trigger 測試、migration 及回復見 [`docs/assignment-acknowledgement-fix.md`](docs/assignment-acknowledgement-fix.md)。
 - 私人筆記：只填標題、內容及可選分類／Remark（車輛、個人財務、公司、工作、個人、家庭或自訂）；支援分類搜尋及同分頁草稿，儲存後不整頁重新載入。分類不會建立財務紀錄或改變分享權限。詳見 [`docs/simple-notes.md`](docs/simple-notes.md)。
-- Today Auto‑Plan：按個人能量、容量、buffer、deadline、safe-start、影響、context 及 WIP 提出可解釋建議；確認後才加入 Today
+- Today 建議：簡易首頁只按 Priority，不因 Deadline 改寫優先次序。舊 Auto-Plan／capacity 資料及 API 保留兼容，但不再出現在預設流程。
 - 自訂工作日：一次性任務可逐日加入真正要做的日子，完成日可留空，未填開始日時以第一個加入的日子為開始日；如有設定開始／完成日，仍會檢查日期範圍。Today 建議、瀏覽器通知與每日電郵只在選定日提示。舊任務保持原有提醒；使用者仍可明確手動加入 Today。修正及驗證見 [`docs/task-work-day-picker-fix.md`](docs/task-work-day-picker-fix.md)。
 - 手動排 Today：在「今日全部任務」由任務總表加入工作，再用上下按鈕排次序；第一項成為「現在做」。不會自行更改截止日期。
-- Suki Minimum Viable Day：一項核心最低任務、最多兩項簡單選項、無罪疚休息、拆細、交接及指定日再處理
+- 各人使用同一簡易首頁：只顯示本人工作及明確揀選的 Today；安靜模式按帳戶獨立，不顯示健康標籤或個人表現排名。
 - Restart Checkpoint：Focus 暫停／離開時自動保存草稿、正式歷史、下一個最小步驟及安全資源捷徑
 - 任務拆解：打開任務後按「新增子任務」才拆細；子任務是同一 Work Queue 的正式任務，可獨立指派、設定到期日及完成。原任務不會自動結案；舊有細步驟只在已有紀錄時保留顯示。
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
 - 任務依賴：明確的 blocked-by／blocks 關係、防循環檢查，以及不會自動完成或改派的下一步提示；舊有 Project 資料保留但不再新增。
-- Task Action Queue：按個人／家庭／SEC／Wecare 分類，只先展開逾期、7 日內及無日期 Urgent 各五項；其餘摺起，並提供內部到期日曆及 A4 精簡列印
+- Task Action Queue：用自己的 Tags 篩選，按 P1／P2／P3、Waiting、受阻、已完成分組，全部預設收起；保留多選加入今日、日曆及 A4 列印。
 - 單一步驟 Today：首頁先突出一項「現在只做這一件」，可直接開始 5 分鐘或要求系統拆細；其餘工作延後顯示，降低同時選擇造成的啟動阻力
 - 多巴胺友善外觀：Today／家庭／個人／工作／財務／健康各有文字、icon 及身份色，另有 Sunrise、Ocean、Aurora、Night Shift 四套主題與安靜／平衡／鮮明三段視覺強度
 - Routine 工作：只需設定「每隔 N 日／月／年」及無限期或結束日期；完成當前任務後才建立下一項，並永遠按原定到期日延續，不會因遲完成而令 schedule 漂移

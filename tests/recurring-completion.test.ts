@@ -10,8 +10,8 @@ test("ongoing recurring work is completed as an occurrence, not presented as cas
   assert.match(taskCard, /const isOngoingRecurrence = Boolean\(recurrenceRule\?\.is_active\)/);
   assert.match(taskCard, /isOngoingRecurrence \? "今次已完成" : "完成任務"/);
   assert.match(taskCard, /不代表結案/);
-  assert.match(today, /task\.recurrence_rule_id \? "今次已完成" : "完成任務"/);
-  assert.match(today, /已記錄今次完成；這項恆常工作會按設定繼續提示。/);
+  assert.match(today, /task\.recurrence_rule_id \? "今次已做完/);
+  assert.match(today, /之後會按重複設定繼續/);
   assert.match(focusMode, /task\.recurrence_rule_id \? "今次已完成" : "完成任務"/);
   assert.match(focusMode, /並不代表結案/);
 });

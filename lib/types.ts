@@ -95,6 +95,14 @@ export type Task = {
   rn_required?: boolean;
   client_update_required?: boolean;
   client_request_id?: string | null;
+  /** Current viewer's private labels; never used to grant access. */
+  personal_tag_ids?: string[];
+};
+
+export type PersonalTaskTag = {
+  id: string;
+  name: string;
+  legacy_key: string | null;
 };
 
 export type Transaction = {
@@ -832,6 +840,7 @@ export type TodayData = {
   tasks: Task[];
   taskCatalog: Task[];
   taskQueueCatalog: Task[];
+  taskTags?: PersonalTaskTag[];
   taskNoticeRecipients: TaskNoticeRecipient[];
   taskFollowers: TaskFollower[];
   shares: ShareRecord[];
@@ -854,6 +863,8 @@ export type TodayData = {
 export type TaskDetailData = {
   currentUser: CurrentUser;
   task: Task;
+  taskTags?: PersonalTaskTag[];
+  taskNoticeRecipients?: TaskNoticeRecipient[];
   taskSteps: TaskStep[];
   childTasks: Task[];
   parentTask: Pick<Task, "id" | "title"> | null;

@@ -1,8 +1,7 @@
-import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
 import { taskVisibleNextAction } from "@/lib/task-steps";
-import type { Task } from "@/lib/types";
+import type { PersonalTaskTag, Task } from "@/lib/types";
 
-export function TodoPrintSheet({ tasks, name, date }: { tasks: Task[]; name: string; date: string }) {
+export function TodoPrintSheet({ tasks, tags = [], name, date }: { tasks: Task[]; tags?: PersonalTaskTag[]; name: string; date: string }) {
   return <section className="todo-paper" aria-label="To-do List 紙本預覽">
     <header className="todo-paper-header">
       <div><h2>To-do List</h2><p>{name} · {date}</p></div>
@@ -10,11 +9,11 @@ export function TodoPrintSheet({ tasks, name, date }: { tasks: Task[]; name: str
     </header>
     <p className="todo-paper-instruction">先揀一項開始。每項可填寫「幾點至幾點」，完成後剔選。</p>
     {tasks.map((task, index) => {
-      const category = taskCategoryOptions.find(option => option.value === taskCategoryFor(task));
+      const labels = tags.filter(tag => task.personal_tag_ids?.includes(tag.id)).map(tag => tag.name).join("／");
       return <article className="todo-paper-task" key={task.id}>
           <span className="todo-paper-checkbox" aria-label="完成勾選格" />
           <div className="todo-paper-task-content">
-            <div className="todo-paper-task-heading"><h4>{index + 1}. {task.title}</h4><span>{category?.label} · 期限：{task.due_date ?? "未設定"}</span></div>
+            <div className="todo-paper-task-heading"><h4>{index + 1}. {task.title}</h4><span>{labels || "未分類"} · 期限：{task.due_date ?? "未設定"}</span></div>
             <p className="todo-paper-next">下一小步：{taskVisibleNextAction(task) ?? "________________________________"}</p>
             <div className="todo-paper-writing"><div className="todo-paper-time"><strong>時段</strong><span>____：____ 至 ____：____</span></div>
             <p className="todo-paper-note">備註：<span /></p></div>

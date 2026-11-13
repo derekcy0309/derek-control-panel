@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/Button";
 import { TodoPrintSheet } from "@/components/tasks/TodoPrintSheet";
 import { useTodayData } from "@/hooks/useTodayData";
 import { hkDateIso } from "@/lib/planning";
-import { taskCategoryFor, taskCategoryOptions } from "@/lib/task-categories";
 import { customPrintableTasks, printableTaskPool, todayPrintableTasks } from "@/lib/todo-print";
 import type { TodayData } from "@/lib/types";
 
@@ -36,7 +35,7 @@ function TodoListContent({ data }: { data: TodayData }) {
   const todayTasks = useMemo(() => todayPrintableTasks(pool, data.planning, data.currentUser.id, today), [pool, data.planning, data.currentUser.id, today]);
   const candidates = scope === "today" ? todayTasks : customPrintableTasks(pool, todayTasks);
   const selected = candidates.filter(task => selectedIds === null || selectedIds.has(task.id));
-  const visible = candidates.filter(task => (category === "all" || taskCategoryFor(task) === category)
+  const visible = candidates.filter(task => (category === "all" || task.personal_tag_ids?.includes(category))
     && task.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const pages = Math.max(1, Math.ceil(visible.length / 20));
   const currentPage = Math.min(page, pages - 1);
@@ -72,15 +71,15 @@ function TodoListContent({ data }: { data: TodayData }) {
       <p className="muted mt-3 text-sm">已完成、等待中、受阻及封存項目不列入待辦清單。今日清單沿用你已確認的安排。</p>
       {candidates.length ? <>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label><span className="label">分類</span><select aria-label="分類" className="field mt-1" value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}><option value="all">全部分類（跟隨已安排次序）</option>{taskCategoryOptions.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+          <label><span className="label">Tags</span><select aria-label="分類" className="field mt-1" value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}><option value="all">全部 Tags（跟隨已安排次序）</option>{(data.taskTags ?? []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
           <label><span className="label">搜尋任務</span><input className="field mt-1" type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="輸入任務名稱" /></label>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3"><p className="text-sm font-semibold" role="status">已選 {selected.length} 項（包括其他分類及頁面）</p><Button variant="ghost" onClick={() => setSelectedIds(new Set())}>清除選取</Button></div>
-        <div className="mt-2 space-y-2" aria-label="揀選列印任務">{displayed.map(task => <label key={task.id} className="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input className="mt-1 h-5 w-5 shrink-0 accent-indigo-600" type="checkbox" checked={selectedIds === null || selectedIds.has(task.id)} onChange={() => toggle(task.id)} /><span className="min-w-0 break-words"><span className="block font-semibold">{task.title}</span><span className="muted text-xs">{taskCategoryOptions.find(item => item.value === taskCategoryFor(task))?.label} · 期限：{task.due_date ?? "未設定"}</span></span></label>)}</div>
+        <div className="mt-2 space-y-2" aria-label="揀選列印任務">{displayed.map(task => <label key={task.id} className="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input className="mt-1 h-5 w-5 shrink-0 accent-indigo-600" type="checkbox" checked={selectedIds === null || selectedIds.has(task.id)} onChange={() => toggle(task.id)} /><span className="min-w-0 break-words"><span className="block font-semibold">{task.title}</span><span className="muted text-xs">{(data.taskTags ?? []).filter(tag => task.personal_tag_ids?.includes(tag.id)).map(tag => tag.name).join("／") || "未分類"} · 期限：{task.due_date ?? "未設定"}</span></span></label>)}</div>
         {!displayed.length ? <p className="muted mt-3">沒有符合篩選的任務；可清除搜尋或更改分類。</p> : null}
         {pages > 1 ? <nav className="mt-3 flex items-center justify-between gap-2" aria-label="列印任務分頁"><Button variant="secondary" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一頁</Button><span className="text-sm">{currentPage + 1}／{pages}</span><Button variant="secondary" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>下一頁</Button></nav> : null}
       </> : <div className="mt-4 rounded-xl bg-slate-50 p-4"><p>{scope === "today" ? "今日未有已安排的待辦工作。可按「自行揀選任務」製作清單，或先在行動中心安排今日工作。" : "目前沒有可列印的待辦工作。"}</p><Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-indigo-700" href="/">返回行動中心</Link></div>}
     </section>
-    <TodoPrintSheet tasks={selected} name={data.currentUser.displayName} date={today} />
+    <TodoPrintSheet tasks={selected} tags={data.taskTags} name={data.currentUser.displayName} date={today} />
   </div>;
 }

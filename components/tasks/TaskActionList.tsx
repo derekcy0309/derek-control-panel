@@ -11,7 +11,7 @@ import { TaskQueueSection } from "@/components/tasks/TaskQueueSection";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { hkDateIso } from "@/lib/planning";
-import { taskCategoryFor, taskCategoryOptions, type TaskCategory } from "@/lib/task-categories";
+import { simplePriority, sortByPriority } from "@/lib/simple-mode";
 import { taskQueueBuckets } from "@/lib/task-queue";
 import type { Task, TodayData } from "@/lib/types";
 
@@ -29,29 +29,39 @@ export function TaskActionList({
   restful?: boolean;
 }) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<TaskCategory>("personal");
+  const [selectedCategory, setSelectedCategory] = useState("");
+  const [query, setQuery] = useState("");
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [todayBusyId, setTodayBusyId] = useState<string | null>(null);
   const [todayMessage, setTodayMessage] = useState("");
   const [todayError, setTodayError] = useState("");
   const today = hkDateIso();
+  const tagFilter = selectedCategory === "untagged" || data.taskTags?.some((tag) => tag.id === selectedCategory) ? selectedCategory : "";
   const tasksInCategory = useMemo(
-    () => data.taskQueueCatalog.filter((task) => taskCategoryFor(task) === selectedCategory),
-    [data.taskQueueCatalog, selectedCategory]
+    () => sortByPriority(data.taskQueueCatalog.filter((task) => (!tagFilter || (tagFilter === "untagged" ? !task.personal_tag_ids?.length : task.personal_tag_ids?.includes(tagFilter)))
+      && (!query.trim() || task.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))),
+    [data.taskQueueCatalog, tagFilter, query]
   );
   const buckets = useMemo(() => taskQueueBuckets(tasksInCategory, today), [tasksInCategory, today]);
   const categoryCounts = useMemo(() => {
-    const counts = new Map<TaskCategory, number>(taskCategoryOptions.map((option) => [option.value, 0]));
+    const counts = new Map<string, number>();
     for (const task of data.taskQueueCatalog) {
       if (task.status === "done" || task.status === "cancelled") continue;
-      const category = taskCategoryFor(task);
-      counts.set(category, (counts.get(category) ?? 0) + 1);
+      for (const id of task.personal_tag_ids ?? []) counts.set(id, (counts.get(id) ?? 0) + 1);
     }
     return counts;
   }, [data.taskQueueCatalog]);
 
-  const categoryLabel = taskCategoryOptions.find((option) => option.value === selectedCategory)?.label ?? selectedCategory;
+  const categoryLabel = tagFilter === "untagged" ? "未分類" : data.taskTags?.find((tag) => tag.id === tagFilter)?.name ?? "全部";
+  const ready = tasksInCategory.filter((task) => !["done", "cancelled", "waiting", "blocked"].includes(task.status) && task.current_step_status !== "waiting");
+  const simpleGroups = [
+    { title: "P1 高 High", tasks: ready.filter((task) => simplePriority(task.requested_priority) === 1) },
+    { title: "P2 一般 Normal", tasks: ready.filter((task) => simplePriority(task.requested_priority) === 3) },
+    { title: "P3 低 Low", tasks: ready.filter((task) => simplePriority(task.requested_priority) === 5) },
+    { title: "等回覆 Waiting", tasks: buckets.waiting },
+    { title: "等解除阻塞", tasks: buckets.blocked }
+  ];
   const statusSuggestions = [...new Set(data.taskQueueCatalog.map((task) => task.custom_status_label?.trim()).filter((value): value is string => Boolean(value)))].sort();
   const datedTasks = tasksInCategory.filter((task) => task.due_date && task.status !== "done" && task.status !== "cancelled");
   const todayTaskIds = useMemo(() => new Set(
@@ -125,7 +135,7 @@ export function TaskActionList({
             <p className="text-sm font-extrabold text-indigo-700">Action Center</p>
             <h2 id="task-action-list-heading" className="mt-1 text-2xl font-bold text-ink">任務總表</h2>
             <p className="mt-2 text-sm font-semibold text-slate-600">
-              {restful ? "今日休息，清單只供需要時查看；任務沒有被移動。" : "先處理逾期、7 日內到期和 Urgent，再按需要打開其他任務。"}
+              {restful ? "需要時先打開清單；任務沒有被移動。" : "按 Priority 分組，揀 Tag 或搜尋；需要時先打開，唔使一次睇晒。"}
             </p>
           </div>
           <div className="relative z-10 flex flex-wrap gap-2">
@@ -156,60 +166,34 @@ export function TaskActionList({
         {todayMessage ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800" role="status">{todayMessage}</p> : null}
         {todayError ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800" role="alert">{todayError}</p> : null}
 
-        <section className="panel p-3 sm:p-4" aria-label="選擇任務分類">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {taskCategoryOptions.map((option) => {
-              const selected = selectedCategory === option.value;
+        <section className="panel space-y-3 p-3 sm:p-4" aria-label="選擇任務 Tags">
+          <input className="field" type="search" aria-label="搜尋 Task" placeholder="搵 Task…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <div className="flex flex-wrap gap-2">
+            {[{ value: "", label: "全部" }, ...(data.taskTags ?? []).map((tag) => ({ value: tag.id, label: tag.name })), { value: "untagged", label: "未分類" }].map((option) => {
+              const selected = tagFilter === option.value;
               return (
                 <button
                   type="button"
                   key={option.value}
-                  className={`task-category-button task-category-${option.value} min-h-14 rounded-xl px-3 text-left transition ${selected ? "is-selected text-white shadow-md" : "text-slate-700"}`}
+                  className={`simple-tag-filter ${selected ? "is-active" : ""}`}
                   onClick={() => setSelectedCategory(option.value)}
                   aria-pressed={selected}
                 >
                   <span className="block font-extrabold">{option.label}</span>
-                  <span className={`mt-0.5 block text-xs font-bold ${selected ? "text-white/80" : "text-slate-500"}`}>{categoryCounts.get(option.value) ?? 0} 項未完成</span>
+                  {option.value && option.value !== "untagged" ? <span className="ml-1 opacity-60">{categoryCounts.get(option.value) ?? 0}</span> : null}
                 </button>
               );
             })}
           </div>
         </section>
 
-        <section className="grid gap-3" aria-labelledby="priority-task-heading">
-          <div className="px-1">
-            <p className="eyebrow">Act first</p>
-            <h3 id="priority-task-heading" className="section-title mt-1">優先處理</h3>
-            <p className="muted mt-1 text-sm">每組先顯示首 {primaryPreviewLimit} 項；需要時才展開全部。</p>
-          </div>
-          <TaskQueueSection key={`${selectedCategory}-overdue`} title="已逾期" description="需要重新確認或立即處理" tasks={buckets.overdue} tone="overdue" defaultOpen previewLimit={primaryPreviewLimit} {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-7-days`} title="今日至未來 7 日" description="黃色提示：近期到期" tasks={buckets.dueWithin7Days} tone="soon" defaultOpen previewLimit={primaryPreviewLimit} {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-urgent`} title="Urgent（無日期）" description="沒有正式日期，但需要盡快處理" tasks={buckets.urgent} tone="urgent" defaultOpen previewLimit={primaryPreviewLimit} {...sectionProps} />
+        <section className="grid gap-3" aria-label="按 Priority 排列的工作">
+          {simpleGroups.map((group) => <TaskQueueSection key={`${tagFilter}-${group.title}`} title={group.title} description="按需要打開；先顯示首 5 件" tasks={group.tasks} previewLimit={primaryPreviewLimit} {...sectionProps} />)}
+          <TaskQueueSection key={`${tagFilter}-completed`} title="已做完／已取消" description="歷史紀錄，預設收起" tasks={buckets.completed} completed {...sectionProps} />
         </section>
 
-        <section className="grid gap-3" aria-labelledby="undated-task-heading">
-          <div className="px-1">
-            <p className="eyebrow">No fixed date</p>
-            <h3 id="undated-task-heading" className="section-title mt-1">其他無日期任務</h3>
-            <p className="muted mt-1 text-sm">Urgent 已在上方顯示；其餘無日期任務放在這裡，需要時才展開。</p>
-          </div>
-          <TaskQueueSection key={`${selectedCategory}-semi`} title="Semi-urgent（無日期）" description="近期應推進，但未需要即時處理" tasks={buckets.semiUrgent} tone="semi" {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-non-urgent`} title="Non-urgent（無日期）" description="未有即時時間壓力" tasks={buckets.nonUrgent} tone="calm" {...sectionProps} />
-        </section>
-
-        <section className="grid gap-3" aria-labelledby="other-task-heading">
-          <div className="px-1">
-            <p className="eyebrow">Open when needed</p>
-            <h3 id="other-task-heading" className="section-title mt-1">其他任務</h3>
-            <p className="muted mt-1 text-sm">以下分組預設收起，標題仍會顯示項目數量。</p>
-          </div>
-          <TaskQueueSection key={`${selectedCategory}-14-days`} title="第 8 至 14 日" description="藍色提示：需要預先留意" tasks={buckets.dueWithin14Days} tone="upcoming" {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-later`} title="第 15 日以後" description="較後期的有日期任務" tasks={buckets.dueLater} {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-waiting`} title="Waiting" description="控制權暫時在其他人手上" tasks={buckets.waiting} tone="waiting" {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-blocked`} title="Blocked" description="需要先解除阻塞原因" tasks={buckets.blocked} tone="blocked" {...sectionProps} />
-          <TaskQueueSection key={`${selectedCategory}-completed`} title="已完成／已取消" description="歷史項目，預設收起" tasks={buckets.completed} completed {...sectionProps} />
-        </section>
-
+        <details className="panel p-4">
+          <summary className="min-h-11 cursor-pointer py-2 font-bold">到期日曆</summary>
         <section className="grid gap-3" aria-labelledby="task-calendar-heading">
           <div className="px-1">
             <p className="eyebrow">Calendar view</p>
@@ -218,6 +202,7 @@ export function TaskActionList({
           </div>
           <TaskDueCalendar tasks={datedTasks} today={today} />
         </section>
+        </details>
 
         {editingTask ? (
           <Modal title="修改任務" onClose={() => setEditingTask(null)}>
@@ -235,7 +220,7 @@ export function TaskActionList({
         ) : null}
       </div>
 
-      <TaskPrintSheet categoryLabel={categoryLabel} buckets={buckets} printedOn={today} />
+      <TaskPrintSheet categoryLabel={categoryLabel} buckets={buckets} groups={simpleGroups} printedOn={today} />
     </section>
   );
 }

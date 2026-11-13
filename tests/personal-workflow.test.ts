@@ -51,14 +51,14 @@ test("task list cards keep key information visible and disclose details on deman
   assert.match(detailPage, /prominent/);
 });
 
-test("tasks select one private or shared category before showing the action queue", () => {
+test("tasks filter by viewer-private editable tags without changing privacy", () => {
   const tasksPage = read("components/tasks/TaskActionList.tsx");
-  assert.match(tasksPage, /useState<TaskCategory>\("personal"\)/);
-  assert.match(tasksPage, /taskCategoryOptions\.map/);
+  assert.match(tasksPage, /data\.taskTags/);
+  assert.match(tasksPage, /personal_tag_ids/);
   assert.match(tasksPage, /aria-pressed=\{selected\}/);
-  assert.match(tasksPage, /taskCategoryFor\(task\) === selectedCategory/);
+  assert.doesNotMatch(tasksPage, /taskCategoryFor|taskCategoryOptions/);
   assert.match(tasksPage, /categoryCounts/);
-  assert.match(tasksPage, /項未完成/);
+  assert.match(tasksPage, /未分類/);
 });
 
 test("task categories use the existing area and scope fields without a database migration", () => {
@@ -68,7 +68,8 @@ test("task categories use the existing area and scope fields without a database 
   assert.match(categories, /"personal" \| "family" \| "sec" \| "wecare"/);
   assert.match(categories, /case "sec": return \{ area: "work", scope: "home" \}/);
   assert.match(categories, /case "wecare": return \{ area: "work", scope: "company" \}/);
-  assert.match(form, /taskCategory: form\.task_category/);
+  assert.match(form, /tagIds: form.tag_ids/);
+  assert.doesNotMatch(form, /taskCategory: form\.task_category/);
   assert.match(api, /taskCategoryValue\(body\.taskCategory\)/);
   assert.doesNotMatch(categories, /supabase|migration/i);
 });
@@ -76,14 +77,15 @@ test("task categories use the existing area and scope fields without a database 
 test("task category is visible immediately after the name and required for new tasks", () => {
   const form = read("components/forms/TaskForm.tsx");
   const name = form.indexOf('<span className="label">任務名稱</span>');
-  const category = form.indexOf('<span className="label">分類（必填）</span>');
-  const today = form.indexOf('今日要做（建立後直接顯示在「今日全部」）');
+  const category = form.indexOf('<TaskTagPicker');
+  const today = form.indexOf('加入今日 Today');
   assert.ok(name >= 0 && category > name && category < today);
-  assert.match(form.slice(category, today), /<select[\s\S]*? required>/);
-  assert.match(form.slice(category, today), /<option value="">請選擇分類<\/option>/);
+  const picker = read("components/tasks/TaskTagPicker.tsx");
+  assert.match(picker, /Tags 分類（必填）/);
+  assert.match(picker, /aria-required="true"/);
   assert.match(form, /task_category: ""/);
   assert.match(form, /task_category: taskCategoryFor\(initialTask\)/);
-  assert.match(form, /taskCategoryOptions\.some\(\(option\) => option\.value === form\.task_category\)/);
+  assert.match(form, /form.tag_ids.length === 0/);
   assert.doesNotMatch(form.slice(form.indexOf('更多選項')), /<span className="label">分類/);
 });
 
@@ -98,11 +100,11 @@ test("PWA metadata describes personal work only", () => {
 test("task form starts with a clear task name and keeps follow-up simple", () => {
   const form = read("components/forms/TaskForm.tsx");
   assert.match(form, /任務名稱/);
-  assert.match(form, /完成／截止日（可留空）/);
-  assert.match(form, /負責人/);
+  assert.match(form, /Deadline（可留空）/);
+  assert.match(form, /邊個跟/);
   assert.match(form, /共同跟進（可多選）/);
   assert.ok(form.indexOf("任務名稱") < form.indexOf("由誰共同跟進？"));
-  assert.ok(form.indexOf("負責人") < form.indexOf("由誰共同跟進？"));
+  assert.ok(form.indexOf("邊個跟") < form.indexOf("由誰共同跟進？"));
   assert.match(form, /建立後直接交給對方確認及跟進/);
   assert.doesNotMatch(form, /<span className="label">下一步<\/span>/);
   assert.doesNotMatch(form, /<span className="label">情境<\/span>/);
