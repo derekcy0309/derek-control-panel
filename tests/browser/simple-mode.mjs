@@ -87,7 +87,10 @@ try {
     await dialog.getByLabel('任務名稱',{exact:true}).fill('草稿保留測試');
     assert.equal(todayReads,readsBeforeTyping);
     await dialog.getByRole('button',{name:'關閉',exact:true}).click();
+    const draftAfterClose=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)||'null'),`dcp:task-form-draft:v1:${userId}:new`);
+    assert.equal(draftAfterClose?.title,'草稿保留測試','closing the form must retain the entered draft');
     await page.locator('.simple-add-task').click();
+    await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
     assert.equal(await dialog.getByRole('button',{name:'個人',exact:true}).getAttribute('aria-pressed'),'true');
     await dialog.getByText('更多設定',{exact:false}).click();
