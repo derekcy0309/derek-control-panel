@@ -62,7 +62,8 @@ function SimpleDashboard() {
   if (!data) return <section className="panel space-y-4 p-6"><p role="alert">{error || "未能載入工作清單。"}</p><Button onClick={() => void reload()}>重新載入</Button></section>;
   const current = data;
   const ownTasks = current.taskQueueCatalog.filter((t) => isMyTask(t, current.currentUser.id, current.assignments));
-  const plan = simpleToday({ tasks: [...new Map([...current.tasks, ...current.taskQueueCatalog].map((t) => [t.id, t])).values()], planning: current.planning,
+  // The bounded Today read model includes dependency checks; the full queue is for browsing only.
+  const plan = simpleToday({ tasks: current.tasks, planning: current.planning,
     dependencies: current.taskDependencies, assignments: current.assignments, userId: current.currentUser.id, today });
   const activeTag = current.taskTags?.some((tag) => tag.id === selectedTag) ? selectedTag : "";
   const top = activeTag ? plan.ordered.filter((task) => task.personal_tag_ids?.includes(activeTag)).slice(0, 3) : plan.top;

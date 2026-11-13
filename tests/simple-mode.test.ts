@@ -32,6 +32,14 @@ test("accepted handoff belongs to receiver, pending handoff does not silently be
   assert.equal(isMyTask(base,"suki",assignments),true); assert.equal(isMyTask(base,"derek",assignments),false);
   assert.equal(isMyTask(base,"suki",[{...assignments[0],status:"pending_acceptance"}]),false);
 });
+test("hidden and snoozed planning are never resurfaced as a Now suggestion", () => {
+  const tasks=[base,{...base,id:"snoozed"},{...base,id:"next"}];
+  const defaults={personal_priority:3,pinned:false,hidden_from_today:false,snoozed_until:null};
+  const planning: PlanningMetadata[]=[{...defaults,user_id:"derek",resource_type:"task",resource_id:base.id,planned_date:input.today,plan_role:"now",hidden_from_today:true},
+    {...defaults,user_id:"derek",resource_type:"task",resource_id:"snoozed",planned_date:input.today,plan_role:"later",snoozed_until:"2026-11-15"}];
+  assert.deepEqual(simpleToday({...input,tasks,planning}).top.map(t=>t.id),["next"]);
+  assert.deepEqual(simpleToday({...input,tasks:[base],planning:[{...planning[0],user_id:"suki",hidden_from_today:false}]}).planned,[]);
+});
 test("tags are bounded, viewer private and cannot replace legacy scope/privacy", () => {
   assert.ok(taskTagNameError(" ")); assert.ok(taskTagNameError("x".repeat(41))); assert.equal(taskTagNameError("Wecare"),null);
   const migration=readFileSync("supabase/migrations/20261113172120_personal_task_tags.sql","utf8");

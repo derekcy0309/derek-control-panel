@@ -2,9 +2,13 @@
 // VERIFY_URL, optional PLAYWRIGHT_MODULE and BROWSER_EXECUTABLE; see docs/task-work-day-picker-fix.md.
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { spawn } from 'node:child_process';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
-const url = process.env.VERIFY_URL;
-if (!url) throw new Error('VERIFY_URL required');
+const url = process.env.VERIFY_URL || 'http://localhost:3143';
+let logs='';
+const server=process.env.VERIFY_URL?null:spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','-p','3143'],{env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',NEXT_PUBLIC_SUPABASE_ANON_KEY:'local-mock',NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe']});
+server?.stdout.on('data',chunk=>{logs+=chunk;});server?.stderr.on('data',chunk=>{logs+=chunk;});
+if(server)for(let i=0;i<100;i++){if(server.exitCode!==null)throw new Error(logs.slice(-2000));try{if((await fetch(`${url}/api/auth`)).status===401)break;}catch{}await new Promise(resolve=>setTimeout(resolve,400));}
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Hong_Kong', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const browser = await chromium.launch({ headless: true, executablePath: process.env.BROWSER_EXECUTABLE || undefined });
 try {
@@ -14,7 +18,8 @@ try {
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const userId = '11111111-1111-4111-8111-111111111111';
-    const makeTask = (id, title) => ({ id, title, user_id: userId, owner_id: userId, scope: 'home', area: 'personal', source_type: 'follow_up', owner: null, due_date: null, follow_up_date: null, status: 'not_started', next_action: null, risk: 'low', notes: null, completed_at: null, deleted_at: null, archived_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), requested_priority: 3 });
+    const tags=[{id:'99999999-9999-4999-8999-999999999999',name:'個人',legacy_key:null}];
+    const makeTask = (id, title) => ({ id, title, user_id: userId, owner_id: userId, scope: 'home', area: 'personal', source_type: 'follow_up', owner: null, due_date: null, follow_up_date: null, status: 'not_started', next_action: null, risk: 'low', notes: null, completed_at: null, deleted_at: null, archived_at: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), requested_priority: 3, personal_tag_ids:[tags[0].id] });
     const tasks = [makeTask('22222222-2222-4222-8222-222222222222', '驗證用現有任務')];
     const planning = [];
     let failAdd = true;
@@ -29,7 +34,7 @@ try {
       let body = {};
       let status = 200;
       if (parsed.pathname === '/api/auth') body = { user: { id: userId } };
-      else if (parsed.pathname === '/api/control' && req.method() === 'GET') body = parsed.searchParams.get('view') === 'assignment_alerts' ? { assignments: [], currentUserId: userId, quietModeUntil: null } : snapshot();
+      else if (parsed.pathname === '/api/control' && req.method() === 'GET') body = parsed.searchParams.get('view') === 'task_tags' ? {tags,taskTagIds:[tags[0].id]} : parsed.searchParams.get('view') === 'assignment_alerts' ? { assignments: [], currentUserId: userId, quietModeUntil: null } : {...snapshot(),taskTags:tags};
       else if (parsed.pathname === '/api/control' && req.method() === 'POST') {
         const input = req.postDataJSON();
         if (input.action === 'set_today_task') {
@@ -61,21 +66,22 @@ try {
     page.on('request', request => {
       if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations++;
     });
-    assert.equal(await page.getByRole('button', { name: '新增任務', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: '加 Task', exact: true }).count(), 2); // Same form via topbar/banner.
     await page.getByRole('button', { name: '加入現有任務', exact: true }).first().click();
     await page.getByLabel('搜尋要加入今日的任務').fill('驗證用現有');
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
     await page.getByRole('alert').filter({ hasText: '驗證用暫時失敗' }).waitFor();
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
     await page.getByRole('link', { name: '驗證用現有任務', exact: true }).waitFor();
-    await page.getByRole('button', { name: '新增任務', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '新增任務' });
+    await page.getByRole('button', { name: '加 Task', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: '加 Task' });
     await dialog.getByLabel('任務名稱', { exact: true }).fill('驗證用今日新任務');
-    const category = dialog.getByLabel('分類（必填）');
-    assert.equal(await category.inputValue(), '');
-    assert.equal(await category.evaluate(element => element.validity.valueMissing), true);
-    await category.selectOption('personal');
-    assert.equal(await dialog.getByRole('checkbox', { name: /今日要做/ }).isChecked(), true);
+    const category = dialog.getByRole('button',{name:'個人',exact:true});
+    assert.equal(await category.getAttribute('aria-pressed'),'false');
+    await category.click();
+    await dialog.getByRole('checkbox', { name: /加入今日 Today/ }).check();
+    await dialog.getByText('日期／邊個跟',{exact:false}).click();
+    await dialog.getByText('更多設定',{exact:false}).click();
     await dialog.getByText('自訂哪幾日做／提醒', { exact: false }).click();
     await dialog.getByLabel('任務開始日').fill(today);
     await dialog.getByLabel('加入要做的日子').fill(today);
@@ -110,19 +116,20 @@ try {
     assert.equal(await dialog.getByLabel('任務開始日').inputValue(), today);
     await dialog.getByRole('button', { name: `移除 ${today}`, exact: true }).waitFor();
     assert.equal(createdPayload, undefined, 'adding a date must not submit the task');
-    await dialog.getByRole('button', { name: '新增任務', exact: true }).click();
+    await dialog.getByRole('button', { name: '加 Task', exact: true }).click();
     await dialog.getByRole('alert').filter({ hasText: '驗證用儲存失敗' }).waitFor();
     assert.equal(await dialog.getByRole('button', { name: `移除 ${today}`, exact: true }).count(), 1);
-    await dialog.getByRole('button', { name: '新增任務', exact: true }).click();
+    await dialog.getByRole('button', { name: '加 Task', exact: true }).click();
     await page.getByRole('link', { name: '驗證用今日新任務', exact: true }).waitFor();
     assert.equal(createdPayload.addToToday, true);
     assert.deepEqual(createdPayload.workDates, [today]);
     assert.equal(createdPayload.dueDate, null);
     assert.equal(createdPayload.workStartDate, today);
     await page.getByRole('tab', { name: /任務總表/ }).click();
-    await page.getByRole('button', { name: /Semi-urgent（無日期）/ }).click();
+    await page.getByRole('button', { name: /P2 一般 Normal/ }).click();
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
     const edit = page.getByRole('dialog', { name: '修改任務' });
+    await edit.getByText('更多設定',{exact:false}).click();
     await edit.getByText('自訂哪幾日做／提醒', { exact: false }).click();
     await edit.getByRole('button', { name: `移除 ${today}`, exact: true }).waitFor();
     await edit.getByLabel('加入要做的日子').fill(tomorrowDate);
@@ -132,6 +139,7 @@ try {
     assert.deepEqual(updatedPayload.changes.work_dates, [today, tomorrowDate]);
     assert.equal(updatedPayload.changes.due_date, null);
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
+    await edit.getByText('更多設定',{exact:false}).click();
     await edit.getByText('自訂哪幾日做／提醒', { exact: false }).click();
     await edit.getByRole('button', { name: `移除 ${tomorrowDate}`, exact: true }).waitFor();
     assert.equal(navigations, 0, 'saving must not reload the page');
@@ -141,4 +149,4 @@ try {
     console.log(`${role} ${width}px: no-deadline dates, duplicate/range feedback, keyboard add, failed-save retry, existing-task edit/readback, no reload PASS`);
     await context.close();
   }
-} finally { await browser.close(); }
+} finally { await browser.close(); server?.kill(); }

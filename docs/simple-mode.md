@@ -33,7 +33,15 @@ Migration：`20261113172120_personal_task_tags.sql`（已套用於 Derek self）
 - `tests/sql/personal-task-tags.mjs`：本機隔離 PGlite，三人 RLS、非法連結、分享撤回、改名／刪除不改 Task／財務、seed 一次、匿名拒絕、generic audit。
 - `tests/browser/simple-mode.mjs`：三人，360／1280 px，表單、草稿、失敗重試、工作日、Tags CRUD、安靜模式、無 document reload；所有 data API 為 mock，不代替真人 Google 登入測試。
 - `tests/browser/todo-print.mjs`：三人手機／桌面、Today 次序、Tags 篩選、A4 print CSS／PDF、分頁、空白及錯誤重試，無 live writes。
-- 原有完整單元測試、lint、typecheck 仍需通過。
+- 最終完整單元測試 308／308 通過，lint、typecheck 及 Next.js production build 通過。工作日舊流程亦完成三人 390／1280 px 的修改／重新讀取、無 Deadline、範圍與重複提示回歸測試。
+
+### Preview 登入限制
+
+Git Preview 已成功 build。實際從 Preview 按 Google 登入後，Supabase 會導回正式網站 `/?code=…`，無法在原 Preview 完成 PKCE callback；這是現有 redirect 白名單限制，本次沒有更改 Google provider、OAuth credentials、正式網址或登入名單。
+
+已另外在正式網站完成原有 Derek Google 登入，確認帳戶正常；三角色新介面使用隔離 fixture 驗證，真實 DB 以三個 authenticated 身分在 rollback transaction 驗證。未將這些測試冒稱為三個真人帳戶的 Preview 登入。
+
+Production gate：需批准在 Supabase 為這條功能分支的固定 Preview 網址加入 callback（只限本專案的該分支），再完成真實 Preview 讀取後才發布正式版本。固定網址由 Vercel deployment alias 提供，見交付訊息。
 
 ## 部署及回復
 

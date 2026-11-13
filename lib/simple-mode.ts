@@ -37,14 +37,18 @@ export function simpleToday(input: {
 }) {
   const { tasks, planning, dependencies, assignments, userId, today } = input;
   const own = tasks.filter((t) => isMyTask(t, userId, assignments));
-  const plans = orderTodayPlan(planning.filter((p) => p.resource_type === "task" && p.planned_date === today && p.plan_role));
+  const myPlanning = planning.filter((p) => p.user_id === userId && p.resource_type === "task");
+  const plans = orderTodayPlan(myPlanning.filter((p) => p.planned_date === today && p.plan_role
+    && !p.hidden_from_today && (!p.snoozed_until || p.snoozed_until <= today)));
   const planned = plans.flatMap((p) => {
     const task = tasks.find((t) => t.id === p.resource_id);
     return task && (p.plan_source === "manual" || taskScheduledForDate(task, today)) ? [task] : [];
   });
   const ready = (task: Task) => actionableTask(task, dependencies, tasks);
   const suggestions = sortByPriority(own.filter((t) => ready(t) && taskScheduledForDate(t, today)
-    && (!t.snoozed_until || t.snoozed_until <= today) && !planned.some((p) => p.id === t.id)));
+    && (!t.snoozed_until || t.snoozed_until <= today)
+    && !myPlanning.some((p) => p.resource_id === t.id && (p.hidden_from_today || (p.snoozed_until && p.snoozed_until > today)))
+    && !planned.some((p) => p.id === t.id)));
   // A manual plan always wins. Completing one reveals the next in that same order.
   const active = planned.filter(ready);
   const ordered = planned.length ? active : suggestions;
