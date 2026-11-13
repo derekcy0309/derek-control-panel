@@ -57,4 +57,4 @@ Security Advisor：新增 Tags 表及 RPC 沒有 finding。原有專案仍有舊
 
 首選回復方式：將 Production 指回之前的 `42f2adac93f09f72a2292d7c216860d0595bc30b` 部署，保留新增 Tags 表及資料；舊 app 會忽略新表。只有需要停用新 RPC 時才在 app rollback 後執行 `supabase/rollback-20261113172120-personal-task-tags.sql`；不 DROP 表、清資料或改帳戶。重新啟用只需恢復同三個 RPC 的 authenticated EXECUTE。
 
-限制：原有完整 JSON 匯出／還原尚未納入新 Tags；還原任務後可在「未分類」重新選 Tags。重複工作新一期亦可從未分類重新選擇 Tags；不會因缺少 Tag 而遺失或隱藏 Task。
+Tags 延伸：JSON 備份／還原已納入本人 Tags、任務連結及初始化設定；下一期重複工作亦會沿用剛完成一期的擁有者 Tags。詳見 `docs/backup-restore.md`、`docs/recurring-routines.md` 及 `docs/tag-continuity.md`。不改分享權限，亦不重寫舊任務。

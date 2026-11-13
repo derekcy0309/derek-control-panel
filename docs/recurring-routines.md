@@ -12,6 +12,12 @@
 
 下一項會保留任務的工作內容、預計時間、能量、context、Definition of Done、風險、影響旗標、項目連結及跟進日相對偏移；它不會複製舊有分享、交接、notes 或 checkpoint。這避免私人資料或原本的指派被意外帶到下一輪。
 
+### Tags 自動沿用
+
+下一期自動沿用**任務擁有者在剛完成那一期所選的有效 Tags**，並非只取最初 seed 的舊分類。中途改名沿用同一 ID；已移除的 Tag 不帶往下一期，沒有 Tags 亦不會強行補預設。重複完成仍只產生一項 successor／一組連結。
+
+這由 generation 的 private、SECURITY INVOKER trigger 在原本產生下一期的交易內處理，不取代現有 cadence／結束日期／通知邏輯，也不回填之前已存在的下一期。即使由獲交接者按完成，仍只複製擁有者的 Tags；其他人的私人 Tags 不會帶入擁有者的私人下一期。
+
 ## 權限與私隱
 
 - `task_recurrence_rules` 只可由任務擁有者讀取及管理。

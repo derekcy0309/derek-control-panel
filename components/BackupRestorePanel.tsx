@@ -11,6 +11,8 @@ const labels: Record<string, string> = {
   checkpoints: "Restart Checkpoint", taskResources: "任務資源", recurrenceRules: "重複規則",
   dependencies: "任務依賴", milestones: "里程碑", weeklyReviews: "週檢視",
   focusSessions: "Focus 歷史", timeObservations: "估時觀察", notificationPreferences: "通知偏好",
+  personalTaskTags: "Tags", taskTagAssignments: "任務 Tags 連結", taskTagPreferences: "Tags 設定",
+  "taskTagAssignments.unavailable": "無法連結的任務 Tags", "taskTagAssignments.deletedTag": "已移除的 Tags 連結",
   profile: "帳戶資料", settings: "Settings", "taskResources.storage": "Storage 資源",
   "checkpoints.archived": "已關閉任務的 checkpoint", "taskResources.archived": "已關閉任務的資源"
 };
@@ -97,7 +99,7 @@ export function BackupRestorePanel({ onRestored }: Props) {
       <Button type="button" variant="secondary" disabled={Boolean(downloading)} onClick={() => void download("tasks")}><Download className="h-5 w-5" />{downloading === "tasks" ? "建立中…" : "任務 CSV"}</Button>
       <Button type="button" variant="secondary" disabled={Boolean(downloading)} onClick={() => void download("finance")}><Download className="h-5 w-5" />{downloading === "finance" ? "建立中…" : "財務 CSV"}</Button>
     </div>
-    <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">JSON 不包括密碼、登入資料、另一位使用者的資料、分享權限、推送裝置和 Storage 檔案本體。CSV 會把以「=、+、-、@」開頭的文字安全保留為純文字。</p>
+    <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">JSON 包括你自己的 Tags 同任務 Tags 連結，還原後唔使重新揀。相同 Tag 名稱會沿用現有 Tag；已移除的 Tag 不會復活，亦不會改變分享權限。JSON 不包括密碼、登入資料、其他人的私人資料、推送裝置和 Storage 檔案本體。任務 CSV 亦會列出 Tags，並防止試算表公式注入。</p>
 
     <div className="rounded-2xl border border-slate-200 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-bold text-slate-900">從 JSON 備份還原</h3><p className="muted mt-1 text-sm leading-6">先讀取及比較備份；你仍可隨時取消。此功能不會重設資料庫，也不會改動現有項目。</p></div><Button type="button" variant="secondary" disabled={processing} onClick={() => inputRef.current?.click()}><FileUp className="h-5 w-5" />{processing ? "檢查中…" : "選擇 JSON 備份"}</Button></div>

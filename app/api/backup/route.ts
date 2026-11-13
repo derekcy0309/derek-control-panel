@@ -4,8 +4,10 @@ import {
   backupFormat,
   backupRecordCounts,
   backupVersion,
+  backupTaskCsvRows,
   csvText,
   parseBackup,
+  planBackupTagRestore,
   type BackupData,
   type BackupEnvelope
 } from "@/lib/backup";
@@ -62,8 +64,9 @@ export async function GET(request: NextRequest) {
       { key: "expected_date", label: "預計日期" }, { key: "actual_date", label: "實際日期" },
       { key: "month", label: "月份" }, { key: "opening_balance", label: "期初結餘" }, { key: "status", label: "狀態" }
     ])
-    : csvText(backup.data.tasks, [
+    : csvText(backupTaskCsvRows(backup.data), [
       { key: "title", label: "任務" }, { key: "area", label: "範圍" }, { key: "status", label: "狀態" },
+      { key: "tags", label: "Tags" },
       { key: "due_date", label: "到期日" }, { key: "next_action", label: "下一步" },
       { key: "estimated_minutes", label: "預計分鐘" }, { key: "actual_minutes", label: "實際分鐘" },
       { key: "risk", label: "風險" }
@@ -105,13 +108,13 @@ export async function POST(request: NextRequest) {
   if (body.confirmation !== "RESTORE" || body.acknowledged !== true) {
     return jsonError("請閱讀預覽並確認「只新增、不覆蓋」後才可還原。", 422);
   }
-  const restored = await context.client.rpc("restore_backup_v2", { p_backup: restorePayload(parsed.backup) });
+  const restored = await context.client.rpc("restore_backup_v3", { p_backup: restorePayload(parsed.backup) });
   if (restored.error) return databaseError(restored.error);
   return Response.json({ restored: restored.data ?? {} }, { headers: privateHeaders() });
 }
 
 async function buildBackup({ client, user }: RequestContext): Promise<BackupEnvelope | Response> {
-  const [profile, settings, tasks, operatingItems, transactions, meetings, balances, planning, capacityCheckins, weeklyReviews, notificationPreferences, recurrenceRules] = await Promise.all([
+  const [profile, settings, tasks, operatingItems, transactions, meetings, balances, planning, capacityCheckins, weeklyReviews, notificationPreferences, recurrenceRules, personalTaskTags, taskTagAssignments, taskTagPreferences] = await Promise.all([
     client.from("user_profiles").select("user_id,display_name,timezone,active,created_at,updated_at").eq("user_id", user.id).maybeSingle(),
     client.from("user_settings").select("daily_reminder_time,default_reminder_days,theme,language,accent_colour,gentle_mode,low_capacity_mode,dashboard_density,visual_intensity,wip_limit,quiet_hours_start,quiet_hours_end,notification_mode,default_area,focus_minutes,monthly_profit_target,pinned_pages,created_at,updated_at").eq("user_id", user.id).maybeSingle(),
     client.from("tasks").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).limit(maxCollectionSize),
@@ -123,9 +126,12 @@ async function buildBackup({ client, user }: RequestContext): Promise<BackupEnve
     client.from("daily_capacity_checkins").select("*").eq("user_id", user.id).order("checkin_date", { ascending: true }).limit(maxCollectionSize),
     client.from("weekly_reviews").select("*").eq("user_id", user.id).order("week_start", { ascending: true }).limit(maxCollectionSize),
     client.from("notification_preferences").select("*").eq("user_id", user.id).maybeSingle(),
-    client.from("task_recurrence_rules").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).limit(maxCollectionSize)
+    client.from("task_recurrence_rules").select("*").eq("owner_id", user.id).order("created_at", { ascending: true }).limit(maxCollectionSize),
+    ownTagRows(client, "personal_task_tags", user.id, ["id"]),
+    ownTagRows(client, "task_tag_assignments", user.id, ["task_id", "tag_id"]),
+    ownTagRows(client, "task_tag_preferences", user.id, ["user_id"])
   ]);
-  const firstError = [profile, settings, tasks, operatingItems, transactions, meetings, balances, planning, capacityCheckins, weeklyReviews, notificationPreferences, recurrenceRules].find((result) => result.error)?.error;
+  const firstError = [profile, settings, tasks, operatingItems, transactions, meetings, balances, planning, capacityCheckins, weeklyReviews, notificationPreferences, recurrenceRules, personalTaskTags, taskTagAssignments, taskTagPreferences].find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
   const taskIds = (tasks.data ?? []).map((row) => String(row.id));
@@ -149,6 +155,7 @@ async function buildBackup({ client, user }: RequestContext): Promise<BackupEnve
     recurrenceRules: rows(recurrenceRules.data), dependencies: rows(dependencies.data).filter((row) => taskIds.includes(String(row.depends_on_task_id))),
     milestones: rows(milestones.data), weeklyReviews: rows(weeklyReviews.data), focusSessions: rows(focusSessions.data),
     timeObservations: rows(timeObservations.data), notificationPreferences: notificationPreferences.data ? [record(notificationPreferences.data)] : [],
+    personalTaskTags: rows(personalTaskTags.data), taskTagAssignments: rows(taskTagAssignments.data), taskTagPreferences: rows(taskTagPreferences.data),
     profile: profile.data ? record(profile.data) : null, settings: settings.data ? record(settings.data) : null
   };
   return {
@@ -163,6 +170,7 @@ async function buildBackup({ client, user }: RequestContext): Promise<BackupEnve
     includes: [
       "本人擁有的任務、工作項目、財務、會議、容量與週檢視資料",
       "本人撰寫的 Restart Checkpoint、任務細步驟、非 Storage 的資源資料、依賴與里程碑",
+      "自己的 Tags、任務 Tags 連結及初始化設定（包括自己在可讀取的共享任務上所選的 Tags）",
       "個人設定及通知偏好（只供參考，不會於還原時套用）"
     ],
     excluded: [
@@ -176,6 +184,26 @@ async function buildBackup({ client, user }: RequestContext): Promise<BackupEnve
 
 async function previewBackup({ client, user }: RequestContext, backup: BackupEnvelope) {
   const conflicts: Array<{ category: string; count: number }> = [];
+  const [tags, links, preferences] = await Promise.all([
+    ownTagRows(client, "personal_task_tags", user.id, ["id"]),
+    ownTagRows(client, "task_tag_assignments", user.id, ["task_id", "tag_id"]),
+    ownTagRows(client, "task_tag_preferences", user.id, ["user_id"])
+  ]);
+  const tagError = [tags, links, preferences].find((result) => result.error)?.error;
+  if (tagError) return databaseError(tagError);
+  const availableTaskIds = new Set(backup.data.tasks.filter((task) => !task.deleted_at && typeof task.title === "string" && task.title.trim()).map((task) => String(task.id)));
+  const linkedTaskIds = [...new Set(backup.data.taskTagAssignments.map((link) => String(link.task_id)))];
+  for (let index = 0; index < linkedTaskIds.length; index += 200) {
+    const result = await client.from("tasks").select("id,deleted_at").in("id", linkedTaskIds.slice(index, index + 200));
+    if (result.error) return databaseError(result.error);
+    for (const task of result.data ?? []) {
+      if (task.deleted_at) availableTaskIds.delete(task.id); else availableTaskIds.add(task.id);
+    }
+  }
+  const tagPlan = planBackupTagRestore(backup.data, rows(tags.data), rows(links.data), availableTaskIds);
+  if (tagPlan.tagConflicts) conflicts.push({ category: "personalTaskTags", count: tagPlan.tagConflicts });
+  if (tagPlan.linkConflicts) conflicts.push({ category: "taskTagAssignments", count: tagPlan.linkConflicts });
+  if (backup.data.taskTagPreferences.length && preferences.data.length) conflicts.push({ category: "taskTagPreferences", count: 1 });
   for (const source of restoreTables) {
     const records = backup.data[source.key] as Array<Record<string, unknown>>;
     const ids = records.map((row) => typeof row.id === "string" ? row.id : "").filter(Boolean);
@@ -198,6 +226,8 @@ async function previewBackup({ client, user }: RequestContext, backup: BackupEnv
   const inactiveResources = backup.data.taskResources.filter((row) => !activeTaskIds.has(String(row.task_id))).length;
   const childLinks = backup.data.tasks.filter((row) => typeof row.parent_task_id === "string" && row.parent_task_id.length > 0).length;
   const unsupported = [
+    tagPlan.unavailableLinks ? { category: "taskTagAssignments.unavailable", count: tagPlan.unavailableLinks, reason: "任務已刪除、目前無權讀取，或不在可還原的本人任務內；不會因 Tags 重新分享或開放任務。" } : null,
+    tagPlan.deletedTagLinks ? { category: "taskTagAssignments.deletedTag", count: tagPlan.deletedTagLinks, reason: "相關 Tag 已移除；不會復活你目前已刪除的 Tag。" } : null,
     childLinks ? { category: "tasks.parent", count: childLinks, reason: "子任務關係會保留在 JSON；目前還原只會建立任務，不會自動重連上層任務。" } : null,
     backup.data.recurrenceRules.length ? { category: "recurrenceRules", count: backup.data.recurrenceRules.length, reason: "重複規則會保留在備份中；V1 不會自動重啟它們，以免產生重複任務。" } : null,
     backup.data.focusSessions.length ? { category: "focusSessions", count: backup.data.focusSessions.length, reason: "Focus 歷史保留在備份中，暫不重建以避免把舊時段誤當成正在進行。" } : null,
@@ -222,7 +252,7 @@ async function previewBackup({ client, user }: RequestContext, backup: BackupEnv
     recordCounts: counts,
     conflicts,
     unsupported,
-    canRestore: restoreCount > 0
+    canRestore: restoreCount + tagPlan.tagAdds + tagPlan.linkAdds + (backup.data.taskTagPreferences.length && !preferences.data.length ? 1 : 0) > 0
   };
 }
 
@@ -249,6 +279,21 @@ async function byIds(client: SupabaseClient, table: string, foreignKey: string, 
   if (!ids.length) return { data: [] as Array<Record<string, unknown>>, error: null };
   const result = await client.from(table).select("*").in(foreignKey, ids).eq(ownerColumn, userId).limit(maxCollectionSize);
   return { data: result.data ?? [], error: result.error };
+}
+
+// Range pagination avoids Supabase's default row cap silently dropping links.
+async function ownTagRows(client: SupabaseClient, table: string, userId: string, orderColumns: string[]) {
+  const data: Array<Record<string, unknown>> = [];
+  for (let index = 0; index <= maxCollectionSize; index += 1000) {
+    let query = client.from(table).select("*").eq("user_id", userId);
+    for (const column of orderColumns) query = query.order(column, { ascending: true });
+    const result = await query.range(index, Math.min(index + 999, maxCollectionSize));
+    if (result.error) return { data, error: result.error };
+    data.push(...(result.data ?? []));
+    if (data.length > maxCollectionSize) return { data: [], error: { message: "BACKUP_TAG_COLLECTION_TOO_LARGE" } };
+    if ((result.data?.length ?? 0) < 1000) break;
+  }
+  return { data, error: null };
 }
 
 async function stepsForOwnedTasks(client: SupabaseClient, taskIds: string[]) {
@@ -306,8 +351,10 @@ function dateStamp() { return new Date().toISOString().slice(0, 10).replaceAll("
 function privateHeaders() { return { "Cache-Control": "private, no-store, max-age=0", "X-Content-Type-Options": "nosniff" }; }
 function jsonError(message: string, status: number) { return Response.json({ error: message }, { status, headers: privateHeaders() }); }
 function databaseError(error: { code?: string; message?: string }) {
-  if (error.code === "PGRST205" || error.message?.includes("Could not find the table") || error.message?.includes("restore_backup_v2")) return jsonError("資料庫尚未套用最新 Backup／Restore migration。", 503);
+  if (error.code === "PGRST205" || error.message?.includes("Could not find the table") || error.message?.includes("restore_backup_v3")) return jsonError("資料庫尚未套用最新 Backup／Restore migration。", 503);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
+  if (error.message?.includes("BACKUP_TAG_LIMIT")) return jsonError("還原後會超出上限（最多 60 個 Tags、每項任務 20 個）。未有資料被改動；請先整理 Tags 再重試。", 422);
+  if (error.message?.includes("BACKUP_TAG_COLLECTION_TOO_LARGE")) return jsonError("Tags 資料超出安全上限，備份未有完成；請先整理資料再重試。", 422);
   if (error.message?.includes("BACKUP_INVALID")) return jsonError("備份資料未能通過安全驗證。", 422);
   return jsonError("未能安全完成備份操作，請稍後重試。", 500);
 }

@@ -169,3 +169,7 @@ create policy "user_settings_delete_own" on public.user_settings for delete usin
 -- task_tag_preferences (one-time seed marker), task_tag_assignments and three
 -- authenticated SECURITY INVOKER RPCs. Labels are viewer-private and must never
 -- grant task access or replace the legacy area/scope/visibility columns.
+-- Tag continuity (2026-11-14): migrations/20261113190743_recurrence_and_backup_tags.sql
+-- adds an invoker private recurrence-generation trigger and restore_backup_v3.
+-- Existing data/permissions are unchanged; restore is same-account, add-only,
+-- transactional and includes tags, viewer-private links and the seed marker.
