@@ -31,6 +31,7 @@
 - Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
 - 細步驟備份：JSON 包含本人任務內的細步驟；還原沿用原本「只新增、不覆蓋」流程，舊版 JSON 沒有細步驟亦可正常還原。
 - Tags 延續：重複工作下一期沿用剛完成一期的本人 Tags；JSON 備份及安全還原包括私人 Tags／連結／初始化設定，任務 CSV 亦列出 Tags。舊格式相容、不覆蓋既有資料或分享設定；見 [`docs/tag-continuity.md`](docs/tag-continuity.md)。
+- Grok Agent 專用登入：管理員可用到期／可撤銷 Access Code 開放本人指定 Task／Notes 的只讀及新增；不開放修改、刪除、財務、藥物或其他用戶。沿用同一 Task／Notes 資料源；見 [`docs/grok-agent-access.md`](docs/grok-agent-access.md)。
 - Capacity Overload Warning：以能量、可用時間、WIP、deadline、night-shift 及未來家庭／健康承諾作溫和容量提示；只建議可延期／交接項目，所有改動仍要本人確認
 - Life OS 權限分層：個人及工作預設私人；只有已接受家庭連結的 `family + household` 項目會共同可見，未整理 Inbox 永遠先保持私人
 - 免費智能每日排程：使用者輸入一段或多段可工作時間、能量、家庭負擔及恢復需要；規則引擎自動做安全／期限／WIP／容量篩選及安排，全程不使用付費 AI

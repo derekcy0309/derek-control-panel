@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Droplets, MoonStar, Palette, Save, ShieldCheck, Sparkles, SunMedium, Waves } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { BackupRestorePanel } from "@/components/BackupRestorePanel";
+import { AgentAccessPanel } from "@/components/AgentAccessPanel";
 import { BuildInfo } from "@/components/BuildInfo";
 import { LoadingState } from "@/components/LoadingState";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -65,6 +66,7 @@ function SettingsContent() {
     />
     <BuildInfo />
     <BackupRestorePanel onRestored={reload} />
+    {data.profile.is_admin && data.profile.active ? <AgentAccessPanel /> : null}
     {data.profile.is_admin && data.profile.active ? <section className="panel grid gap-6 p-5"><div><p className="eyebrow">Administrator</p><h2 className="section-title mt-1">新增 Portal 用戶</h2><p className="muted mt-2 text-sm leading-6">只有啟用中的管理員可邀請新用戶。請輸入對方的 Google 登入電郵；對方須先確認邀請，系統不會設定或查看密碼。</p><div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1.4fr_auto]"><input className="field" value={inviteName} onChange={(event) => setInviteName(event.target.value)} placeholder="顯示名稱（可選）" aria-label="新用戶顯示名稱" /><input className="field" type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="新用戶完整電郵" aria-label="新用戶電郵" /><Button type="button" disabled={inviting || !inviteEmail} onClick={inviteUser}>{inviting ? "邀請中…" : "發送邀請"}</Button></div>{inviteMessage ? <p className="mt-3 text-sm font-semibold text-slate-600" role="status">{inviteMessage}</p> : null}</div><div className="border-t border-slate-200 pt-5"><h3 className="font-extrabold text-slate-900">帳戶密碼重設</h3><p className="muted mt-2 text-sm leading-6">輸入完整帳戶電郵。系統只會發送安全重設郵件，不會顯示或保存對方的新密碼。</p><div className="mt-4 flex flex-col gap-2 sm:flex-row"><input className="field" type="email" value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} placeholder="完整電郵地址" aria-label="需要重設密碼的帳戶電郵" /><Button type="button" variant="secondary" disabled={resetting || !resetEmail} onClick={sendPasswordReset}>{resetting ? "發送中…" : "發送重設郵件"}</Button></div>{resetMessage ? <p className="mt-3 text-sm font-semibold text-slate-600" role="status">{resetMessage}</p> : null}</div></section> : null}
     <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center lg:bottom-4"><Button type="submit" disabled={saving}><Save className="h-5 w-5" />{saving ? "儲存中…" : "儲存個人設定"}</Button>{message ? <p className="text-sm font-semibold text-slate-600" role="status">{message}</p> : null}</div>
   </form>;

@@ -173,3 +173,7 @@ create policy "user_settings_delete_own" on public.user_settings for delete usin
 -- adds an invoker private recurrence-generation trigger and restore_backup_v3.
 -- Existing data/permissions are unchanged; restore is same-account, add-only,
 -- transactional and includes tags, viewer-private links and the seed marker.
+-- Grok agent access: migrations/20261114071824_grok_agent_access.sql adds
+-- opt-in, hashed/revocable grants, owner-only resource scopes, audit, request
+-- dedupe and nullable created_by_agent_id attribution. The operation RPC is
+-- service-role-only SECURITY INVOKER, read/create only; Auth users are unchanged.

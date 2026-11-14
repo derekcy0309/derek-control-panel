@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
@@ -190,6 +191,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           </fieldset>
           </form>
         </details>
+        <Link href="/agent" className="mt-4 flex min-h-11 items-center text-sm font-semibold text-indigo-700">Grok／AI Agent 專用登入</Link>
         <div className="mt-5 flex items-start gap-2 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>登入資料使用 HttpOnly cookie 保存；敏感 session 不會寫入 localStorage。</p></div>
       </div>
     </div>
