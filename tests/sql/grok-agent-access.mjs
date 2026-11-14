@@ -43,6 +43,8 @@ try {
   await db.exec(await readFile(new URL(file,directory),'utf8'));
   const validator=(await readdir(directory)).find(name=>name.endsWith('_grok_agent_date_validator.sql'));assert.ok(validator);
   await db.exec(await readFile(new URL(validator,directory),'utf8'));
+  const brief=(await readdir(directory)).find(name=>name.endsWith('_private_calendar_daily_brief.sql'));assert.ok(brief);
+  await db.exec(await readFile(new URL(brief,directory),'utf8'));
   await asRole('authenticated',owner);
   const hash='a'.repeat(64);
   const grant=(await db.query('select public.create_my_agent_access($1,$2,30,$3::uuid[],$4::uuid[],$5::uuid[]) value',[hash,'Grok fixture',[task],[note],[tag]])).rows[0].value;
@@ -56,6 +58,20 @@ try {
   assert.equal((await op('detail',{kind:'note',id:note})).item.id,note);
   await assert.rejects(op('detail',{kind:'task',id:foreign}),/AGENT_NOT_FOUND/);
   await assert.rejects(op('detail',{kind:'task',id:hidden}),/AGENT_NOT_FOUND/);
+  await assert.rejects(db.query('select public.agent_brief_owner($1)',[hash]),/AGENT_UNAUTHORIZED/);
+  await asRole('authenticated',owner);await db.query('select public.enable_my_agent_brief($1)',[grant.id]);
+  await asRole('service_role');assert.equal((await db.query('select public.agent_brief_owner($1) value',[hash])).rows[0].value,owner);
+  assert.deepEqual((await op('list',{kind:'task'})).items.map(x=>x.id).sort(),[task,hidden].sort());
+  const future='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4';await db.query('insert into public.tasks(id,user_id,owner_id,title) values($1,$2,$2,$3)',[future,owner,'Future own task']);
+  assert.equal((await op('detail',{kind:'task',id:future})).item.title,'Future own task');
+  await assert.rejects(op('detail',{kind:'task',id:foreign}),/AGENT_NOT_FOUND/);
+  const apple=(await db.query("insert into public.apple_calendar_connections(owner_id,account_email,secret_ciphertext) values($1,'fixture@example.test','ENCRYPTED_FIXTURE') returning id,updated_at",[owner])).rows[0];
+  await db.query("select public.save_private_calendar_snapshot($1,$2,current_date,'[]',now(),false,$3)",[owner,apple.id,apple.updated_at]);
+  await assert.rejects(db.query("select public.save_private_calendar_snapshot($1,$2,current_date,'[]',now(),false,$3)",[other,apple.id,apple.updated_at]),/CALENDAR_FORBIDDEN/);
+  await asRole('authenticated',owner);assert.equal((await db.query('select owner_id from public.private_calendar_snapshots')).rows.length,1);
+  await assert.rejects(db.query('select secret_ciphertext from public.apple_calendar_connections'),/permission denied/);
+  await asRole('authenticated',other);assert.equal((await db.query('select owner_id from public.private_calendar_snapshots')).rows.length,0);assert.equal((await db.query('select id from public.apple_calendar_connections')).rows.length,0);
+  await asRole('service_role');
   await assert.rejects(op('delete',{kind:'task',id:task}),/AGENT_FORBIDDEN/);
   const input={request_id:crypto.randomUUID(),title:'New agent task',description:'Fixture only',priority:3,due_date:null,tag_ids:[tag]};
   const created=await op('create_task',input);assert.equal(created.duplicate,false);
@@ -69,6 +85,7 @@ try {
   await assert.rejects(db.query('select public.revoke_my_agent_access($1)',[grant.id]),/AGENT_ADMIN_REQUIRED/);
   await asRole('authenticated',owner);await db.query('select public.revoke_my_agent_access($1)',[grant.id]);
   await asRole('service_role');await assert.rejects(op('status'),/AGENT_UNAUTHORIZED/);
+  await assert.rejects(db.query('select public.agent_brief_owner($1)',[hash]),/AGENT_UNAUTHORIZED/);
   await db.exec('reset role');assert.equal((await db.query('select amount from public.transactions')).rows[0].amount,'1234');
   console.log('PASS Grok local smoke: migration, owner-only opt-in read/create, no anonymous/human RPC, no delete, idempotency, revocation and unchanged finance');
 }finally{await db.close();}

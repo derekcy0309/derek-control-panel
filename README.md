@@ -4,6 +4,8 @@
 
 ## 主要能力
 
+- 私人三日總覽：首頁合併顯示本人 Panel 行程、選定 Apple Calendar 的唯讀快取及今日起三日未完成 Deadline。Apple 行程仍在 iPhone 修改，不進入共享 Task。Grok 可另授權讀本人日後新增 Task，並以 `/agent/brief` 一份精簡文字執行 08:30 Routine；Apple 授權及 Grok Routine 均需完成一次設定，未連接／未排程不會假稱啟用。見 [`docs/private-calendar-brief.md`](docs/private-calendar-brief.md)。
+
 - 簡易模式（2026-11-14）：Dashboard 用三個概覽卡及最多三件重點；跟 Priority 建議，已手動排好的 Today 次序優先。加 Task 只必填名稱及 Tags，P2 為預設；日期／負責人、Routine、工作日及共同跟進按需要打開。不再要求能量、估時或工作模式。詳見 [`docs/simple-mode.md`](docs/simple-mode.md)。
 - 私人 Tags：全部可以新增、改名、移除。Derek 首次保留原有四個分類；其他用戶首次只設「個人、Wecare」。刪除後不會重建預設，不改 Task、scope、area 或分享權限。
 

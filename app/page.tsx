@@ -12,6 +12,7 @@ import { TaskForm, type TaskSaveResult } from "@/components/forms/TaskForm";
 import { TaskActionList } from "@/components/tasks/TaskActionList";
 import { ReminderPanel } from "@/components/ReminderPanel";
 import { TodayAllTasks } from "@/components/TodayAllTasks";
+import { CalendarBriefPanel } from "@/components/CalendarBriefPanel";
 import { Button } from "@/components/ui/Button";
 import { useTodayData } from "@/hooks/useTodayData";
 import { controlAction } from "@/lib/control-api";
@@ -54,6 +55,7 @@ function SimpleDashboard() {
     setAdding(false);
     if (!result) { void reload(); return; }
     saveTaskLocally(result.task);
+    window.dispatchEvent(new Event("dcp:calendar-changed"));
     if (result.refreshRelated) void reload();
     setMessage("Task 已儲存。");
   }
@@ -92,6 +94,7 @@ function SimpleDashboard() {
     try {
       const result = await controlAction<{ task: Task }>("update_task", { id: task.id, changes: { status: "done" } });
       saveTaskLocally(result.task);
+      window.dispatchEvent(new Event("dcp:calendar-changed"));
       if (task.recurrence_rule_id) void reload();
       const next = plan.top.find((t) => t.id !== task.id);
       setMessage(`${task.recurrence_rule_id ? "今次已做完；之後會按重複設定繼續。" : "已做完。"}${next ? ` 下一件：${next.title}` : ""}`);
@@ -130,6 +133,7 @@ function SimpleDashboard() {
       <div className="flex items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">最多三件 · One at a time</p><h2 className="mt-1 text-xl font-extrabold">{plan.isSuggestion ? "按 Priority 建議" : "今日重點"}</h2></div><button type="button" className="min-h-11 text-sm font-bold text-indigo-700" onClick={() => setActiveTab("today")}>自己排今日 →</button></div>
       {!top.length ? <section className="panel p-7 text-center"><ListTodo className="mx-auto h-8 w-8 text-indigo-300" /><p className="mt-3 font-bold">{activeTag ? "呢個 Tag 暫時冇今日重點。" : completed && completed === plan.planned.length ? "今日已排的工作做晒。" : "暫時冇可開始的工作。"}</p><p className="mt-1 text-sm text-slate-500">需要時可以加 Task，或者去「今日全部」查看安排。</p></section> : null}
       {top.map((task, index) => <SimpleTaskCard key={task.id} task={task} index={index} inToday={plannedIds.has(task.id)} busy={busy} onStart={() => void start(task)} onComplete={() => void complete(task)} />)}
+      <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
       {pending.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">新交接（{pending.length}）</summary><p className="mt-2 text-sm text-slate-500">接受後先加入你的工作建議。</p>{pending.slice(0, 3).map((a) => <Link key={a.id} className="mt-2 flex min-h-12 items-center justify-between gap-2 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" href={`/tasks/${a.resource_id}`}><span>{current.taskCatalog.find((t) => t.id === a.resource_id)?.title || "新工作交接"}</span><span className="shrink-0">查看／接受 →</span></Link>)}<Link href="/sharing" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-indigo-700">查看全部交接 →</Link></details> : null}
       {decisions.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">等我決定（{decisions.length}）</summary>{decisions.slice(0, 3).map((task) => <Link key={task.id} className="mt-2 flex min-h-12 items-center justify-between rounded-xl bg-slate-50 p-3 text-sm font-semibold" href={`/tasks/${task.id}`}>{task.title}<ArrowRight className="h-4 w-4" /></Link>)}</details> : null}
       <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-600">提醒及活動</summary><ReminderPanel reminders={current.reminders} participants={current.participants} currentUserId={current.currentUser.id} onChanged={reload} /></details>

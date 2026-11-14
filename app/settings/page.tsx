@@ -5,6 +5,7 @@ import { Droplets, MoonStar, Palette, Save, ShieldCheck, Sparkles, SunMedium, Wa
 import { AuthGate } from "@/components/AuthGate";
 import { BackupRestorePanel } from "@/components/BackupRestorePanel";
 import { AgentAccessPanel } from "@/components/AgentAccessPanel";
+import { PrivateCalendarSettings } from "@/components/PrivateCalendarSettings";
 import { BuildInfo } from "@/components/BuildInfo";
 import { LoadingState } from "@/components/LoadingState";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -57,6 +58,7 @@ function SettingsContent() {
       <div className="panel grid gap-4 p-5"><div><p className="eyebrow">Finance</p><h2 className="section-title mt-1">個人財務目標</h2></div><label><span className="label">每月結餘目標（HKD）</span><input className="field mt-2" type="number" min="0" value={form.monthly_profit_target} onChange={(event) => set("monthly_profit_target", Number(event.target.value))} /></label><div className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">只用於獨立財務頁的個人預算提示，不會影響工作排序或其他使用者。</div></div></section>
     <HouseholdSettings household={data.household} onChanged={reload} />
     <GoogleCalendarSettings initialConnections={data.calendarConnections} />
+    <PrivateCalendarSettings />
     <NotificationSettings
       preferences={data.notificationPreferences}
       deliveries={data.notificationDeliveries}

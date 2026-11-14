@@ -21,6 +21,8 @@ try{
       if(url.pathname==='/api/agent/session'){
         if(request.method()==='DELETE'){logged=false;body={ok:true};}
         else{assert.equal(request.postDataJSON().key,key);logged=true;body=session;}
+      }else if(url.pathname==='/api/agent/brief'){
+        body={days:[],sources:[],text:'今日 2026-11-14\n09:00–10:00 Apple 私人行程\nDeadline 本人工作'};
       }else if(url.pathname==='/api/agent'){
         if(!logged){status=401;body={error:'請登入'};}
         else if(request.method()==='GET'){
@@ -36,6 +38,7 @@ try{
     await page.goto(base+'/agent',{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'Grok Agent 登入',exact:true}).waitFor();
     await page.getByLabel('Access Code',{exact:true}).fill(key);await page.getByRole('button',{name:'登入 Agent 工作區',exact:true}).click();
     await page.getByRole('heading',{name:'Grok Bot',exact:true}).waitFor();
+    await page.goto(base+'/agent/brief');await page.getByRole('region',{name:'Grok 三日精簡摘要',exact:true}).getByText(/Apple 私人行程/).waitFor();assert.equal(await page.getByRole('button',{name:'新增 Task',exact:true}).count(),0);await page.goto(base+'/agent');await page.getByRole('heading',{name:'Grok Bot',exact:true}).waitFor();
     assert.notEqual(await page.getByRole('button',{name:'新增 Task',exact:true}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
     await page.getByRole('button',{name:'已開放的工作',exact:true}).click();await page.getByText('只供讀取的內容',{exact:true}).waitFor();
     await page.getByRole('button',{name:'新增 Task',exact:true}).click();const form=page.getByRole('form',{name:'新增 Task',exact:true});
@@ -56,7 +59,7 @@ try{
     console.log(`PASS Grok browser ${width}px: limited login/read, task/note create, draft/retry idempotency, logout and responsive layout`);await context.close();
   }
   const context=await browser.newContext({viewport:{width:1280,height:920},serviceWorkers:'block'}),page=await context.newPage();page.setDefaultTimeout(18000);
-  let grant=null,created=0,revoked=0;
+  let grant=null,created=0,revoked=0,apple=null,appleSelected=[];
   await page.route('**/api/**',async route=>{
     const request=route.request(),url=new URL(request.url());let body={};
     if(url.pathname==='/api/agent-access'){
@@ -65,6 +68,9 @@ try{
         if(value.action==='create'){created++;assert.equal(value.acknowledged,true);assert.deepEqual(value.tagIds,[tag]);grant={id,label:'Grok Bot',key_fingerprint:'fixture',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+30*86400000).toISOString(),last_used_at:null,revoked_at:null};body={grant,accessCode:key,loginPath:'/agent'};}
         else{revoked++;grant.revoked_at=new Date().toISOString();body={ok:true};}
       }else body={grants:grant?[grant]:[],events:[],tasks:[{id:'33333333-3333-4333-8333-333333333333',title:'本人工作（fixture）'}],notes:[],tags:[{id:tag,name:'個人'}]};
+    }else if(url.pathname==='/api/integrations/apple-calendar'){
+      if(request.method()==='POST'){const value=request.postDataJSON();if(value.action==='connect'){assert.equal(value.acknowledged,true);apple={id,account_email:'fixture@example.test',status:'select_calendars',calendars:[{id:'private',name:'私人行程'},{id:'not-selected',name:'不要讀取此 Calendar'}],selected_ids:[]};}else if(value.action==='select'){assert.deepEqual(value.calendarIds,['private']);appleSelected=value.calendarIds;apple.selected_ids=value.calendarIds;apple.status='connected';}body={apple,sync:{state:'fresh'}};}
+      else body={apple,grants:[],permissions:[]};
     }else if(url.pathname==='/api/auth')body={user:{id}};
     else if(url.pathname==='/api/integrations/google-calendar')body={connections:[]};
     else if(url.searchParams.get('view')==='assignment_alerts')body={assignments:[],currentUserId:id,quietModeUntil:null};
@@ -77,5 +83,11 @@ try{
   await manager.getByLabel('Grok Access Code',{exact:true}).waitFor();assert.equal(await manager.getByLabel('Grok Access Code',{exact:true}).getAttribute('type'),'password');assert.equal(created,1);
   await manager.getByRole('button',{name:'停用存取',exact:true}).click();await manager.getByRole('button',{name:'確認停用這個 Access Code',exact:true}).click();
   await manager.getByRole('status').filter({hasText:'已停用；'}).waitFor();assert.equal(revoked,1);assert.equal(await manager.getByLabel('Grok Access Code',{exact:true}).count(),0);
-  console.log('PASS Grok admin UI: explicit scope/consent, create-once masked code and revoke');await context.close();
+  console.log('PASS Grok admin UI: explicit scope/consent, create-once masked code and revoke');
+  const settings=page.getByRole('region',{name:'私人 Calendar 及 Grok 日報',exact:true});await settings.getByText('連接 Apple／設定三日日報',{exact:true}).click();
+  await settings.getByLabel('Apple Account 電郵',{exact:true}).fill('fixture@example.test');await settings.getByLabel('App 專用密碼（不是主密碼）',{exact:true}).fill('xxxx-yyyy-zzzz-wwww');
+  await settings.getByRole('checkbox',{name:/同意 Panel 安全保存/}).check();await settings.getByRole('button',{name:'連接／重新連接 Apple',exact:true}).click();await settings.getByText('私人行程',{exact:true}).waitFor();
+  assert.equal(await settings.getByLabel('App 專用密碼（不是主密碼）',{exact:true}).inputValue(),'');assert.equal(await settings.getByRole('checkbox',{name:'私人行程',exact:true}).isChecked(),false);
+  await settings.getByRole('checkbox',{name:'私人行程',exact:true}).check();await settings.getByRole('button',{name:'儲存 Calendar 選擇',exact:true}).click();await settings.getByRole('status').filter({hasText:'私人行程設定已更新'}).waitFor();assert.deepEqual(appleSelected,['private']);
+  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}).includes('xxxx-yyyy-zzzz-wwww')),false);console.log('PASS private Calendar setup: explicit consent/selection, no password draft, no automatic all-calendar share');await context.close();
 }finally{await browser?.close();server?.kill();}

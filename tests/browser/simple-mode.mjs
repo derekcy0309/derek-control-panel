@@ -32,6 +32,7 @@ try {
     await page.route('**/api/**',async route=>{
       const request=route.request();const url=new URL(request.url());let body={};let status=200;
       if(url.pathname==='/api/auth') body={user:{id:userId}};
+      else if(url.pathname==='/api/calendar-brief') body={generatedAt:new Date().toISOString(),from:today,untilExclusive:today,days:[{date:today,events:[],deadlines:[{id:tasks[0].id,title:`${role} 私人 Deadline`,due:today,priority:1,status:'not_started'}]}],sources:[{label:'Panel',state:'fresh',lastSync:new Date().toISOString()},{label:'Apple Calendar',state:'not_connected',lastSync:null}],truncated:false,text:'Fixture brief'};
       else if(request.method()==='GET') {
         const view=url.searchParams.get('view');
         if(view==='task_tags') body={tags,taskTagIds:tasks.find(t=>t.id===url.searchParams.get('taskId'))?.personal_tag_ids||[]};
@@ -60,6 +61,7 @@ try {
     });
     await page.goto(base,{waitUntil:'domcontentloaded'});
     await page.getByRole('heading',{name:'今日做乜？'}).waitFor();
+    await page.getByText(`${role} 私人 Deadline`,{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'三日行程同 Deadline',exact:true}).count(),1);
     page.on('request',request=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())navigations++;});
     assert.equal(await page.locator('.simple-focus-card').count(),2);
     assert.match(await page.locator('.simple-focus-card').first().innerText(),/我排第一件/);

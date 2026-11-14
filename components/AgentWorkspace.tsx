@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bot, KeyRound, LogOut, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { CalendarBriefPanel } from "@/components/CalendarBriefPanel";
 import { agentObject, agentUuidPattern, type AgentItem, type AgentKind, type AgentStatus } from "@/lib/agent-access";
 
 async function api(path: string, init: RequestInit = {}) {
@@ -16,7 +17,7 @@ type Draft = { requestId: string; title: string; description: string; dueDate: s
 const draftKey = (id: string, kind: AgentKind) => `dcp:agent-draft:v1:${id}:${kind}`;
 function clearDrafts(id: string) { try { sessionStorage.removeItem(draftKey(id, "task")); sessionStorage.removeItem(draftKey(id, "note")); } catch { /* no storage is a supported fallback */ } }
 
-export function AgentWorkspace() {
+export function AgentWorkspace({briefOnly=false}:{briefOnly?:boolean}) {
   const [session, setSession] = useState<AgentStatus | null>(null), [checking, setChecking] = useState(true);
   const [key, setKey] = useState(""), [loginBusy, setLoginBusy] = useState(false);
   const [kind, setKind] = useState<AgentKind>("task"), [items, setItems] = useState<AgentItem[]>([]), [offset, setOffset] = useState(0), [nextOffset, setNextOffset] = useState<number | null>(null);
@@ -46,7 +47,7 @@ export function AgentWorkspace() {
     catch (caught) { if (version === requestVersion.current) fail(caught); }
     finally { if (version === requestVersion.current) setLoading(false); }
   }, [session?.id, kind, offset, fail]);
-  useEffect(() => { void loadList(); }, [loadList]);
+  useEffect(() => { if (!briefOnly) void loadList(); }, [loadList,briefOnly]);
   async function login(event: React.FormEvent) {
     event.preventDefault(); if (loginBusy) return; setLoginBusy(true); setError("");
     try { const result = await api("/api/agent/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: key.trim() }) }); setKey(""); sessionRef.current = result; setSession(result); }
@@ -64,6 +65,7 @@ export function AgentWorkspace() {
     catch (caught) { if (principal === sessionRef.current?.id && version === detailVersion.current) fail(caught); }
   }
   if (checking) return <main className="app-frame grid min-h-screen place-items-center bg-mist p-5"><p role="status">核對 Grok 登入中…</p></main>;
+  if (session && briefOnly) return <main className="app-frame min-h-screen bg-mist p-4 sm:p-6"><div className="mx-auto max-w-5xl space-y-4"><header className="flex flex-wrap items-center justify-between gap-3"><h1 className="page-title">Grok 每日三日摘要</h1><Button type="button" variant="secondary" onClick={()=>void logout()}>登出 Agent</Button></header><CalendarBriefPanel agent userId={session.id}/><Link href="/agent" className="inline-flex min-h-11 items-center text-sm font-semibold text-indigo-700">返回 Agent 工作區</Link></div></main>;
   if (!session) return <main className="grid min-h-screen place-items-center bg-mist p-5"><section className="panel w-full max-w-lg p-6" aria-labelledby="agent-login-title"><Bot className="h-9 w-9 text-indigo-600" /><p className="eyebrow mt-4">Derek Panel · Agent</p><h1 id="agent-login-title" className="page-title mt-2">Grok Agent 登入</h1><p className="mt-3 text-sm leading-6 text-slate-600">專用工作區：只讀已開放 Task／Notes，並可新增。不可修改、完成、轉交、封存或刪除；不使用你本人的 Google 帳戶。</p><form className="mt-5 grid gap-4" onSubmit={(event) => void login(event)}><label><span className="label">Access Code</span><input className="field mt-2 font-mono" type="password" autoComplete="off" spellCheck={false} value={key} onChange={(event) => setKey(event.target.value)} placeholder="在安全表格填入 Access Code" required /></label><p className="text-xs leading-5 text-slate-500">請用 Grok Vault／Secure Form 填入，唔好貼入普通聊天。若此瀏覽器已有本人登入，這次操作會切換至受限 Agent 登入；其他裝置不受影響。</p><Button type="submit" disabled={loginBusy || !key.trim()}><KeyRound className="h-5 w-5" />{loginBusy ? "登入中…" : "登入 Agent 工作區"}</Button></form>{error ? <p className="mt-4 text-sm font-semibold text-amber-900" role="alert">{error}</p> : null}<div className="mt-4 flex flex-wrap gap-4"><Link href="/" className="min-h-11 text-sm font-semibold text-indigo-700">返回人用 Google 登入</Link><button type="button" className="min-h-11 text-sm font-semibold text-indigo-700" onClick={() => void check()}>重試連線</button></div></section></main>;
   return <main className="app-frame min-h-screen bg-mist px-4 py-6 sm:px-6"><div className="mx-auto grid max-w-5xl gap-5"><header className="panel flex flex-wrap items-center justify-between gap-4 p-5"><div><p className="eyebrow">Agent workspace</p><h1 className="page-title mt-1">{session.label}</h1><p className="mt-2 flex items-center gap-2 text-sm text-slate-600"><ShieldCheck className="h-4 w-4" />只讀＋新增 · 不可改／刪 · 不含其他用戶資料</p></div><Button type="button" variant="secondary" onClick={() => void logout()}><LogOut className="h-4 w-4" />登出 Agent</Button></header>
     <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex gap-2" role="group" aria-label="資料類型">{(["task", "note"] as AgentKind[]).map((value) => <button type="button" key={value} aria-pressed={kind === value} className={`min-h-11 rounded-xl border px-5 font-bold ${kind === value ? "border-indigo-500 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white"}`} onClick={() => { detailVersion.current++; setKind(value); setOffset(0); setDetail(null); setCreating(false); }}>{value === "task" ? "Task" : "Notes"}</button>)}</div><Button type="button" onClick={() => { detailVersion.current++; setCreating(true); setDetail(null); }}><Plus className="h-5 w-5" />新增 {kind === "task" ? "Task" : "Notes"}</Button></div>

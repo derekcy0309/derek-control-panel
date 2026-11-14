@@ -16,6 +16,11 @@ const backend=http.createServer(async(req,res)=>{
     else if(body.p_action==='status')result={id:'11111111-1111-4111-8111-111111111111',label:'Grok Bot',expiresAt:new Date(Date.now()+30*86400000).toISOString(),tags:[],permissions:{read:true,create:true,update:false,delete:false}};
     else if(body.p_action==='create_note')result={id:'22222222-2222-4222-8222-222222222222',kind:'note',duplicate:false};
     else result={items:[],nextOffset:null};
+  }else if(req.url==='/rest/v1/rpc/agent_brief_owner'){
+    let raw='';for await(const part of req)raw+=part;assert.equal(JSON.parse(raw).p_token_hash,hash);assert.equal(raw.includes(key),false);result='11111111-1111-4111-8111-111111111111';
+  }else if(req.url?.startsWith('/rest/v1/tasks?')){
+    const url=new URL(req.url,'http://fixture');assert.equal(url.searchParams.get('owner_id'),'eq.11111111-1111-4111-8111-111111111111');const due=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Hong_Kong'}).format(new Date());result=[{id:'44444444-4444-4444-8444-444444444444',title:'Own deadline',due_date:due,requested_priority:1,status:'not_started'}];
+  }else if(req.url?.startsWith('/rest/v1/operating_items?')||req.url?.startsWith('/rest/v1/apple_calendar_connections?')){const url=new URL(req.url,'http://fixture');assert.equal(url.searchParams.get('owner_id'),'eq.11111111-1111-4111-8111-111111111111');result=[];
   }else if(req.url==='/auth/v1/user'){status=401;result={message:'not a user JWT'};}
   else{status=404;result={message:'unexpected fixture endpoint'};}
   res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
@@ -37,6 +42,8 @@ try{
   const bad=await request('/api/agent',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({...note,ownerId:'forged'})});assert.equal(bad.status,422);
   assert.equal((await request('/api/agent/session',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json'},body:JSON.stringify({key})})).status,403);
   assert.equal((await request('/api/control?view=bootstrap')).status,401);assert.equal((await request('/api/backup')).status,401);
+  const brief=await request('/api/agent/brief');assert.equal(brief.status,200);const report=await brief.json();assert.match(report.text,/Own deadline/);assert.match(report.text,/Apple Calendar未連接/);assert.equal(report.days.length,3);assert.equal((await request('/api/agent/brief?owner_id=forged')).status,400);
+  assert.equal((await fetch(base+'/api/calendar-brief')).status,401);assert.equal((await request('/api/calendar-brief?owner_id=forged')).status,400);
   revoked=true;assert.equal((await request('/api/agent')).status,401);
   console.log('PASS actual Grok API: hashed credential only, isolated cookie, read/create, no mutations, no normal user/backup access, CSRF and revocation');
 }catch(error){throw new Error(`${error.message}\n${logs.slice(-1800)}`,{cause:error});}

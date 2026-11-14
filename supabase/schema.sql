@@ -177,3 +177,7 @@ create policy "user_settings_delete_own" on public.user_settings for delete usin
 -- opt-in, hashed/revocable grants, owner-only resource scopes, audit, request
 -- dedupe and nullable created_by_agent_id attribution. The operation RPC is
 -- service-role-only SECURITY INVOKER, read/create only; Auth users are unchanged.
+-- Private calendar brief: migrations/20261114102407_private_calendar_daily_brief.sql
+-- adds owner-only Apple connections (secret column denied to human clients),
+-- bounded private snapshots and explicit agent_brief_permissions. Shared Task,
+-- household and financial data are not rewritten or used as calendar storage.
