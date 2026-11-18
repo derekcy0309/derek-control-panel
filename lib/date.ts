@@ -1,13 +1,16 @@
-import { addDays, addMonths, differenceInCalendarDays, format, getDate, isBefore, parseISO, startOfDay, startOfMonth } from "date-fns";
+import { addDays, differenceInCalendarDays, format, isBefore, parseISO, startOfDay } from "date-fns";
 
 export const todayIso = () => format(new Date(), "yyyy-MM-dd");
 export const currentMonth = () => format(new Date(), "yyyy-MM-01");
 
-// From the 27th onward, personal finance opens the next month's planning view.
-// The supplied date keeps the boundary deterministic in tests.
+// From the 25th (Hong Kong time), cashflow opens the next month's view.
+// Only the initial view changes; manual month selection and records are untouched.
 export function cashflowDefaultMonth(now = new Date()) {
-  const target = getDate(now) >= 27 ? addMonths(now, 1) : now;
-  return format(startOfMonth(target), "yyyy-MM-01");
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Hong_Kong", year: "numeric", month: "numeric", day: "numeric"
+  }).formatToParts(now).map(({ type, value }) => [type, value]));
+  const monthIndex = Number(parts.month) - 1 + (Number(parts.day) >= 25 ? 1 : 0);
+  return new Date(Date.UTC(Number(parts.year), monthIndex, 1)).toISOString().slice(0, 10);
 }
 
 export function formatDate(value: string | null | undefined) {

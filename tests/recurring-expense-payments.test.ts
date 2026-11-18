@@ -73,10 +73,28 @@ test("cashflow summary only includes the selected month", () => {
   assert.equal(summary.expectedExpense, 100);
 });
 
-test("cashflow opens next month from the 27th while preserving the current month before then", () => {
-  assert.equal(cashflowDefaultMonth(new Date(2026, 8, 26, 12)), "2026-09-01");
-  assert.equal(cashflowDefaultMonth(new Date(2026, 8, 27, 12)), "2026-10-01");
-  assert.equal(cashflowDefaultMonth(new Date(2026, 11, 27, 12)), "2027-01-01");
+test("cashflow opens next month from the 25th while preserving the current month before then", () => {
+  assert.equal(cashflowDefaultMonth(new Date("2026-09-24T12:00:00+08:00")), "2026-09-01");
+  assert.equal(cashflowDefaultMonth(new Date("2026-09-25T12:00:00+08:00")), "2026-10-01");
+  assert.equal(cashflowDefaultMonth(new Date("2026-09-26T12:00:00+08:00")), "2026-10-01");
+  assert.equal(cashflowDefaultMonth(new Date("2026-12-25T12:00:00+08:00")), "2027-01-01");
+});
+
+test("cashflow cutoff is midnight in Hong Kong even when the browser or server uses another timezone", () => {
+  assert.equal(cashflowDefaultMonth(new Date("2026-11-24T15:59:59.999Z")), "2026-11-01");
+  assert.equal(cashflowDefaultMonth(new Date("2026-11-24T16:00:00.000Z")), "2026-12-01");
+  assert.equal(cashflowDefaultMonth(new Date("2026-12-24T16:00:00.000Z")), "2027-01-01");
+  assert.equal(cashflowDefaultMonth(new Date("2027-01-01T00:00:00+08:00")), "2027-01-01");
+});
+
+test("cashflow cutoff handles every month including February and leap years", () => {
+  for (const year of [2026, 2028]) for (let month = 1; month <= 12; month++) {
+    const current = `${year}-${String(month).padStart(2, "0")}`;
+    const next = new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10);
+    assert.equal(cashflowDefaultMonth(new Date(`${current}-24T23:59:59+08:00`)), `${current}-01`);
+    assert.equal(cashflowDefaultMonth(new Date(`${current}-25T00:00:00+08:00`)), next);
+  }
+  assert.equal(cashflowDefaultMonth(new Date("2028-02-29T12:00:00+08:00")), "2028-03-01");
 });
 
 test("cashflow uses one actual payment date while retaining legacy records", () => {
