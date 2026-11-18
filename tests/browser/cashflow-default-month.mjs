@@ -29,7 +29,7 @@ try{
   const month=page.getByLabel('月份',{exact:true});await month.waitFor();assert.equal(await month.inputValue(),expected);
   await month.fill('2026-08');assert.equal(await month.inputValue(),'2026-08');
   await page.getByRole('heading',{name:'家庭現金流',exact:true}).waitFor();
-  await page.getByRole('heading',{name:'公司現金流',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'工作現金流',exact:true}).waitFor();
   assert.equal(mutations,0,'Changing the viewed month must not write any financial data');assert.deepEqual(errors,[]);
   console.log(`PASS cashflow ${width}px ${clock}: default ${expected}, manual selection preserved, no data writes`);await context.close();
  }
