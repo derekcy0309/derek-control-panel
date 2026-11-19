@@ -8,6 +8,7 @@
 
 - 簡易首頁及[開工導航](docs/work-guide.md)：Dashboard 打個任務名、按 Enter 就可以加 Task。標籤、P2、本人及無 Deadline 有預設，毋須逐項設定。首頁用淺色分開工作、等回覆同限期，另有本人未來三日學校／家庭日期及已揀選嘅 iCloud 行程。「帶我開工」一次只顯示一件事、一個起步動作；已手排嘅次序優先，完成一步唔等於結案。自訂 Tags、Routine、工作日及共同跟進保留，見 [簡易模式](docs/simple-mode.md)。
 - 私人 Tags：全部可以新增、改名、移除。Derek 首次保留原有四個分類；其他用戶首次只設「個人、Wecare」。刪除後不會重建預設，不改 Task、scope、area 或分享權限。
+- 「幾點要收手」：Dashboard 同開工導航用本人下一個固定行程扣返準備時間（預設 20 分鐘，可以改）。只提示，唔會改 Task 次序、推播或者寫入 iPhone；日曆未齊唔會估。
 
 - 交辦確認：已修正「確認收到」被舊資料庫 guard 誤擋；收件人可先確認再接受，派出者可收到去重回覆。真實 RLS／trigger 測試、migration 及回復見 [`docs/assignment-acknowledgement-fix.md`](docs/assignment-acknowledgement-fix.md)。
 - 私人筆記：只填標題、內容及可選分類／Remark（車輛、個人財務、公司、工作、個人、家庭或自訂）；支援分類搜尋及同分頁草稿，儲存後不整頁重新載入。分類不會建立財務紀錄或改變分享權限。詳見 [`docs/simple-notes.md`](docs/simple-notes.md)。

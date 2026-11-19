@@ -19,6 +19,7 @@ const fixture=http.createServer(async(req,res)=>{
   else if(t==='operating_items'){
    assert.ok(actor);assert.equal(p.get('owner_id'),'eq.'+actor);assert.equal(req.method,'GET');
    if(p.get('area')==='eq.family'){familyReads.push(actor);result=[{id:uuid(8),item_type:'school',title:identity+' school fixture',due_date:day}];}
+   else if(p.get('schedule_status')==='in.(confirmed)'){assert.equal(p.get('item_type'),'eq.event');result=[{id:uuid(9),title:identity+' timed fixture',schedule_status:'confirmed',schedule_start_at:day+'T15:30:00+08:00',schedule_end_at:day+'T16:00:00+08:00'}];}
   } else if(t==='tasks'){
    if(p.has('id'))result=actor===people.derek && p.get('id')==='eq.'+task?[{id:task}]:[];
    else if(p.has('owner_id')){assert.equal(p.get('owner_id'),'eq.'+actor);result=[{id:task,title:'deadline fixture',due_date:day,requested_priority:3,status:'not_started'}];}
@@ -59,6 +60,9 @@ try{
  assert.equal(JSON.stringify(audit).includes('opened the example'),false);
  assert.equal((await (await read(guide,'derek')).json()).checkpoint.next_minimum_step,payload.next);
  for(const actor of Object.keys(people)){const response=await read('/api/calendar-brief',actor);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const b=await response.json();assert.equal(b.familyDates[0].title,actor+' school fixture');assert.equal(b.text.includes('school fixture'),false);}
+ const stop='/api/calendar-brief?view=work-stop';
+ assert.equal((await read(stop)).status,401);assert.equal((await read(stop+'&owner_id=elsewhere','derek')).status,400);
+ for(const actor of Object.keys(people)){const response=await read(stop,actor);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const b=await response.json();assert.equal(b.panelOnly,true);assert.deepEqual(b.events.map(e=>e.title),[actor+' timed fixture']);assert.deepEqual(Object.keys(b.events[0]).sort(),['end','start','title']);assert.ok(!('familyDates' in b)&&!('days' in b)&&!('text' in b));}
  assert.deepEqual(familyReads,Object.values(people));assert.deepEqual(faults,[]);
  console.log('PASS actual guide/calendar handlers: auth, owner scope, retry idempotency, no draft/parent side effects, no private titles in audit or agent text, three isolated readers');
 }finally{server.kill();await new Promise(ok=>fixture.close(ok));}

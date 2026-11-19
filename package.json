@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test:schedule": "node --experimental-strip-types --test --test-isolation=none tests/task-work-schedule.test.ts",
     "test:today": "node --experimental-strip-types --test --test-isolation=none tests/today-pick-list.test.ts tests/task-work-schedule.test.ts",
-    "test:work-guide": "node --experimental-strip-types --test --test-isolation=none tests/work-guide.test.ts tests/simple-mode.test.ts",
+    "test:work-guide": "node --experimental-strip-types --test --test-isolation=none tests/work-guide.test.ts tests/work-stop.test.ts tests/simple-mode.test.ts",
     "test:notes": "node --experimental-strip-types --test --test-isolation=none tests/notes.test.ts",
     "test:handoff": "node --experimental-strip-types --test --test-isolation=none tests/assignment-acknowledgement.test.ts tests/task-hierarchy-handoff-alerts.test.ts",
     "test:auth": "node --experimental-strip-types --test --test-isolation=none tests/google-login.test.ts tests/auth-email-link.test.ts",

@@ -3,6 +3,7 @@ import { briefWindow, makeCalendarBrief, type BriefDeadline, type BriefEvent, ty
 import { decryptCalendarToken } from "../integrations/google-calendar.ts";
 import { fetchAppleEvents, type AppleCalendar } from "../integrations/apple-calendar.ts";
 import { calendarErrorCode } from "../calendar-errors.ts";
+import { makeStopSnapshot } from "../work-stop.ts";
 
 export function calendarService() {
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -45,16 +46,29 @@ export async function refreshApple(owner:string,force=false,service=calendarServ
   return {events:valid?previous.events as BriefEvent[]:[],source:{label:"Apple Calendar",state:"stale",lastSync:previous?.fetched_at??null,errorCode:code} as BriefSource,truncated:previous?.truncated??false};
  }
 }
+// Both views use exactly the same owner scope; the guide has no reason to query deadlines or family records.
+function panelCalendarRows(client:SupabaseClient,owner:string,w:ReturnType<typeof briefWindow>,confirmedOnly=false){
+ return client.from("operating_items").select("id,title,schedule_start_at,schedule_end_at,schedule_status").eq("owner_id",owner).eq("item_type","event").is("archived_at",null)
+  .in("schedule_status",confirmedOnly?["confirmed"]:["confirmed","tentative"]).lt("schedule_start_at",w.end).gt("schedule_end_at",w.start).order("schedule_start_at").limit(201);
+}
+function panelEvents(rows:{id:string;title:string;schedule_start_at:string;schedule_end_at:string;schedule_status:string}[]):BriefEvent[]{
+ return rows.slice(0,200).map(e=>({id:e.id,uid:"panel:"+e.id,title:e.title,start:e.schedule_start_at,end:e.schedule_end_at,allDay:false,source:"Panel",tentative:e.schedule_status==="tentative"}));
+}
+export async function readWorkStop(owner:string,client:SupabaseClient,service=calendarService(),now=new Date()){
+ const [panel,apple]=await Promise.all([panelCalendarRows(client,owner,briefWindow(now),true),refreshApple(owner,false,service,now)]);
+ if(panel.error)throw new Error("CALENDAR_DATABASE");
+ return makeStopSnapshot([...panelEvents(panel.data??[]),...apple.events],[apple.source],apple.truncated||(panel.data?.length??0)>200,now.toISOString());
+}
 // owner MUST originate from verified auth or agent_brief_owner; never HTTP input.
 export async function readCalendarBrief(owner:string,client:SupabaseClient,service=calendarService(),now=new Date()) {
  const w=briefWindow(now);
  const [tasks,panel,apple]=await Promise.all([
   client.from("tasks").select("id,title,due_date,requested_priority,status").eq("owner_id",owner).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").gte("due_date",w.from).lt("due_date",w.until).order("due_date").order("requested_priority").limit(201),
-  client.from("operating_items").select("id,title,schedule_start_at,schedule_end_at,schedule_status").eq("owner_id",owner).eq("item_type","event").is("archived_at",null).in("schedule_status",["confirmed","tentative"]).lt("schedule_start_at",w.end).gt("schedule_end_at",w.start).order("schedule_start_at").limit(201),
+  panelCalendarRows(client,owner,w),
   refreshApple(owner,false,service,now)
  ]);
  if(tasks.error||panel.error)throw new Error("CALENDAR_DATABASE");
  const deadlines:BriefDeadline[]=(tasks.data??[]).slice(0,200).map(t=>({id:t.id,title:t.title,due:t.due_date,priority:t.requested_priority??3,status:t.status}));
- const events:BriefEvent[]=(panel.data??[]).slice(0,200).map(e=>({id:e.id,uid:"panel:"+e.id,title:e.title,start:e.schedule_start_at,end:e.schedule_end_at,allDay:false,source:"Panel",tentative:e.schedule_status==="tentative"}));
+ const events=panelEvents(panel.data??[]);
  return makeCalendarBrief([...events,...apple.events],deadlines,[{label:"Panel",state:"fresh",lastSync:now.toISOString()},apple.source],now,apple.truncated||(tasks.data?.length??0)>200||(panel.data?.length??0)>200);
 }

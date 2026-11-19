@@ -1,10 +1,12 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { CalendarDays, RefreshCw } from "lucide-react";
 import { briefEventTime, type DashboardBrief } from "@/lib/calendar-brief";
 import { calendarErrorMessage } from "@/lib/calendar-errors";
 import { dashboardAgendaHighlights } from "@/lib/dashboard-agenda";
+import { stopSnapshotFromBrief } from "@/lib/work-stop";
+import { WorkStopHint, useVisibleCalendarRefresh } from "@/components/WorkStopHint";
 export function CalendarBriefPanel({agent=false,userId}:{agent?:boolean;userId:string}) {
  const [brief,setBrief]=useState<DashboardBrief|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);const generation=useRef(0),pending=useRef<AbortController|null>(null);
  const load=useCallback(async(force=false)=>{const version=++generation.current;pending.current?.abort();const controller=new AbortController();pending.current=controller;const timer=setTimeout(()=>controller.abort(),50000);setBusy(true);setError("");try{
@@ -22,6 +24,8 @@ export function CalendarBriefPanel({agent=false,userId}:{agent?:boolean;userId:s
  const invalidate=useCallback(()=>{generation.current++;pending.current?.abort();},[]);
  useEffect(()=>{setBrief(null);void load();return invalidate;},[load,userId,invalidate]);
  useEffect(()=>{const listener=()=>void load();window.addEventListener("dcp:calendar-changed",listener);return()=>window.removeEventListener("dcp:calendar-changed",listener);},[load]);
+ useVisibleCalendarRefresh(load,!agent && !busy);
+ const stop=useMemo(()=>brief && !agent?stopSnapshotFromBrief(brief):null,[agent,brief]);
  if(agent)return <section className="panel space-y-3 p-5" aria-label="Grok 三日精簡摘要"><p className="text-xs text-slate-500">每日 08:30 香港時間 · 只讀本人 · 不作任何修改</p>{busy&&!brief?<p role="status">讀取最新摘要中…</p>:null}{error?<p role="alert">{error}</p>:null}{brief?<pre className="whitespace-pre-wrap break-words text-sm leading-7">{brief.text}</pre>:null}<button type="button" disabled={busy} className="min-h-11 text-sm font-bold text-indigo-700" onClick={()=>void load()}>重新讀取</button></section>;
  const highlight=brief?dashboardAgendaHighlights(brief):null;
  const nearest=brief?.days.flatMap(day=>[...day.deadlines.map(t=>({title:t.title,date:day.date})),...(brief.familyDates??[]).filter(t=>t.date===day.date)]).at(0);
@@ -35,6 +39,7 @@ export function CalendarBriefPanel({agent=false,userId}:{agent?:boolean;userId:s
    {brief.warnings?.map(warning=><p key={warning} role="status" className="rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-900">{warning}</p>)}
    {brief.familyWarning?<p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{brief.familyWarning}</p>:null}
    <div className="grid gap-2 sm:grid-cols-2" aria-label="一眼睇安排"><div className="brief-agenda rounded-xl p-3"><p className="text-xs font-bold">進行中／下一個行程</p><p className="mt-1 break-words font-semibold">{highlight?`${dayLabel(highlight.date)} ${briefEventTime(highlight.event)} · ${highlight.event.title}`:"已讀取資料內暫無即將開始嘅行程"}</p></div><div className="brief-deadline rounded-xl p-3"><p className="text-xs font-bold">最近日期／Deadline</p><p className="mt-1 break-words font-semibold">{nearest?`${dayLabel(nearest.date)} · ${nearest.title}`:"已讀取資料內暫無到期事項"}</p></div></div>
+   {stop?<WorkStopHint key={userId} userId={userId} snapshot={error?{...stop,incomplete:true}:stop}/>:null}
    <details key={brief.from} open={brief.days.reduce((n,d)=>n+d.events.length+d.deadlines.length,brief.familyDates?.length??0)<=3 || undefined}><summary className="min-h-11 cursor-pointer py-2 text-sm font-bold text-indigo-700">逐日睇：今日、聽日、後日</summary>
    <div className="grid gap-3 lg:grid-cols-3">{brief.days.map((day,i)=>{
     const family=(brief.familyDates??[]).filter(item=>item.date===day.date);

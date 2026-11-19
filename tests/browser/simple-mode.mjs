@@ -21,7 +21,10 @@ try {
     const context=await browser.newContext({viewport:{width,height:920},serviceWorkers:'block'});
     const page=await context.newPage(); page.setDefaultTimeout(18000);
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
-    const userId='11111111-1111-4111-8111-111111111111';
+    const userId='11111111-1111-4111-8111-11111111111'+({Derek:'1',Suki:'2',Amigo:'3'}[role]);
+    const fixtureNow=new Date(today+'T14:52:00+08:00'),pickup={id:'pickup',uid:'pickup',title:role+' 固定行程',start:today+'T15:30:00+08:00',end:today+'T16:00:00+08:00',source:'Panel',allDay:false};
+    await page.clock.setFixedTime(fixtureNow);
+    await context.addInitScript(()=>localStorage.setItem('dcp:work-stop:v1:different-user','99'));
     const names=role==='Derek'?['個人','Wecare','家庭','SEC']:['個人','Wecare'];
     let tags=names.map((name,i)=>({id:`99999999-9999-4999-8999-${String(i+1).padStart(12,'0')}`,name,legacy_key:null}));
     const makeTask=(id,title,values={})=>({id,user_id:userId,owner_id:userId,title,scope:'home',area:'personal',source_type:'follow_up',status:'not_started',due_date:null,follow_up_date:null,next_action:null,risk:'low',notes:null,completed_at:null,deleted_at:null,archived_at:null,created_at:`${today}T00:00:00Z`,updated_at:`${today}T00:00:00Z`,requested_priority:3,personal_tag_ids:[tags[0].id],...values});
@@ -59,11 +62,19 @@ try {
           body={tag};
         } else throw new Error(`Unexpected write: ${input.action}`);
       }
-      if(url.pathname==='/api/calendar-brief') body.familyDates=[{id:'fixture-school',kind:'school',date:today,title:role+' 學校回條'},{id:'fixture-family',kind:'family',date:today,title:role+' 家庭限期'}];
+      if(url.pathname==='/api/calendar-brief'){
+        assert.equal(request.method(),'GET');
+        if(url.searchParams.get('view')==='work-stop')body={generatedAt:fixtureNow.toISOString(),events:[{title:pickup.title,start:pickup.start,end:pickup.end}],incomplete:false,panelOnly:true};
+        else{body.generatedAt=fixtureNow.toISOString();body.days[0].events.push(pickup);body.familyDates=[{id:'fixture-school',kind:'school',date:today,title:role+' 學校回條'},{id:'fixture-family',kind:'family',date:today,title:role+' 家庭限期'}];}
+      }
       await route.fulfill({status,json:body});
     });
     await page.goto(base,{waitUntil:'domcontentloaded'});
     await page.getByRole('heading',{name:'今日做乜？'}).waitFor();
+    const stopHint=page.getByRole('region',{name:'幾點要收手',exact:true});await stopHint.getByText('15:10 收手 · 仲有 18 分鐘',{exact:true}).waitFor();
+    await stopHint.getByText('預留時間：20 分鐘',{exact:true}).click();await stopHint.getByLabel('出門／準備要幾多分鐘？').fill('30');
+    await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
+    assert.equal(await page.evaluate(key=>localStorage.getItem(key),'dcp:work-stop:v1:'+userId),'30');
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.getByLabel('一眼睇安排').waitFor();await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/dashboard-${role}-${width}.png`,fullPage:false});}
     await page.getByText('逐日睇：今日、聽日、後日',{exact:true}).click();
     await page.getByText(`${role} 私人 Deadline`,{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'三日行程同 Deadline',exact:true}).count(),1);
@@ -80,6 +91,7 @@ try {
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/${role}-${width}.png`,fullPage:true});}
     await page.getByRole('link',{name:'帶我開工 →'}).click();
     const guide=page.locator('.work-guide');await guide.getByRole('heading',{name:'我排第一件',exact:true}).waitFor();
+    await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
     await guide.getByRole('button',{name:'再細一步'}).click();await guide.getByRole('button',{name:'起咗步，接住做'}).click();assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'記低下次點接'}).click();await guide.getByLabel('下次返嚟做乜？').fill('只係本分頁嘅草稿');
     await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'帶我開工 →'}).click();
