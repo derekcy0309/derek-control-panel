@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { briefWindow, makeCalendarBrief, type BriefDeadline, type BriefEvent, type BriefSource } from "../calendar-brief.ts";
 import { decryptCalendarToken } from "../integrations/google-calendar.ts";
 import { fetchAppleEvents, type AppleCalendar } from "../integrations/apple-calendar.ts";
+import { calendarErrorCode } from "../calendar-errors.ts";
 
 export function calendarService() {
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,7 +14,7 @@ export async function appleMetadata(owner:string,service=calendarService()) {
  if(result.error)throw new Error("CALENDAR_DATABASE");if(!result.data)return null;
  return {...result.data,calendars:(result.data.calendars as AppleCalendar[]).map(c=>({id:c.id,name:c.name}))};
 }
-export async function refreshApple(owner:string,force=false,service=calendarService(),now=new Date()) {
+export async function refreshApple(owner:string,force=false,service=calendarService(),now=new Date(),dependencies={fetchEvents:fetchAppleEvents,decrypt:decryptCalendarToken}) {
  const connection=await service.from("apple_calendar_connections").select("*").eq("owner_id",owner).maybeSingle();
  if(connection.error)throw new Error("CALENDAR_DATABASE");const c=connection.data;
  if(!c||c.status==="disconnected")return {events:[] as BriefEvent[],source:{label:"Apple Calendar",state:"not_connected",lastSync:null} as BriefSource,truncated:false};
@@ -23,24 +24,25 @@ export async function refreshApple(owner:string,force=false,service=calendarServ
  const previous=cached.data,valid=previous?.window_start===w.from;
  // Retry throttling is per account in the DB, not ephemeral function memory.
  if(!force && valid && c.status==="connected" && now.getTime()-Date.parse(previous.fetched_at)<300000)return {events:previous.events as BriefEvent[],source:{label:"Apple Calendar",state:"fresh",lastSync:previous.fetched_at} as BriefSource,truncated:previous.truncated};
- if(!force && c.last_attempt_at && now.getTime()-Date.parse(c.last_attempt_at)<60000)return {events:valid?previous.events as BriefEvent[]:[],source:{label:"Apple Calendar",state:"stale",lastSync:previous?.fetched_at??null} as BriefSource,truncated:previous?.truncated??false};
+ if(!force && c.last_attempt_at && now.getTime()-Date.parse(c.last_attempt_at)<60000)return {events:valid?previous.events as BriefEvent[]:[],source:{label:"Apple Calendar",state:"stale",lastSync:previous?.fetched_at??null,errorCode:calendarErrorCode(new Error(c.error_code??"APPLE_REFRESH_FAILED"))} as BriefSource,truncated:previous?.truncated??false};
  const started=now.toISOString();await service.from("apple_calendar_connections").update({last_attempt_at:started}).eq("id",c.id).eq("owner_id",owner);
  try {
-  const secret=decryptCalendarToken(c.secret_ciphertext);
+  let secret:string;try{secret=dependencies.decrypt(c.secret_ciphertext);}catch{throw new Error("CALENDAR_CREDENTIAL");}
   if(!secret.startsWith("apple-calendar:v1:"))throw new Error("CALENDAR_CREDENTIAL");
   const selected=(c.calendars as AppleCalendar[]).filter(x=>c.selected_ids.includes(x.id));
   if(selected.length!==c.selected_ids.length||selected.length>10)throw new Error("CALENDAR_SELECTION");
-  const result=await fetchAppleEvents(c.account_email,secret.slice("apple-calendar:v1:".length),selected,now);
+  const result=await dependencies.fetchEvents(c.account_email,secret.slice("apple-calendar:v1:".length),selected,now);
   const saved=await service.rpc("save_private_calendar_snapshot",{p_owner:owner,p_source:c.id,p_start:w.from,p_events:result.events,p_fetched:started,p_truncated:result.truncated,p_revision:c.updated_at});
   if(saved.error)throw new Error("CALENDAR_DATABASE");
   await service.from("apple_calendar_connections").update({status:"connected",error_code:null}).eq("id",c.id).eq("owner_id",owner).eq("last_attempt_at",started);
   return {...result,source:{label:"Apple Calendar",state:"fresh",lastSync:started} as BriefSource};
- } catch {
+ } catch (error) {
   // Never log provider error objects: they may contain account paths or ICS.
   const latest=await service.from("apple_calendar_connections").select("updated_at,status").eq("id",c.id).eq("owner_id",owner).maybeSingle();
   if(latest.error||latest.data?.updated_at!==c.updated_at||latest.data?.status==="disconnected")return {events:[] as BriefEvent[],source:{label:"Apple Calendar",state:"stale",lastSync:null} as BriefSource,truncated:false};
-  await service.from("apple_calendar_connections").update({status:"attention",error_code:"refresh_failed"}).eq("id",c.id).eq("owner_id",owner).eq("last_attempt_at",started);
-  return {events:valid?previous.events as BriefEvent[]:[],source:{label:"Apple Calendar",state:"stale",lastSync:previous?.fetched_at??null} as BriefSource,truncated:previous?.truncated??false};
+  const code=calendarErrorCode(error);
+  await service.from("apple_calendar_connections").update({status:"attention",error_code:code}).eq("id",c.id).eq("owner_id",owner).eq("last_attempt_at",started);
+  return {events:valid?previous.events as BriefEvent[]:[],source:{label:"Apple Calendar",state:"stale",lastSync:previous?.fetched_at??null,errorCode:code} as BriefSource,truncated:previous?.truncated??false};
  }
 }
 // owner MUST originate from verified auth or agent_brief_owner; never HTTP input.

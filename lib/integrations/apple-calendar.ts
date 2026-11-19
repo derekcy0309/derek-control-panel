@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createDAVClient, type DAVCalendar } from "tsdav";
 import ICAL from "ical.js";
 import { briefWindow, type BriefEvent } from "../calendar-brief.ts";
+import { calendarErrorCode } from "../calendar-errors.ts";
 
 export type AppleCalendar = { id: string; name: string; url: string };
 export function allowedAppleUrl(value: string) {
@@ -12,16 +13,18 @@ export function allowedAppleUrl(value: string) {
 // Even a compromised provider response cannot turn this transport into a write
 // client, arbitrary proxy or credential-forwarding redirect.
 export function appleReadTransport(transport: typeof fetch = fetch): typeof fetch {
- let calls=0;
+ let calls=0;const deadline=Date.now()+40000;
  return async (input, init={}) => {
   if (++calls>40) throw new Error("APPLE_REQUEST_LIMIT");
   const method=(init.method || (input instanceof Request?input.method:"GET")).toUpperCase();
   if (!["GET","OPTIONS","PROPFIND","REPORT"].includes(method)) throw new Error("APPLE_WRITE_FORBIDDEN");
   let u=allowedAppleUrl(String(input instanceof Request?input.url:input));
   for(let hop=0;hop<4;hop++) {
-   const response=await transport(u, {...init,method,redirect:"manual",cache:"no-store",signal:AbortSignal.timeout(12000)});
+   const remaining=deadline-Date.now();if(remaining<=0)throw new Error("APPLE_TIMEOUT");
+   const response=await transport(u, {...init,method,redirect:"manual",cache:"no-store",signal:AbortSignal.timeout(Math.min(12000,remaining))});
    if ([301,302,307,308].includes(response.status)) { const location=response.headers.get("location");await response.body?.cancel();if(!location)throw new Error("APPLE_REDIRECT");u=allowedAppleUrl(new URL(location,u).href);continue; }
    if(response.status===401||response.status===403){await response.body?.cancel();throw new Error("APPLE_AUTH_REQUIRED");}
+   if(response.status===404||response.status===410){await response.body?.cancel();throw new Error("APPLE_CALENDAR_MISSING");}
    if(response.status>=400){await response.body?.cancel();throw new Error("APPLE_UNAVAILABLE");}
    const chunks:Uint8Array[]=[];let size=0;const reader=response.body?.getReader();
    if(reader)while(true){const part=await reader.read();if(part.done)break;size+=part.value.byteLength;if(size>4*1024*1024){await reader.cancel();throw new Error("APPLE_RESPONSE_LIMIT");}chunks.push(part.value);}
@@ -31,7 +34,8 @@ export function appleReadTransport(transport: typeof fetch = fetch): typeof fetc
  };
 }
 async function client(email: string, password: string) {
- return createDAVClient({serverUrl:"https://caldav.icloud.com",credentials:{username:email,password},authMethod:"Basic",defaultAccountType:"caldav",fetch:appleReadTransport()});
+ try{return await createDAVClient({serverUrl:"https://caldav.icloud.com",credentials:{username:email,password},authMethod:"Basic",defaultAccountType:"caldav",fetch:appleReadTransport()});}
+ catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"?"APPLE_DISCOVERY_FAILED":code);}
 }
 export async function discoverAppleCalendars(email: string,password: string): Promise<AppleCalendar[]> {
  const dav=await client(email,password), calendars=await dav.fetchCalendars();
@@ -48,8 +52,10 @@ export function parseAppleEvents(data: string, now=new Date()): BriefEvent[] {
  function add(e:InstanceType<typeof ICAL.Event>,s:InstanceType<typeof ICAL.Time>,f:InstanceType<typeof ICAL.Time>) {
   if(String(e.component.getFirstPropertyValue("status")).toUpperCase()==="CANCELLED")return;
   const a=iso(s),b=iso(f),aTime=Date.parse(a+(s.isDate?"T00:00:00+08:00":"")),bTime=Date.parse(b+(s.isDate?"T00:00:00+08:00":""));
-  if(!Number.isFinite(aTime)||!Number.isFinite(bTime)||bTime<=aTime)throw new Error("APPLE_EVENT_INVALID");
-  if(aTime<upper&&bTime>lower)result.push({id:createHash("sha256").update(e.uid+":"+a).digest("hex"),uid:e.uid,title:(e.summary||"未命名行程").slice(0,500),start:a,end:b,allDay:s.isDate,source:"Apple",tentative:String(e.component.getFirstPropertyValue("status")).toUpperCase()==="TENTATIVE"});
+ if(!Number.isFinite(aTime)||!Number.isFinite(bTime)||bTime<aTime||(s.isDate&&bTime===aTime))throw new Error("APPLE_EVENT_INVALID");
+  // RFC 5545: a DATE-TIME VEVENT without DTEND/DURATION is an instant,
+  // not malformed calendar data. Include points at HK midnight as well.
+  if(aTime<upper&&(bTime===aTime?aTime>=lower:bTime>lower))result.push({id:createHash("sha256").update(e.uid+":"+a).digest("hex"),uid:e.uid,title:(e.summary||"未命名行程").slice(0,500),start:a,end:b,allDay:s.isDate,source:"Apple",tentative:String(e.component.getFirstPropertyValue("status")).toUpperCase()==="TENTATIVE"});
  }
  for(const c of components){
   if(c.hasProperty("recurrence-id")&&masterIds.has(String(c.getFirstPropertyValue("uid"))))continue;
@@ -66,9 +72,9 @@ export async function fetchAppleEvents(email:string,password:string,calendars:Ap
  const dav=await client(email,password),window=briefWindow(now);let events:BriefEvent[]=[];
  for(const calendar of calendars){
   allowedAppleUrl(calendar.url);
-  const objects=await dav.fetchCalendarObjects({calendar:{url:calendar.url} as DAVCalendar,timeRange:{start:new Date(window.start).toISOString(),end:new Date(window.end).toISOString()},expand:true,useMultiGet:false,urlFilter:()=>true});
+  const objects=await dav.fetchCalendarObjects({calendar:{url:calendar.url} as DAVCalendar,timeRange:{start:new Date(window.start).toISOString(),end:new Date(window.end).toISOString()},expand:true,useMultiGet:false,urlFilter:()=>true}).catch(error=>{const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"?"APPLE_RESPONSE_INVALID":code);});
   if(objects.length>1000)throw new Error("APPLE_RESPONSE_LIMIT");
-  for(const object of objects)if(object.data)events.push(...parseAppleEvents(String(object.data),now));
+  for(const object of objects)if(object.data){try{events.push(...parseAppleEvents(String(object.data),now));}catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"||code==="APPLE_NETWORK"?"APPLE_PARSE_FAILED":code);}}
  }
  events=[...new Map(events.map(e=>[e.uid+":"+e.start,e])).values()].sort((a,b)=>a.start.localeCompare(b.start));
  return {events:events.slice(0,200),truncated:events.length>200};

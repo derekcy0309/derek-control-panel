@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { briefEventTime, briefWindow, makeCalendarBrief } from "../lib/calendar-brief.ts";
 import { allowedAppleUrl, appleReadTransport, parseAppleEvents } from "../lib/integrations/apple-calendar.ts";
+import { calendarErrorCode, calendarErrorMessage } from "../lib/calendar-errors.ts";
 const now=new Date("2026-11-30T00:30:00Z");
 test("brief uses HK today and exactly three calendar days across month/year boundaries",()=>{
  assert.equal(briefWindow(now).from,"2026-11-30");assert.equal(briefWindow(now).until,"2026-12-03");
@@ -49,4 +50,26 @@ test("Apple transport blocks all writes, non-Apple hosts and credential-forwardi
 test("iCalendar expands recurring events, applies cancellation and discards descriptions",()=>{
  const ics=["BEGIN:VCALENDAR","VERSION:2.0","BEGIN:VEVENT","UID:repeat","DTSTART:20261130T020000Z","DTEND:20261130T030000Z","RRULE:FREQ=DAILY;COUNT=3","SUMMARY:Daily","DESCRIPTION:SECRET_NOTES","END:VEVENT","BEGIN:VEVENT","UID:repeat","RECURRENCE-ID:20261201T020000Z","DTSTART:20261201T020000Z","DTEND:20261201T030000Z","STATUS:CANCELLED","SUMMARY:Daily","END:VEVENT","END:VCALENDAR"].join("\r\n");
  const rows=parseAppleEvents(ics,now);assert.equal(rows.length,2);assert.deepEqual(rows.map(x=>x.start.slice(0,10)),["2026-11-30","2026-12-02"]);assert.equal(JSON.stringify(rows).includes("SECRET_NOTES"),false);
+});
+test("DATE-TIME events without an end are valid instants, including HK midnight",()=>{
+ const ics=["BEGIN:VCALENDAR","VERSION:2.0","BEGIN:VEVENT","UID:point","DTSTART:20261129T160000Z","SUMMARY:Point","END:VEVENT","BEGIN:VEVENT","UID:normal","DTSTART:20261130T020000Z","DTEND:20261130T030000Z","SUMMARY:Normal","END:VEVENT","END:VCALENDAR"].join("\r\n");
+ const rows=parseAppleEvents(ics,now);assert.equal(rows.length,2);
+ const point=rows.find(e=>e.uid==="point")!;assert.equal(point.start,point.end);assert.equal(briefEventTime(point),"00:00");
+ const report=makeCalendarBrief(rows,[],[],now);assert.equal(report.days[0].events.length,2);assert.equal(report.days[1].events.length,0);
+ assert.throws(()=>parseAppleEvents(ics.replace("DTEND:20261130T030000Z","DTEND:20261130T010000Z"),now),/APPLE_EVENT_INVALID/);
+});
+test("provider errors are allowlisted and never expose credentials or event text",()=>{
+ assert.equal(calendarErrorCode(new Error("APPLE_AUTH_REQUIRED")),"APPLE_AUTH_REQUIRED");
+ assert.equal(calendarErrorCode(new Error("password=SECRET and https://private-calendar/path")),"APPLE_REFRESH_FAILED");
+ assert.equal(calendarErrorCode(new DOMException("private account URL","TimeoutError")),"APPLE_TIMEOUT");
+ assert.equal(calendarErrorMessage("private source data").includes("private source data"),false);
+ assert.equal(typeof calendarErrorMessage("toString"),"string");
+ const report=makeCalendarBrief([],[],[{label:"Apple Calendar",state:"stale",lastSync:null,errorCode:"APPLE_AUTH_REQUIRED"}],now);
+ assert.match(report.text,/App 專用密碼重新連接/);assert.doesNotMatch(report.text,/SECRET|password=/);
+});
+test("Apple read transport has a total deadline rather than resetting its budget per request",async(t)=>{
+ let clock=0,calls=0;t.mock.method(Date,"now",()=>clock);
+ const transport=appleReadTransport(async()=>{calls++;return new Response(null,{status:204});});
+ await transport("https://caldav.icloud.com/",{method:"OPTIONS"});assert.equal(calls,1);
+ clock=40001;await assert.rejects(transport("https://caldav.icloud.com/",{method:"REPORT"}),/APPLE_TIMEOUT/);assert.equal(calls,1);
 });

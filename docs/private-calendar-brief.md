@@ -6,6 +6,10 @@
 
 跨日行程同時列出開始及結束日期，避免只列時間而看起來像重複的一小時約會。單次行程跨超過 31 日會提示檢查原本 Calendar 的「結束」日期（不是「結束重複」）；只屬來源資料提示，不會自動縮短、刪除或修改原本行程。合法長行程仍會完整保留。
 
+「更新」會先經已驗證來源／本人權限的 Apple refresh endpoint 重新讀取（保留每帳戶 30 秒保護），再獨立讀取 Panel 行程及 Deadline；唔會因為五分鐘自動讀取快取而令手動操作沒有作用。未連接 Apple 的帳戶仍可更新 Panel；Apple 失敗或 cooldown 亦不阻止 Task 更新。畫面保留上次結果，顯示完整更新日期、安全錯誤原因及 retry；前端 50 秒／Apple transport 整體 40 秒時限避免一直轉圈。
+
+錯誤只保存固定 allowlist 代碼，絕不記錄原始 provider error、帳戶網址或 ICS。沒有 DTEND／DURATION 的 DATE-TIME 行程按 RFC 5545 視為時間點，包括香港午夜，不應令整份 Calendar 失敗；倒置日期仍不會當作正確行程。
+
 Settings → 私人 Calendar 及 Grok 日報：
 
 1. 用 Apple Account 電郵及 App 專用密碼連接，再明確揀 1–10 個 iCloud Calendar。需要 Apple 雙重認證；密碼只能在頁面表格輸入，不貼聊天、不保存表單草稿。
