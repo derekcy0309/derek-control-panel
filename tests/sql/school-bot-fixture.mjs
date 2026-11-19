@@ -4,7 +4,7 @@ export async function testSchoolBots({db,asRole,owner,other,tag,directory}){
   await db.exec("create function auth.jwt() returns jsonb language sql stable as $$select nullif(current_setting('request.jwt.claims',true),'')::jsonb$$; create table auth.sessions(id uuid primary key,user_id uuid,not_after timestamptz); alter table public.operating_items add column sensitive boolean default false,add column due_date date,add column status text default 'active';");
   const session=crypto.randomUUID();await db.query('insert into auth.sessions values($1,$2,null)',[session,owner]);
   await db.exec('revoke usage on schema private from service_role;');
-  await db.exec(await readFile(new URL('20261119101614_school_bot_approval.sql',directory),'utf8'));
+  await db.exec(await readFile(new URL('20261119103927_school_bot_approval.sql',directory),'utf8'));
   const one=async(sql,params)=>(await db.query(sql,params)).rows[0]?.v;
   assert.equal(await one("select has_schema_privilege('service_role','private','usage') v"),false);
   assert.equal(await one("select has_schema_privilege('service_role','school_bot_internal','usage') v"),true);

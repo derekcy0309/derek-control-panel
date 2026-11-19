@@ -91,7 +91,7 @@ try {
   await db.exec('reset role');assert.equal((await db.query('select amount from public.transactions')).rows[0].amount,'1234');
   console.log('PASS Grok local smoke: migration, owner-only opt-in read/create, no anonymous/human RPC, no delete, idempotency, revocation and unchanged finance');
   const countBefore=(await db.query('select count(*) c from public.operating_items')).rows[0].c;
-  await db.exec(await readFile(new URL('../../supabase/rollback-20261119101614-school-bot-approval.sql',import.meta.url),'utf8'));
+  await db.exec(await readFile(new URL('../../supabase/rollback-20261119103927-school-bot-approval.sql',import.meta.url),'utf8'));
   assert.equal((await db.query('select count(*) c from public.operating_items')).rows[0].c,countBefore);
   await asRole('service_role');await assert.rejects(db.query("select public.school_bot_request($1,'list','{}')",['c'.repeat(64)]),/permission denied/);
   await assert.rejects(db.query("select public.agent_access_operation($1,'status','{}')",['e'.repeat(64)]),/AGENT_UNAUTHORIZED/);

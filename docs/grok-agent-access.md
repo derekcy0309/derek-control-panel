@@ -58,4 +58,4 @@ Grok 小助手同其他支援 HTTPS Bearer／瀏覽器登入嘅 bot 都可用。
 - GET /api/agent/school 按日期分頁；POST 只受理建議及回傳收據。同一份建議重試須沿用 requestId。唔提供直接修改、直接刪除或 bot 確認接口。
 - 本人返「子女及學校」→「Bot 建議 · 等我確認」→睇改前／改後，再逐項確認或拒絕。登入超過 10 分鐘須重新登入，登入成功本身唔會執行建議。新增預設私人／敏感，確認刪除只封存原記錄。原資料有變、授權失效或建議超過 7 日不能套用；更改學校授權會取消未處理建議。
 - 已同時授權三日日報及學校嘅一般 Code，沿用原本 /agent/brief 同香港時間 08:30 routine。只加今日起三日嘅學校 Deadline，唔會自動通知其他 bot。學校專用 Code 不能讀日報或 Calendar。
-- Migration 20261119101614_school_bot_approval；對應手動 rollback 會停用學校權限及學校專用 Code，保留原記錄、建議及 audit。日誌只記動作識別及時間；記錄前後值只供本人覆核。
+- Migration 20261119103927_school_bot_approval；對應手動 rollback 會停用學校權限及學校專用 Code，保留原記錄、建議及 audit。日誌只記動作識別及時間；記錄前後值只供本人覆核。
