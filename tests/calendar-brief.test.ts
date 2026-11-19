@@ -58,6 +58,23 @@ test("DATE-TIME events without an end are valid instants, including HK midnight"
  const report=makeCalendarBrief(rows,[],[],now);assert.equal(report.days[0].events.length,2);assert.equal(report.days[1].events.length,0);
  assert.throws(()=>parseAppleEvents(ics.replace("DTEND:20261130T030000Z","DTEND:20261130T010000Z"),now),/APPLE_EVENT_INVALID/);
 });
+test("Apple IANA timezones without VTIMEZONE keep actual offsets, not Hong Kong defaults",()=>{
+ const ics=["BEGIN:VCALENDAR","VERSION:2.0","BEGIN:VEVENT","UID:tokyo","DTSTART;TZID=Asia/Tokyo:20261130T090000","DTEND;TZID=Asia/Tokyo:20261130T100000","SUMMARY:Tokyo","END:VEVENT","BEGIN:VEVENT","UID:new-york","DTSTART;TZID=America/New_York:20261129T230000","DTEND;TZID=America/New_York:20261130T000000","SUMMARY:New York","END:VEVENT","END:VCALENDAR"].join("\r\n");
+ const events=parseAppleEvents(ics,now);assert.equal(events.length,2);
+ assert.equal(events.find(e=>e.uid==="tokyo")?.start,"2026-11-30T00:00:00.000Z");
+ assert.equal(events.find(e=>e.uid==="new-york")?.start,"2026-11-30T04:00:00.000Z");
+ assert.throws(()=>parseAppleEvents(ics.replace("Asia/Tokyo","Invalid/Not_A_Zone"),now),/APPLE_TIMEZONE_UNSUPPORTED/);
+});
+test("IANA recurring instances use each date's DST offset and the HK window",()=>{
+ const ics=["BEGIN:VCALENDAR","VERSION:2.0","BEGIN:VEVENT","UID:dst-repeat","DTSTART;TZID=America/New_York:20261031T090000","DTEND;TZID=America/New_York:20261031T100000","RRULE:FREQ=DAILY;COUNT=4","SUMMARY:DST","END:VEVENT","END:VCALENDAR"].join("\r\n");
+ const events=parseAppleEvents(ics,new Date("2026-10-31T16:30:00Z"));
+ assert.deepEqual(events.map(e=>e.start),["2026-11-01T14:00:00.000Z","2026-11-02T14:00:00.000Z","2026-11-03T14:00:00.000Z"]);
+});
+test("ambiguous and missing local times use compatible RFC-style DST disambiguation",()=>{
+ const point=(date:string)=>["BEGIN:VCALENDAR","VERSION:2.0","BEGIN:VEVENT","UID:dst-point",`DTSTART;TZID=America/New_York:${date}`,"SUMMARY:DST point","END:VEVENT","END:VCALENDAR"].join("\r\n");
+ assert.equal(parseAppleEvents(point("20261101T013000"),new Date("2026-11-01T00:00:00Z"))[0].start,"2026-11-01T05:30:00.000Z");
+ assert.equal(parseAppleEvents(point("20260308T023000"),new Date("2026-03-08T00:00:00Z"))[0].start,"2026-03-08T07:30:00.000Z");
+});
 test("provider errors are allowlisted and never expose credentials or event text",()=>{
  assert.equal(calendarErrorCode(new Error("APPLE_AUTH_REQUIRED")),"APPLE_AUTH_REQUIRED");
  assert.equal(calendarErrorCode(new Error("password=SECRET and https://private-calendar/path")),"APPLE_REFRESH_FAILED");

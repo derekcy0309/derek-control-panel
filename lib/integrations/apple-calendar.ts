@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createDAVClient, type DAVCalendar } from "tsdav";
 import ICAL from "ical.js";
+import { Temporal } from "@js-temporal/polyfill";
 import { briefWindow, type BriefEvent } from "../calendar-brief.ts";
 import { calendarErrorCode } from "../calendar-errors.ts";
 
@@ -47,11 +48,31 @@ export function parseAppleEvents(data: string, now=new Date()): BriefEvent[] {
  for(const z of root.getAllSubcomponents("vtimezone")){const tz=new ICAL.Timezone(z);zones.set(tz.tzid,tz);}
  const components=root.getAllSubcomponents("vevent"), masterIds=new Set(components.filter(c=>!c.hasProperty("recurrence-id")).map(c=>String(c.getFirstPropertyValue("uid"))));
  const {start,end}=briefWindow(now), lower=Date.parse(start),upper=Date.parse(end);const result:BriefEvent[]=[];
- function hydrate(c:InstanceType<typeof ICAL.Component>) {const e=new ICAL.Event(c);for(const [name,time] of [["dtstart",e.startDate],["dtend",e.endDate]] as const){const tzid=c.getFirstProperty(name)?.getParameter("tzid");if(time&&!time.isDate&&tzid&&zones.has(String(tzid)))time.zone=zones.get(String(tzid))!;else if(time&&!time.isDate&&tzid&&time.zone.tzid==="floating"&&tzid!=="Asia/Hong_Kong")throw new Error("APPLE_TIMEZONE_UNSUPPORTED");}return e;}
- function iso(t:InstanceType<typeof ICAL.Time>) {return t.isDate?t.toString().slice(0,10):t.zone.tzid==="floating"?new Date(t.toString()+"+08:00").toISOString():t.toJSDate().toISOString();}
+ function zoneId(c:InstanceType<typeof ICAL.Component>,property:string){const value=c.getFirstProperty(property)?.getParameter("tzid");return typeof value==="string"?value:undefined;}
+ function hydrate(c:InstanceType<typeof ICAL.Component>) {
+  // Relate only this UID's explicitly hydrated exceptions, not every exception
+  // in the VCALENDAR (ICAL.Event's default constructor behavior).
+  const e=new ICAL.Event(c,{exceptions:[]});
+  for(const [name,time] of [["dtstart",e.startDate],["dtend",e.endDate]] as const){
+   const tzid=zoneId(c,name);
+   if(time&&!time.isDate&&tzid&&zones.has(tzid))time.zone=zones.get(tzid)!;
+   else if(time&&!time.isDate&&tzid&&time.zone.tzid==="floating"){
+    try{new Intl.DateTimeFormat("en",{timeZone:tzid});}catch{throw new Error("APPLE_TIMEZONE_UNSUPPORTED");}
+   }
+  }
+  return e;
+ }
+ function iso(t:InstanceType<typeof ICAL.Time>,tzid?:string) {
+  if(t.isDate)return t.toString().slice(0,10);
+  if(t.zone.tzid!=="floating")return t.toJSDate().toISOString();
+  // Apple can return an IANA TZID without embedding VTIMEZONE. Never silently
+  // reinterpret it as HK time; use its actual offset and DST disambiguation.
+  try{return Temporal.ZonedDateTime.from({timeZone:tzid??"Asia/Hong_Kong",year:t.year,month:t.month,day:t.day,hour:t.hour,minute:t.minute,second:t.second},{disambiguation:"compatible",overflow:"reject"}).toInstant().toString({fractionalSecondDigits:3});}
+  catch{throw new Error("APPLE_TIMEZONE_UNSUPPORTED");}
+ }
  function add(e:InstanceType<typeof ICAL.Event>,s:InstanceType<typeof ICAL.Time>,f:InstanceType<typeof ICAL.Time>) {
   if(String(e.component.getFirstPropertyValue("status")).toUpperCase()==="CANCELLED")return;
-  const a=iso(s),b=iso(f),aTime=Date.parse(a+(s.isDate?"T00:00:00+08:00":"")),bTime=Date.parse(b+(s.isDate?"T00:00:00+08:00":""));
+  const a=iso(s,zoneId(e.component,"dtstart")),b=iso(f,zoneId(e.component,e.component.hasProperty("dtend")?"dtend":"dtstart")),aTime=Date.parse(a+(s.isDate?"T00:00:00+08:00":"")),bTime=Date.parse(b+(s.isDate?"T00:00:00+08:00":""));
  if(!Number.isFinite(aTime)||!Number.isFinite(bTime)||bTime<aTime||(s.isDate&&bTime===aTime))throw new Error("APPLE_EVENT_INVALID");
   // RFC 5545: a DATE-TIME VEVENT without DTEND/DURATION is an instant,
   // not malformed calendar data. Include points at HK midnight as well.
@@ -63,7 +84,7 @@ export function parseAppleEvents(data: string, now=new Date()): BriefEvent[] {
   if(!event.isRecurring()){add(event,event.startDate,event.endDate);continue;}
   for(const exception of components.filter(x=>x.hasProperty("recurrence-id")&&String(x.getFirstPropertyValue("uid"))===event.uid))event.relateException(hydrate(exception));
   const iter=event.iterator();let exhausted=false;
-  for(let n=0;n<10000;n++){const occurrence=iter.next();if(!occurrence){exhausted=true;break;}if(Date.parse(iso(occurrence)+(occurrence.isDate?"T00:00:00+08:00":""))>=upper){exhausted=true;break;}const detail=event.getOccurrenceDetails(occurrence);add(detail.item,detail.startDate,detail.endDate);}
+  for(let n=0;n<10000;n++){const occurrence=iter.next();if(!occurrence){exhausted=true;break;}if(Date.parse(iso(occurrence,zoneId(c,"dtstart"))+(occurrence.isDate?"T00:00:00+08:00":""))>=upper){exhausted=true;break;}const detail=event.getOccurrenceDetails(occurrence);add(detail.item,detail.startDate,detail.endDate);}
   if(!exhausted)throw new Error("APPLE_RECURRENCE_LIMIT");
  }
  return result;

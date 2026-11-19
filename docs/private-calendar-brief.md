@@ -10,6 +10,8 @@
 
 錯誤只保存固定 allowlist 代碼，絕不記錄原始 provider error、帳戶網址或 ICS。沒有 DTEND／DURATION 的 DATE-TIME 行程按 RFC 5545 視為時間點，包括香港午夜，不應令整份 Calendar 失敗；倒置日期仍不會當作正確行程。
 
+支援 Apple 省略 VTIMEZONE 時仍提供的 IANA TZID（例如 Asia/Tokyo、America/New_York）；以固定版本、僅 server-side 的 Temporal polyfill 正確轉 UTC，並處理每一期夏令時間及重複／不存在的本地時間。原有 VTIMEZONE 定義仍優先使用；真正未知的時區會顯示安全錯誤，絕不當作香港時間猜測。
+
 Settings → 私人 Calendar 及 Grok 日報：
 
 1. 用 Apple Account 電郵及 App 專用密碼連接，再明確揀 1–10 個 iCloud Calendar。需要 Apple 雙重認證；密碼只能在頁面表格輸入，不貼聊天、不保存表單草稿。
