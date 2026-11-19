@@ -11,7 +11,7 @@ export const maxDuration=60;
 export async function GET(request:NextRequest) {
  const ctx=await authenticateRequest(request);if(ctx instanceof Response)return ctx;
  try {
-  const [apple,grants,permissions]=await Promise.all([appleMetadata(ctx.user.id),ctx.client.from("agent_access_grants").select("id,label,expires_at,revoked_at").eq("owner_id",ctx.user.id).is("revoked_at",null).order("created_at",{ascending:false}).limit(5),ctx.client.from("agent_brief_permissions").select("grant_id,revoked_at").eq("owner_id",ctx.user.id)]);
+  const [apple,grants,permissions]=await Promise.all([appleMetadata(ctx.user.id),ctx.client.from("agent_access_grants").select("id,label,expires_at,revoked_at").eq("owner_id",ctx.user.id).is("revoked_at",null).gt("expires_at",new Date().toISOString()).neq("create_tag_ids","{}").order("created_at",{ascending:false}).limit(5),ctx.client.from("agent_brief_permissions").select("grant_id,revoked_at").eq("owner_id",ctx.user.id)]);
   if(grants.error||permissions.error)throw new Error("DB");
   return privateJson({apple,grants:grants.data??[],permissions:permissions.data??[]});
  }catch{return privateJson({error:"未能讀取私人 Calendar 設定，請重試。"},503);}

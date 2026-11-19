@@ -1,6 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  async headers() {
+    return ["/workspace/school","/agent","/api/school-bot-review"].map(source=>({source,headers:[
+      {key:"Content-Security-Policy",value:"frame-ancestors 'none'"},
+      {key:"X-Frame-Options",value:"DENY"},
+      {key:"Referrer-Policy",value:"no-referrer"}
+    ]}));
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version ?? "1.0.0",
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),

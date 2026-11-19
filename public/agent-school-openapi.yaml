@@ -1,0 +1,76 @@
+openapi: 3.1.0
+info:
+  title: Derek Panel · 子女及學校
+  version: 1.0.0
+  description: 每個 bot 用獨立 Access Code。只讀擁有人開放嘅未完成學校事項；新增、修改及刪除只會建立建議，必須由擁有人在 Panel 登入確認。勿將 Code 放入聊天、網址或參數。
+servers:
+  - url: https://derek-control-panel.vercel.app
+security:
+  - botCode: []
+paths:
+  /api/agent/school:
+    get:
+      operationId: listMySchoolItems
+      summary: 列出已開放嘅學校事項；唔包括備註或附件
+      parameters:
+        - in: query
+          name: offset
+          schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+      responses:
+        '200':
+          description: 每頁最多 25 項。more 為 true 時，下一頁 offset 加 25。version 用於提交改動。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: {type: string, format: uuid}
+                        title: {type: string}
+                        date: {type: [string, 'null'], format: date}
+                        version: {type: string, format: date-time}
+                  more: {type: boolean}
+        '403': {description: 未獲此範圍授權}
+    post:
+      operationId: proposeSchoolChange
+      summary: 提議新增、修改或刪除；不會直接寫入學校記錄
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [operation, requestId, changes]
+              properties:
+                operation: {type: string, enum: [create, update, delete]}
+                requestId: {type: string, format: uuid, description: 每次新建議用新 UUID；重試原封不動沿用。}
+                itemId: {type: string, format: uuid, description: 修改或刪除必填，新增不可提供。}
+                version: {type: string, format: date-time, description: 修改或刪除必須原樣使用最新清單所示版本。}
+                changes:
+                  type: object
+                  additionalProperties: false
+                  description: 新增要有 title；修改只提供需要改嘅欄位；刪除必須傳空物件。
+                  properties:
+                    title: {type: string, minLength: 1, maxLength: 120}
+                    date: {type: [string, 'null'], format: date, description: null 表示清除日期。}
+      responses:
+        '202':
+          description: 受理建議，不代表已套用。不可嘗試代用戶確認。
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposalId: {type: string, format: uuid}
+                  status: {type: string}
+                  duplicate: {type: boolean}
+        '403': {description: 未開放}
+        '409': {description: 版本已變，要重新睇資料及再提建議。}
+components:
+  securitySchemes:
+    botCode: {type: http, scheme: bearer}

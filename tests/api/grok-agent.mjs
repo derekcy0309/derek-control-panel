@@ -6,7 +6,8 @@ import {createHash} from 'node:crypto';
 // NextURL normalizes loopback hosts to localhost; use the same origin a browser
 // uses, rather than weakening the application's Origin check for 127.0.0.1.
 const base='http://localhost:3146',key='dcp_grok_'+'x'.repeat(43),hash=createHash('sha256').update(key).digest('hex');
-let operations=0,revoked=false,logs='';
+let operations=0,revoked=false,logs='',schoolOpen=false,schoolApplies=0;
+const fixtureOwner='11111111-1111-4111-8111-111111111111',proposalId='55555555-5555-4555-8555-555555555555';
 const backend=http.createServer(async(req,res)=>{
   let result={},status=200;
   if(req.url==='/rest/v1/rpc/agent_access_operation'){
@@ -16,12 +17,23 @@ const backend=http.createServer(async(req,res)=>{
     else if(body.p_action==='status')result={id:'11111111-1111-4111-8111-111111111111',label:'Grok Bot',expiresAt:new Date(Date.now()+30*86400000).toISOString(),tags:[],permissions:{read:true,create:true,update:false,delete:false}};
     else if(body.p_action==='create_note')result={id:'22222222-2222-4222-8222-222222222222',kind:'note',duplicate:false};
     else result={items:[],nextOffset:null};
-  }else if(req.url==='/rest/v1/rpc/agent_brief_owner'){
+  }else if(req.url==='/rest/v1/rpc/school_bot_request'){
+    let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);
+    assert.equal(req.headers.authorization,'Bearer fixture-service');assert.equal(body.p_token_hash,hash);
+    if(!schoolOpen && body.p_action!=='brief'){status=400;result={message:'SCHOOL_OFF'};}
+    else if(body.p_action==='propose'){assert.equal(body.p_data.operation,'create');status=200;result={proposalId,status:'pending',duplicate:false};}
+    else result=schoolOpen?{enabled:true,items:[{title:'學校事項',date:'2026-11-19'}],more:false}:{enabled:false};
+  }else if(req.url==='/rest/v1/rpc/school_owner_decision'){
+    assert.equal(req.headers.authorization,'Bearer human-session');let raw='';for await(const part of req)raw+=part;
+    const body=JSON.parse(raw);assert.equal(body.p_action,'approve');assert.equal(body.p_id,proposalId);schoolApplies++;result='approved';
+  }else if(req.url==='/rest/v1/rpc/touch_current_user_last_seen')result=null;
+  else if(req.url?.startsWith('/rest/v1/user_profiles?')){assert.equal(req.headers.authorization,'Bearer human-session');result=[{is_admin:true,active:true}];}
+  else if(req.url==='/rest/v1/rpc/agent_brief_owner'){
     let raw='';for await(const part of req)raw+=part;assert.equal(JSON.parse(raw).p_token_hash,hash);assert.equal(raw.includes(key),false);result='11111111-1111-4111-8111-111111111111';
   }else if(req.url?.startsWith('/rest/v1/tasks?')){
     const url=new URL(req.url,'http://fixture');assert.equal(url.searchParams.get('owner_id'),'eq.11111111-1111-4111-8111-111111111111');const due=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Hong_Kong'}).format(new Date());result=[{id:'44444444-4444-4444-8444-444444444444',title:'Own deadline',due_date:due,requested_priority:1,status:'not_started'}];
   }else if(req.url?.startsWith('/rest/v1/operating_items?')||req.url?.startsWith('/rest/v1/apple_calendar_connections?')){const url=new URL(req.url,'http://fixture');assert.equal(url.searchParams.get('owner_id'),'eq.11111111-1111-4111-8111-111111111111');result=[];
-  }else if(req.url==='/auth/v1/user'){status=401;result={message:'not a user JWT'};}
+  }else if(req.url==='/auth/v1/user'){if(req.headers.authorization==='Bearer human-session')result={id:fixtureOwner,aud:'authenticated',role:'authenticated'};else{status=401;result={message:'not a user JWT'};}}
   else{status=404;result={message:'unexpected fixture endpoint'};}
   res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
 });
@@ -44,6 +56,18 @@ try{
   assert.equal((await request('/api/control?view=bootstrap')).status,401);assert.equal((await request('/api/backup')).status,401);
   const brief=await request('/api/agent/brief');assert.equal(brief.status,200);const report=await brief.json();assert.match(report.text,/Own deadline/);assert.match(report.text,/Apple Calendar未連接/);assert.equal(report.days.length,3);assert.equal((await request('/api/agent/brief?owner_id=forged')).status,400);
   assert.equal(report.familyDates,undefined);assert.equal(report.familyWarning,undefined);
+  assert.doesNotMatch(report.text,/學校 Deadline/);assert.equal((await request('/api/agent/school')).status,403);
+  schoolOpen=true;assert.match((await(await request('/api/agent/brief')).json()).text,/學校 Deadline/);
+  assert.equal((await request('/api/agent/school')).status,200);
+  const json={'Content-Type':'application/json'}, suggestion={operation:'create',requestId:proposalId,changes:{title:'Fixture only'}};
+  assert.equal((await request('/api/agent/school',{method:'POST',headers:json,body:JSON.stringify(suggestion)})).status,202);
+  assert.equal((await request('/api/agent/school',{method:'POST',headers:json,body:JSON.stringify({...suggestion,owner_id:fixtureOwner})})).status,422);
+  assert.equal((await request('/api/agent/school',{method:'DELETE'})).status,405);
+  assert.equal((await request('/api/school-bot-review')).status,401);assert.equal(schoolApplies,0);
+  const sendDecision=(origin,headers={})=>fetch(base+'/api/school-bot-review',{method:'POST',headers:{...json,Origin:origin,Cookie:'dcp_access=human-session',...headers},body:JSON.stringify({action:'approve',id:proposalId})});
+  assert.equal((await sendDecision('https://example.test')).status,403);
+  assert.equal((await sendDecision(base,{Authorization:'Bearer '+key})).status,401);
+  assert.equal((await sendDecision(base)).status,200);assert.equal(schoolApplies,1);
   assert.equal((await fetch(base+'/api/calendar-brief')).status,401);assert.equal((await request('/api/calendar-brief?owner_id=forged')).status,400);
   revoked=true;assert.equal((await request('/api/agent')).status,401);
   console.log('PASS actual Grok API: hashed credential only, isolated cookie, read/create, no mutations, no normal user/backup access, CSRF and revocation');

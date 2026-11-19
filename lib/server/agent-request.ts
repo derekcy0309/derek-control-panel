@@ -48,6 +48,7 @@ export async function runAgentOperation(request: NextRequest, action: string, pa
 }
 export function agentDatabaseError(error: { code?: string; message?: string }) {
   const message = error.message ?? "";
+  if (message.includes("SCHOOL_ONLY")) return agentJson({ error: "呢個 Code 只限子女及學校，未開放 Task、Notes 或 Calendar。" }, 403);
   if (message.includes("AGENT_UNAUTHORIZED")) return agentJson({ error: "Agent 存取已到期、已停用或 Access Code 不正確。" }, 401);
   if (message.includes("AGENT_NOT_FOUND")) return agentJson({ error: "此項目未開放、已封存或不存在。" }, 404);
   if (message.includes("AGENT_RATE_LIMIT")) return agentJson({ error: "Agent 操作太密，請稍後再試；每日最多新增 50 項。" }, 429);

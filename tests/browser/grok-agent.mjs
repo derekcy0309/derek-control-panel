@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdir} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
+import {schoolReviewFixture,testSchoolReview} from './school-bot-scenarios.mjs';
 const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE).href);
 const base=process.env.VERIFY_URL||'http://localhost:3145';let logs='';
 const server=process.env.VERIFY_URL?null:spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','-p','3145'],{env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',NEXT_PUBLIC_SUPABASE_ANON_KEY:'fixture',NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe']});
@@ -13,7 +14,7 @@ try{
   browser=await chromium.launch({headless:true,executablePath:process.env.BROWSER_EXECUTABLE});
   for(const width of [360,1280]){
     const context=await browser.newContext({viewport:{width,height:920},serviceWorkers:'block'}),page=await context.newPage();page.setDefaultTimeout(18000);
-    const errors=[];page.on('pageerror',e=>errors.push(e.message));let logged=false,failOnce=true,requests=[];
+    const errors=[];page.on('pageerror',e=>errors.push(e.message));let logged=false,failOnce=true,requests=[],schoolOnly=false,proposed=0;
     const session={id,label:'Grok Bot',expiresAt:new Date(Date.now()+30*86400000).toISOString(),tags:[{id:tag,name:'個人'}],permissions:{read:true,create:true,update:false,delete:false}};
     const items=[{id:'33333333-3333-4333-8333-333333333333',kind:'task',title:'已開放的工作',description:'只供讀取的內容',status:'not_started'}];
     await page.route('**/api/**',async route=>{
@@ -21,12 +22,16 @@ try{
       if(url.pathname==='/api/agent/session'){
         if(request.method()==='DELETE'){logged=false;body={ok:true};}
         else{assert.equal(request.postDataJSON().key,key);logged=true;body=session;}
+      }else if(url.pathname==='/api/agent/school'){
+        if(request.method()==='POST'){assert.equal(request.postDataJSON().operation,'create');proposed++;body={proposalId:id,status:'pending',duplicate:false};status=202;}
+        else body={enabled:true,items:[{id,title:'學校事項',date:'2026-11-19',version:'2026-11-19T00:00:00Z'}],more:false};
       }else if(url.pathname==='/api/agent/brief'){
         body={days:[],sources:[],text:'今日 2026-11-14\n09:00–10:00 Apple 私人行程\nDeadline 本人工作'};
       }else if(url.pathname==='/api/agent'){
         if(!logged){status=401;body={error:'請登入'};}
         else if(request.method()==='GET'){
-          const view=url.searchParams.get('view');body=view==='status'?session:view==='detail'?{item:items.find(v=>v.id===url.searchParams.get('id'))}:{items:items.filter(v=>v.kind===url.searchParams.get('kind')),nextOffset:null};
+          const view=url.searchParams.get('view');if(schoolOnly&&view!=='status')throw new Error('School-only must not load Task/Notes');
+          body=view==='status'?(schoolOnly?{...session,scope:'school_only',tags:[]}:session):view==='detail'?{item:items.find(v=>v.id===url.searchParams.get('id'))}:{items:items.filter(v=>v.kind===url.searchParams.get('kind')),nextOffset:null};
         }else{
           const input=request.postDataJSON();requests.push(input);
           if(failOnce){failOnce=false;status=503;body={error:'驗證用連線失敗；請重試，草稿保留。'};}
@@ -35,7 +40,7 @@ try{
       }else throw new Error(`Agent unexpectedly requested ${url.pathname}`);
       await route.fulfill({status,json:body});
     });
-    await page.goto(base+'/agent',{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'Grok Agent 登入',exact:true}).waitFor();
+    await page.goto(base+'/agent',{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'AI Bot 登入',exact:true}).waitFor();
     await page.getByLabel('Access Code',{exact:true}).fill(key);await page.getByRole('button',{name:'登入 Agent 工作區',exact:true}).click();
     await page.getByRole('heading',{name:'Grok Bot',exact:true}).waitFor();
     await page.goto(base+'/agent/brief');await page.getByRole('region',{name:'Grok 三日精簡摘要',exact:true}).getByText(/Apple 私人行程/).waitFor();assert.equal(await page.getByRole('button',{name:'新增 Task',exact:true}).count(),0);await page.goto(base+'/agent');await page.getByRole('heading',{name:'Grok Bot',exact:true}).waitFor();
@@ -54,14 +59,22 @@ try{
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
     assert.equal(await page.evaluate(secret=>JSON.stringify({...localStorage,...sessionStorage}).includes(secret),key),false);
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/grok-${width}.png`,fullPage:true});}
-    await page.getByRole('button',{name:'登出 Agent',exact:true}).click();await page.getByRole('heading',{name:'Grok Agent 登入',exact:true}).waitFor();
+    schoolOnly=true;await page.goto(base+'/agent');await page.getByRole('button',{name:'建議新增學校事項'}).click();
+    await page.getByLabel('事項名稱',{exact:true}).fill('Synthetic school proposal');await page.getByRole('button',{name:'提交建議，等本人確認'}).click();
+    await page.getByText(/建議已送出，等本人登入確認/).waitFor();assert.equal(proposed,1);
+    assert.equal(await page.getByRole('button',{name:'新增 Task',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:/本人確認刪除/}).count(),0);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+    await page.getByRole('button',{name:'登出 Agent',exact:true}).click();await page.getByRole('heading',{name:'AI Bot 登入',exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>Object.keys(sessionStorage).filter(k=>k.startsWith('dcp:agent-draft:')).length),0);assert.deepEqual(errors,[]);
     console.log(`PASS Grok browser ${width}px: limited login/read, task/note create, draft/retry idempotency, logout and responsive layout`);await context.close();
   }
   const context=await browser.newContext({viewport:{width:1280,height:920},serviceWorkers:'block'}),page=await context.newPage();page.setDefaultTimeout(18000);
   let grant=null,created=0,revoked=0,apple=null,appleSelected=[];
+  const school=schoolReviewFixture();
   await page.route('**/api/**',async route=>{
     const request=route.request(),url=new URL(request.url());let body={};
+    if(url.pathname==='/api/school-bot-review')return school.respond(route);
     if(url.pathname==='/api/agent-access'){
       if(request.method()==='POST'){
         const value=request.postDataJSON();
@@ -77,17 +90,19 @@ try{
     else body={currentUser:{id,displayName:'Derek'},profile:{user_id:id,display_name:'Derek',active:true,is_admin:true,timezone:'Asia/Hong_Kong'},settings:{theme:'sunrise'},tasks:[],transactions:[],meetings:[],balances:[],operatingItems:[],assignments:[],shares:[],handoffNotes:[],planning:[],participants:[],taskDependencies:[],projectMilestones:[],taskRecurrenceRules:[],capacity:null,notificationPreferences:null,notificationDeliveries:[],activePushSubscriptionCount:0,household:null,calendarConnections:[],taskNoticeRecipients:[],taskFollowers:[],showEncouragement:false};
     await route.fulfill({status:200,json:body});
   });
-  await page.goto(base+'/settings',{waitUntil:'domcontentloaded'});const manager=page.getByRole('region',{name:'Grok 專用登入',exact:true});
-  await manager.getByText('管理 Grok Login／Access Code',{exact:true}).click();await manager.getByRole('button',{name:'個人',exact:true}).click();
-  await manager.getByRole('checkbox',{name:/我同意 Grok 讀取/}).check();await manager.getByRole('button',{name:'建立 Grok Login',exact:true}).click();
-  await manager.getByLabel('Grok Access Code',{exact:true}).waitFor();assert.equal(await manager.getByLabel('Grok Access Code',{exact:true}).getAttribute('type'),'password');assert.equal(created,1);
+  await page.goto(base+'/settings',{waitUntil:'domcontentloaded'});const manager=page.getByRole('region',{name:'AI Bot 登入',exact:true});
+  await manager.getByText('管理 Bot Login／Access Code',{exact:true}).click();await manager.getByRole('button',{name:'個人',exact:true}).click();
+  await manager.getByRole('checkbox',{name:/我同意呢個 bot 讀取/}).check();await manager.getByRole('button',{name:'建立一般 Bot Login',exact:true}).click();
+  await manager.getByLabel('Bot Access Code',{exact:true}).waitFor();assert.equal(await manager.getByLabel('Bot Access Code',{exact:true}).getAttribute('type'),'password');assert.equal(created,1);
   await manager.getByRole('button',{name:'停用存取',exact:true}).click();await manager.getByRole('button',{name:'確認停用這個 Access Code',exact:true}).click();
-  await manager.getByRole('status').filter({hasText:'已停用；'}).waitFor();assert.equal(revoked,1);assert.equal(await manager.getByLabel('Grok Access Code',{exact:true}).count(),0);
+  await manager.getByRole('status').filter({hasText:'已停用；'}).waitFor();assert.equal(revoked,1);assert.equal(await manager.getByLabel('Bot Access Code',{exact:true}).count(),0);
   console.log('PASS Grok admin UI: explicit scope/consent, create-once masked code and revoke');
   const settings=page.getByRole('region',{name:'私人 Calendar 及 Grok 日報',exact:true});await settings.getByText('連接 Apple／設定三日日報',{exact:true}).click();
   await settings.getByLabel('Apple Account 電郵',{exact:true}).fill('fixture@example.test');await settings.getByLabel('App 專用密碼（不是主密碼）',{exact:true}).fill('xxxx-yyyy-zzzz-wwww');
   await settings.getByRole('checkbox',{name:/同意 Panel 安全保存/}).check();await settings.getByRole('button',{name:'連接／重新連接 Apple',exact:true}).click();await settings.getByText('私人行程',{exact:true}).waitFor();
   assert.equal(await settings.getByLabel('App 專用密碼（不是主密碼）',{exact:true}).inputValue(),'');assert.equal(await settings.getByRole('checkbox',{name:'私人行程',exact:true}).isChecked(),false);
   await settings.getByRole('checkbox',{name:'私人行程',exact:true}).check();await settings.getByRole('button',{name:'儲存 Calendar 選擇',exact:true}).click();await settings.getByRole('status').filter({hasText:'私人行程設定已更新'}).waitFor();assert.deepEqual(appleSelected,['private']);
-  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}).includes('xxxx-yyyy-zzzz-wwww')),false);console.log('PASS private Calendar setup: explicit consent/selection, no password draft, no automatic all-calendar share');await context.close();
+  assert.equal(await page.evaluate(()=>JSON.stringify({...localStorage,...sessionStorage}).includes('xxxx-yyyy-zzzz-wwww')),false);console.log('PASS private Calendar setup: explicit consent/selection, no password draft, no automatic all-calendar share');
+  for(const width of [360,1280]){school.reset();await page.setViewportSize({width,height:920});await testSchoolReview(page,base,school);}
+  await context.close();
 }finally{await browser?.close();server?.kill();}

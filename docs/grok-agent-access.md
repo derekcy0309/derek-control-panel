@@ -49,3 +49,13 @@ Security advisor 的 `agent_write_requests`「RLS enabled, no policy」是刻意
 - `tests/browser/grok-agent.mjs`：360／1280 px 的登入、閱讀、新增、Notes 無多餘日期、草稿／重試，以及管理員 Code 建立／停用。
 
 沒有真人 Grok Bot E2E（需使用者自己的 Grok Vault／Secure Form）；不能把 Panel smoke check 說成已完成第三方連接。
+# 子女及學校：逐個 bot 授權
+
+Grok 小助手同其他支援 HTTPS Bearer／瀏覽器登入嘅 bot 都可用。唔按品牌、bot 名稱或共用 Access Code 認人；**每個 bot 用獨立 Code**。唔好將 Code、本人 Google 密碼或兒童資料貼落普通聊天。
+
+- 本人登入「子女及學校」→「管理邊個 bot 可以用」。可為現有 Code 開放學校，或直接建立 30 日「只限學校」Code。後者不含 Task、Notes、財務或 Calendar，唔使揀 Task Tag。冇自動為現有 Code 開放。
+- Bot 登入 /agent 後開「子女及學校」，或使用 /agent-school-openapi.yaml。只回傳本人未完成、未封存學校事項嘅名稱及日期，另有不含內容嘅識別碼同版本；唔包括人哋分享俾你嘅資料、備註、附件或其他家庭事項。敏感項目可完全唔分享（新 Code 預設）或只報「學校事項」同日期。
+- GET /api/agent/school 按日期分頁；POST 只受理建議及回傳收據。同一份建議重試須沿用 requestId。唔提供直接修改、直接刪除或 bot 確認接口。
+- 本人返「子女及學校」→「Bot 建議 · 等我確認」→睇改前／改後，再逐項確認或拒絕。登入超過 10 分鐘須重新登入，登入成功本身唔會執行建議。新增預設私人／敏感，確認刪除只封存原記錄。原資料有變、授權失效或建議超過 7 日不能套用；更改學校授權會取消未處理建議。
+- 已同時授權三日日報及學校嘅一般 Code，沿用原本 /agent/brief 同香港時間 08:30 routine。只加今日起三日嘅學校 Deadline，唔會自動通知其他 bot。學校專用 Code 不能讀日報或 Calendar。
+- Migration 20261119101614_school_bot_approval；對應手動 rollback 會停用學校權限及學校專用 Code，保留原記錄、建議及 audit。日誌只記動作識別及時間；記錄前後值只供本人覆核。

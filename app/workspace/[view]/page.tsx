@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, CalendarClock, Check, FileLock2, Filter, List, Plus, Search, Share2, Sparkles } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
+import { SchoolBotReview } from "@/components/school/SchoolBotReview";
 import { InboxProcessingMode } from "@/components/inbox/InboxProcessingMode";
 import { CaptureFiles } from "@/components/inbox/CaptureFiles";
 import { ProjectMilestonesPanel } from "@/components/projects/ProjectMilestonesPanel";
@@ -98,6 +99,7 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
 
   return <div className="space-y-5">
     <section className="section-hero flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="relative z-10"><p className="eyebrow">{config.eyebrow}</p><h1 className="page-title mt-1">{config.title}</h1><p className="muted mt-2 max-w-3xl text-sm leading-6">{config.description}</p></div><Button className="relative z-10" onClick={() => setAdding(true)}><Plus className="h-5 w-5" />{config.addLabel}</Button><SectionArtwork section={config.itemType === "health" ? "health" : config.area} compact /></section>
+    {config.itemType === "school" && data.profile.is_admin && data.profile.active ? <SchoolBotReview key={data.currentUser.id} onApplied={()=>void reload()}/> : null}
     {config.itemType === "project" ? <ProjectMilestonesPanel projects={items} milestones={data.projectMilestones} tasks={data.tasks} onChanged={() => void reload()} /> : null}
     <section className="panel flex flex-col gap-3 p-3 sm:flex-row">
       <label className="relative flex-1"><span className="sr-only">搜尋此頁</span><Search className="pointer-events-none absolute left-3 top-3 h-5 w-5 text-slate-400" /><input className="field pl-10" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={isNoteView ? "搜尋筆記標題、內容或分類" : "搜尋標題、內容或下一步"} /></label>

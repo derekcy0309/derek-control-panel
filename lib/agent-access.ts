@@ -3,7 +3,7 @@ export type AgentKind = "task" | "note";
 export type AgentTag = { id: string; name: string };
 export type AgentGrant = { id: string; label: string; key_fingerprint: string; created_at: string; expires_at: string; revoked_at: string | null; last_used_at: string | null };
 export type AgentEvent = { id: string; grant_id: string; action: string; resource_type: AgentKind | null; resource_id: string | null; created_at: string };
-export type AgentStatus = { id: string; label: string; expiresAt: string; tags: AgentTag[]; permissions: { read: true; create: true; update: false; delete: false } };
+export type AgentStatus = { id: string; label: string; expiresAt: string; tags: AgentTag[]; scope?: "school_only"; permissions: { read: boolean; create: boolean; update: false; delete: false } };
 export type AgentItem = { id: string; kind: AgentKind; title: string; description?: string | null; notes?: string | null; due_date?: string | null; status?: string; requested_priority?: number; category?: string | null; tags?: AgentTag[]; created_at?: string };
 
 export const agentKeyPattern = /^dcp_grok_[A-Za-z0-9_-]{43}$/;

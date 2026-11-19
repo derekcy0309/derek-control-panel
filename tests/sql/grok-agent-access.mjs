@@ -45,6 +45,8 @@ try {
   await db.exec(await readFile(new URL(validator,directory),'utf8'));
   const brief=(await readdir(directory)).find(name=>name.endsWith('_private_calendar_daily_brief.sql'));assert.ok(brief);
   await db.exec(await readFile(new URL(brief,directory),'utf8'));
+  const {testSchoolBots}=await import('./school-bot-fixture.mjs');
+  await testSchoolBots({db,asRole,owner,other,tag,directory});
   await asRole('authenticated',owner);
   const hash='a'.repeat(64);
   const grant=(await db.query('select public.create_my_agent_access($1,$2,30,$3::uuid[],$4::uuid[],$5::uuid[]) value',[hash,'Grok fixture',[task],[note],[tag]])).rows[0].value;
@@ -88,4 +90,11 @@ try {
   await assert.rejects(db.query('select public.agent_brief_owner($1)',[hash]),/AGENT_UNAUTHORIZED/);
   await db.exec('reset role');assert.equal((await db.query('select amount from public.transactions')).rows[0].amount,'1234');
   console.log('PASS Grok local smoke: migration, owner-only opt-in read/create, no anonymous/human RPC, no delete, idempotency, revocation and unchanged finance');
+  const countBefore=(await db.query('select count(*) c from public.operating_items')).rows[0].c;
+  await db.exec(await readFile(new URL('../../supabase/rollback-20261119101614-school-bot-approval.sql',import.meta.url),'utf8'));
+  assert.equal((await db.query('select count(*) c from public.operating_items')).rows[0].c,countBefore);
+  await asRole('service_role');await assert.rejects(db.query("select public.school_bot_request($1,'list','{}')",['c'.repeat(64)]),/permission denied/);
+  await assert.rejects(db.query("select public.agent_access_operation($1,'status','{}')",['e'.repeat(64)]),/AGENT_UNAUTHORIZED/);
+  assert.ok((await db.query("select public.agent_access_operation($1,'status','{}') v",['c'.repeat(64)])).rows[0].v.permissions.read);
+  console.log('PASS rollback preserves school records and general grants, stops school RPCs and revokes isolated codes');
 }finally{await db.close();}
