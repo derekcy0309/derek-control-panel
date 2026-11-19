@@ -2,10 +2,10 @@
 
 ## 用法
 
-1. 「加 Task」：輸入任務名稱、揀一個或多個 Tags，按「加 Task」。Priority 預設 P2；P1 高、P3 低。可以用裝置鍵盤聽寫，儲存前仍由本人確認。
+1. 「加 Task」：只需打任務名，按 Enter 或「加 Task」。Tags 預設用自己揀嘅有效標籤，未設優先用「個人」；亦可以唔用 Tags（例如已刪走全部）。Priority 預設 P2；P1 高、P3 低。可以用裝置鍵盤聽寫，儲存前仍由本人確認。
 2. 「日期／邊個跟」：需要時先打開。預設無 Deadline、我自己；指派只列出真實 participant_profiles 用戶，接收確認沿用既有交接流程。
 3. 「更多設定」：保留指定工作日、Follow-up、Routine、備註、共同跟進及通知。舊估時／能量等資料留在 DB，不再要求填寫，也不參與簡易首頁排序。
-4. 首頁：今日完成進度、Waiting、未來七日 Deadline。最多一件 Now、兩件 Next。未安排時只按 Priority 建議；按「開始做」才加入 Today。已有 Today 則沿用本人次序，做完後顯示下一件；不自動補入更多 backlog。
+4. 首頁：今日完成進度、Waiting、未來七日 Task Deadline，加上本人未來三日行程及學校／家庭日期。最多一件 Now、兩件 Next。未安排時按 Priority 建議，同級先睇較近 Deadline；已有 Today 則沿用本人次序。「帶我開工」打開獨立[開工導航](work-guide.md)，唔需要再揀一次或再排一次。
 5. 「今日全部」繼續使用現有排序及 To-do List 列印；「任務總表」按自己的 Tags／名稱篩選，各組先收起。
 6. 「管理我的 Tags」可新增、改名、移除任何 Tag，無鎖定名稱。移除 Tag 不刪 Task；無分類的 Task 在「全部／未分類」仍找得到。
 
@@ -25,7 +25,7 @@ Migration：`20261113172120_personal_task_tags.sql`（已套用於 Derek self）
 
 新增 Task 會先驗證 Tags，沿用 client_request_id 防重複提交；儲存失敗保留草稿與同一識別碼。新表單不再傳能量／估時或 legacy 分類更新，避免改寫歷史資料和分享。Tag 改名直接更新本機定義，Task 儲存以返回資料更新清單；不觸發 document reload。
 
-沒有新增路由、Cron、AI／語音服務、付費依賴或環境變數。Focus、checkpoint、handover、財務、藥物及既有頁面保留。
+首版簡易模式（2026-11-14）沒有新增路由。2026-11-19 增加 `/work-guide`；沒有新增 Cron、AI／語音服務、付費依賴或環境變數。Focus、checkpoint、handover、財務、藥物及既有頁面保留。
 
 ## 驗證
 

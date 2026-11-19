@@ -764,10 +764,18 @@ button.task-complete-button:hover { border-color: #10b981; background: #ecfdf5; 
 
 /* Simple mode reuses the existing surface/theme tokens; labels never imply access. */
 .simple-dashboard-banner {
-  background: radial-gradient(circle at 95% 0%, #a78bfa55, transparent 55%), linear-gradient(120deg, #4f46c8, #7146d5 70%, #9159d5);
-  box-shadow: 0 12px 35px -24px #4f46c8;
+  background: linear-gradient(110deg,#f3eaff,#e6edff 57%,#dff6f1); color:#352b4e;
+  border:1px solid #d9d2e8;
 }
-.simple-dashboard .simple-add-task { background: white; color: #4338a2; border: 1px solid #ffffffbb; }
+.simple-dashboard .simple-add-task,.guide-entry { background:#e4d5ff; color:#402764; border:1px solid #bda8df; }
+.guide-entry { display:inline-flex; align-items:center; min-height:44px; gap:.5rem; border-radius:.8rem; padding:.45rem 1rem; font-weight:750; }
+.guide-wash {background:#eee6fc;color:#332941;}
+:root:not([data-theme="dark"]) .simple-stat-card:nth-child(1) { background:#f1eaff; }
+:root:not([data-theme="dark"]) .simple-stat-card:nth-child(2) { background:#dff5e9; }
+:root:not([data-theme="dark"]) .simple-stat-card:nth-child(3) { background:#ffead8; }
+:root:not([data-theme="dark"]) .brief-agenda {background:#e5f3ff;color:#273e56;}
+:root:not([data-theme="dark"]) .brief-deadline {background:#ffeddb;color:#503620;}
+:root[data-theme="dark"] .simple-dashboard-banner,:root[data-theme="dark"] .guide-wash {background:var(--surface);color:var(--ink);}
 .simple-stat-card { min-width: 0; padding: 1rem; border: 1px solid var(--border, #e2e8f0); border-radius: 1.25rem; background: var(--surface, white); box-shadow: 0 4px 15px -12px #33415588; }
 .simple-stat-label { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; font-size: .8rem; font-weight: 700; color: var(--muted, #64748b); }
 .simple-stat-number { display: block; margin-top: .5rem; color: var(--ink, #1e293b); font-weight: 850; font-size: 2rem; line-height: 1.15; }

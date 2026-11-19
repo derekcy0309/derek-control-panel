@@ -5,9 +5,9 @@ import { controlAction, loadTaskTags } from "@/lib/control-api";
 import { taskTagNameError } from "@/lib/simple-mode";
 import type { PersonalTaskTag } from "@/lib/types";
 
-export function TaskTagPicker({ value, onChange, taskId, onReady, disabled = false }: {
+export function TaskTagPicker({ value, onChange, taskId, onReady, onCatalog, onLoadError, initialCatalog, disabled = false }: {
   value: string[]; onChange: (ids: string[]) => void; taskId?: string;
-  onReady: (ready: boolean) => void; disabled?: boolean;
+  onReady: (ready: boolean) => void; onCatalog?: (tags:PersonalTaskTag[])=>void; onLoadError?:()=>void; initialCatalog?: PersonalTaskTag[]; disabled?: boolean;
 }) {
   const [tags, setTags] = useState<PersonalTaskTag[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,14 +23,17 @@ export function TaskTagPicker({ value, onChange, taskId, onReady, disabled = fal
     let active = true;
     setLoading(true);
     onReady(false);
-    void loadTaskTags(taskId).then((result) => {
+    const source=!taskId && Array.isArray(initialCatalog) && retry===0 ? Promise.resolve({tags:initialCatalog,taskTagIds:[]}) : loadTaskTags(taskId);
+    void source.then((result) => {
       if (!active) return;
+      if(!Array.isArray(result.tags))throw new Error("未能讀取你嘅 Tags，請重試。");
       setTags(result.tags);
+      onCatalog?.(result.tags);
       if (taskId) onChange(result.taskTagIds);
       setError("");
       onReady(true);
     }).catch((caught) => {
-      if (active) setError(caught instanceof Error ? caught.message : "Tags 未載入，請重試。");
+      if (active) { setError(caught instanceof Error ? caught.message : "Tags 未載入，請重試。"); onLoadError?.(); }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
     // Only load when opening another task or explicitly retrying, never on form input.
@@ -50,6 +53,7 @@ export function TaskTagPicker({ value, onChange, taskId, onReady, disabled = fal
       const next = operation === "create" ? [...tags, result.tag] : operation === "delete"
         ? tags.filter((tag) => tag.id !== tagId) : tags.map((tag) => tag.id === tagId ? result.tag : tag);
       setTags(next);
+      onCatalog?.(next);
       if (operation === "create") { setName(""); onChange([...value, result.tag.id].slice(0, 20)); }
       if (operation === "delete") { onChange(value.filter((id) => id !== tagId)); setDeleting(null); }
       setEditing(null);
@@ -59,8 +63,8 @@ export function TaskTagPicker({ value, onChange, taskId, onReady, disabled = fal
   }
 
   const selected = value.filter((id) => tags.some((tag) => tag.id === id));
-  return <fieldset className="min-w-0" aria-required="true" disabled={disabled || busy}>
-    <legend className="label">Tags 分類（必填）</legend>
+  return <fieldset className="min-w-0" disabled={disabled || busy}>
+    <legend className="label">Tags 分類</legend>
     {loading ? <p className="mt-2 text-sm text-slate-500" role="status">載入 Tags…</p> : <div className="mt-2 flex flex-wrap gap-2" aria-label="揀選 Tags">
       {tags.map((tag) => <button key={tag.id} type="button" aria-pressed={selected.includes(tag.id)}
         className={`min-h-11 break-words rounded-xl border px-4 py-2 text-sm font-bold ${selected.includes(tag.id) ? "border-indigo-500 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-500" : "border-slate-200 bg-white text-slate-600"}`}

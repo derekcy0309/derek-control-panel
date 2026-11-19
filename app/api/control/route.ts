@@ -4,6 +4,7 @@ import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { taskTagNameError } from "@/lib/simple-mode";
+import { guideContinue, guideReview } from "@/lib/work-guide";
 import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/server/task-tags";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
@@ -21,6 +22,7 @@ export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get("view") ?? "bootstrap";
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "work_guide") return workGuide(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "task_resources") return taskResources(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
   if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
@@ -288,7 +290,7 @@ async function todayDashboard({ client, user }: RequestContext) {
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("assignments")
         .select("*")
-        .in("status", ["pending_acceptance", "accepted", "in_progress"])
+        .in("status", ["pending_acceptance", "accepted", "in_progress", "waiting", "blocked"])
         .order("created_at", { ascending: false })
         .limit(200),
       client.from("user_planning_metadata")
@@ -908,6 +910,11 @@ export async function POST(request: NextRequest) {
     case "snooze_today_task": return snoozeTodayTask(context, body);
     case "save_checkpoint_draft": return saveTaskCheckpoint(context, body, "draft");
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
+    case "record_guide_step": {
+      const origin=request.headers.get("origin");
+      if(request.headers.get("sec-fetch-site")==="cross-site" || (origin && origin!==request.nextUrl.origin))return jsonError("請喺 Panel 內儲存下一步。",403);
+      return recordGuideStep(context, body);
+    }
     case "create_task_resource": return createTaskResource(context, body);
     case "set_task_resource_sharing": return setTaskResourceSharing(context, body);
     case "delete_task_resource": return deleteTaskResource(context, body);
@@ -2744,6 +2751,44 @@ async function search({ client }: RequestContext, query: string) {
     ...(items.data ?? []).map((item) => ({ ...item, resourceType: "operating_item", itemType: item.item_type }))
   ].slice(0, 30);
   return Response.json({ results }, { headers: privateHeaders() });
+}
+
+async function workGuide({client}:RequestContext, requested:string) {
+  const id=uuidValue(requested);
+  if(!id)return jsonError("任務識別碼不正確。",400);
+  const task=await client.from("tasks").select("id").eq("id",id).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").maybeSingle();
+  if(task.error)return databaseError(task.error);
+  if(!task.data)return jsonError("任務已結束或你冇權限查看，請重新載入今日安排。",404);
+  const [steps,latest,children]=await Promise.all([
+    client.from("task_steps").select("id,title,status,sort_order,updated_at").eq("task_id",id).order("sort_order").limit(50),
+    client.from("task_checkpoints").select("current_position,completed_summary,next_minimum_step").eq("task_id",id).eq("state","saved").order("last_worked_at",{ascending:false}).order("created_at",{ascending:false}).limit(1).maybeSingle(),
+    client.from("tasks").select("id").eq("parent_task_id",id).is("archived_at",null).is("deleted_at",null).not("status","in","(done,cancelled)").limit(1)
+  ]);
+  const error=steps.error??latest.error??children.error;if(error)return databaseError(error);
+  return Response.json({checkpoint:latest.data,steps:steps.data??[],openChildren:Boolean(children.data?.length)},{headers:privateHeaders()});
+}
+
+// Append to the existing checkpoint history; never consume a pending Focus draft or its private links.
+async function recordGuideStep({client,user}:RequestContext, body:Record<string,unknown>) {
+  const taskId=uuidValue(body.taskId), id=uuidValue(body.clientMutationId);
+  const completed=checkpointText(body.completed,2000,"完成嘅一步"), next=checkpointText(body.next,2000,"接住做嘅一步");
+  if(completed instanceof Response)return completed;if(next instanceof Response)return next;
+  if(!id||!taskId||(!completed && !next))return jsonError("請保留一步進度或下一個動作。",422);
+  const task=await client.from("tasks").select("id").eq("id",taskId).is("archived_at",null).is("deleted_at",null).not("status","in","(done,cancelled,waiting,blocked)").maybeSingle();
+  if(task.error)return databaseError(task.error);if(!task.data)return jsonError("任務狀態已改變，請重新載入。",409);
+  const position=next?guideContinue:guideReview;
+  const entry={id,task_id:taskId,author_id:user.id,state:"saved",completed_summary:completed,current_position:position,next_minimum_step:next};
+  const fields="completed_summary,current_position,next_minimum_step";
+  const result=await client.from("task_checkpoints").insert(entry).select(fields).single();
+  if(result.error?.code==="23505"){
+    const previous=await client.from("task_checkpoints").select(fields).eq("id",id).eq("task_id",taskId).eq("author_id",user.id).eq("state","saved").maybeSingle();
+    if(previous.error)return databaseError(previous.error);
+    if(!previous.data||previous.data.completed_summary!==completed||previous.data.next_minimum_step!==next)return jsonError("進度已更改，請重新載入。",409);
+    return Response.json({checkpoint:previous.data},{headers:privateHeaders()});
+  }
+  if(result.error)return databaseError(result.error);
+  await recordActivity(client,user.id,"task",taskId,"checkpoint_saved","已記低開工導航進度");
+  return Response.json({checkpoint:result.data},{status:201,headers:privateHeaders()});
 }
 
 async function taskCheckpoints({ client, user }: RequestContext, requestedTaskId: string) {

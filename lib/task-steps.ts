@@ -1,6 +1,6 @@
 import type { Task, TaskStep } from "@/lib/types";
 
-export function currentTaskStep(steps: TaskStep[]): TaskStep | null {
+export function currentTaskStep<T extends Pick<TaskStep,"status"|"sort_order">>(steps: T[]): T | null {
   return [...steps]
     .filter((step) => step.status !== "done")
     .sort((a, b) => Number(a.status === "later") - Number(b.status === "later") || a.sort_order - b.sort_order)[0] ?? null;

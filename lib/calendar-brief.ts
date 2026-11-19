@@ -2,6 +2,8 @@ import { calendarErrorMessage, type CalendarErrorCode } from "./calendar-errors.
 export const briefTimezone = "Asia/Hong_Kong";
 export type BriefEvent = { id: string; uid: string; title: string; start: string; end: string; allDay: boolean; source: "Apple" | "Panel"; tentative?: boolean };
 export type BriefDeadline = { id: string; title: string; due: string; priority: number; status: string };
+export type FamilyDate = { id:string; title:string; date:string; kind:"family"|"school" };
+export type DashboardBrief = CalendarBrief & { familyDates?: FamilyDate[]; familyWarning?:string };
 export type BriefSource = { label: string; state: "fresh" | "stale" | "not_connected" | "select_calendars"; lastSync: string | null; errorCode?: CalendarErrorCode };
 export type CalendarBrief = { generatedAt: string; from: string; untilExclusive: string; days: { date: string; events: BriefEvent[]; deadlines: BriefDeadline[] }[]; sources: BriefSource[]; truncated: boolean; warnings?: string[]; text: string };
 export function briefDate(value = new Date()) { return new Intl.DateTimeFormat("en-CA", { timeZone: briefTimezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(value); }

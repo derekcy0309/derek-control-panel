@@ -31,6 +31,14 @@ export function actionableTask(task: Task, dependencies: TaskDependency[], allTa
     && !allTasks.some((prerequisite) => prerequisite.id === d.depends_on_task_id && prerequisite.status === "done"));
 }
 
+// Snoozes created by the planner are Hong Kong calendar days stored as timestamps.
+function snoozedPastToday(value:string|null|undefined,today:string) {
+  if(!value)return false;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(value))return value>today;
+  const ms=Date.parse(value);
+  return Number.isFinite(ms) && new Date(ms+8*3_600_000).toISOString().slice(0,10)>today;
+}
+
 export function simpleToday(input: {
   tasks: Task[]; planning: PlanningMetadata[]; dependencies: TaskDependency[];
   assignments: Assignment[]; userId: string; today: string;
@@ -39,16 +47,16 @@ export function simpleToday(input: {
   const own = tasks.filter((t) => isMyTask(t, userId, assignments));
   const myPlanning = planning.filter((p) => p.user_id === userId && p.resource_type === "task");
   const plans = orderTodayPlan(myPlanning.filter((p) => p.planned_date === today && p.plan_role
-    && !p.hidden_from_today && (!p.snoozed_until || p.snoozed_until <= today)));
+    && !p.hidden_from_today && !snoozedPastToday(p.snoozed_until,today)));
   const planned = plans.flatMap((p) => {
-    const task = tasks.find((t) => t.id === p.resource_id);
+    const task = own.find((t) => t.id === p.resource_id);
     return task && (p.plan_source === "manual" || taskScheduledForDate(task, today)) ? [task] : [];
   });
-  const ready = (task: Task) => actionableTask(task, dependencies, tasks);
-  const suggestions = sortByPriority(own.filter((t) => ready(t) && taskScheduledForDate(t, today)
-    && (!t.snoozed_until || t.snoozed_until <= today)
-    && !myPlanning.some((p) => p.resource_id === t.id && (p.hidden_from_today || (p.snoozed_until && p.snoozed_until > today)))
-    && !planned.some((p) => p.id === t.id)));
+  const ready = (task: Task) => actionableTask(task, dependencies, tasks) && !snoozedPastToday(task.snoozed_until,today);
+  const suggestions = own.filter((t) => ready(t) && taskScheduledForDate(t, today)
+    && !myPlanning.some((p) => p.resource_id === t.id && (p.hidden_from_today || snoozedPastToday(p.snoozed_until,today)))
+    && !planned.some((p) => p.id === t.id)).sort((a,b) => simplePriority(a.requested_priority)-simplePriority(b.requested_priority)
+      || (a.due_date || "9999").localeCompare(b.due_date || "9999"));
   // A manual plan always wins. Completing one reveals the next in that same order.
   const active = planned.filter(ready);
   const ordered = planned.length ? active : suggestions;

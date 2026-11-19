@@ -63,6 +63,10 @@ export async function loadTaskDetail(taskId: string): Promise<TaskDetailData> {
   );
 }
 
+export function loadWorkGuide(taskId: string) {
+  return controlRequest<import("./work-guide").GuideDetail>(`/api/control?view=work_guide&taskId=${encodeURIComponent(taskId)}`, {method:"GET"});
+}
+
 export type AssignmentAlertRecord = {
   id: string;
   resource_id: string;

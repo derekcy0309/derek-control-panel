@@ -7,6 +7,7 @@ import { FocusSessionHistory } from "@/components/FocusSessionHistory";
 import { TaskResourcePack } from "@/components/TaskResourcePack";
 import { Button } from "@/components/ui/Button";
 import { hasCheckpointContent } from "@/lib/checkpoints";
+import { starterSteps } from "@/lib/work-guide";
 import { controlAction } from "@/lib/control-api";
 import { isOffline, queueFocusFinish, queueFocusPause } from "@/lib/offline-write-queue";
 import { taskVisibleNextAction } from "@/lib/task-steps";
@@ -44,7 +45,7 @@ export function FocusMode({
   const [hasStarted, setHasStarted] = useState(false);
   const [message, setMessage] = useState("");
   const [blockedReason, setBlockedReason] = useState("缺資料");
-  const [activeStep, setActiveStep] = useState(taskVisibleNextAction(task) ?? "");
+  const [activeStep, setActiveStep] = useState(taskVisibleNextAction(task) ?? starterSteps(task.title)[0]);
   const [editorOpen, setEditorOpen] = useState(false);
   const [exitRequested, setExitRequested] = useState(false);
   const [busy, setBusy] = useState(false);

@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer
+  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer, Compass
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -30,6 +30,7 @@ const navGroups: NavGroupData[] = [
     defaultOpen: true,
     items: [
       { href: "/", label: "行動中心", icon: Sparkles },
+      { href: "/work-guide", label: "開工導航", icon: Compass },
       { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
   },
@@ -139,6 +140,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:new`);
         sessionStorage.removeItem(`dcp:task-form-draft:v1:${currentUserId}:waiting`);
         sessionStorage.removeItem(`dcp:assignment-alerts:v1:${currentUserId}`);
+        const guidePrefix=`dcp:guide-next:v1:${currentUserId}:`;
+        for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key?.startsWith(guidePrefix))sessionStorage.removeItem(key);}
         clearNoteDrafts(sessionStorage, currentUserId);
         localStorage.removeItem(`dcp:assignment-alerts:v1:${currentUserId}`);
       } catch {

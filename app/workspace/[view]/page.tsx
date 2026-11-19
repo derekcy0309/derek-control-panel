@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Archive, CalendarClock, Check, FileLock2, Filter, List, Plus, Search, Share2, Sparkles } from "lucide-react";
@@ -82,6 +82,13 @@ function GenericWorkspaceContent({ config }: { config: ViewConfig }) {
       || (left.due_date ?? "9999-12-31").localeCompare(right.due_date ?? "9999-12-31")
       || left.title.localeCompare(right.title));
   }, [category, config, data, isNoteView, query, status, today]);
+
+  useEffect(()=>{
+    if(!data || loading)return;
+    const scrollToLinkedItem=()=>{const hash=window.location.hash;if(/^#item-[a-f0-9-]{36}$/i.test(hash))document.getElementById(hash.slice(1))?.scrollIntoView({block:"center"});};
+    scrollToLinkedItem();window.addEventListener("hashchange",scrollToLinkedItem);
+    return ()=>window.removeEventListener("hashchange",scrollToLinkedItem);
+  },[data,loading]);
 
   if (loading || error || !data) return <LoadingState error={error} />;
   async function update(item: OperatingItem, changes: Record<string, unknown>) { await controlAction("update_item", { id: item.id, changes }); await reload(); }
@@ -323,7 +330,7 @@ function ItemCard({ item, today = hkDateIso(), currentUserId, onEdit, onComplete
   const customStatus = customStatusForItem(item);
 
   return (
-    <article className="panel p-4 sm:p-5">
+    <article id={`item-${item.id}`} className="panel scroll-mt-24 p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap gap-2">

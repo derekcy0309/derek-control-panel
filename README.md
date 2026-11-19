@@ -6,12 +6,12 @@
 
 - 私人三日總覽：首頁合併顯示本人 Panel 行程、選定 Apple Calendar 的唯讀快取及今日起三日未完成 Deadline。Apple 行程仍在 iPhone 修改，不進入共享 Task。Grok 可另授權讀本人日後新增 Task，並以 `/agent/brief` 一份精簡文字執行 08:30 Routine；Apple 授權及 Grok Routine 均需完成一次設定，未連接／未排程不會假稱啟用。見 [`docs/private-calendar-brief.md`](docs/private-calendar-brief.md)。
 
-- 簡易模式（2026-11-14）：Dashboard 用三個概覽卡及最多三件重點；跟 Priority 建議，已手動排好的 Today 次序優先。加 Task 只必填名稱及 Tags，P2 為預設；日期／負責人、Routine、工作日及共同跟進按需要打開。不再要求能量、估時或工作模式。詳見 [`docs/simple-mode.md`](docs/simple-mode.md)。
+- 簡易首頁及[開工導航](docs/work-guide.md)：Dashboard 打個任務名、按 Enter 就可以加 Task。標籤、P2、本人及無 Deadline 有預設，毋須逐項設定。首頁用淺色分開工作、等回覆同限期，另有本人未來三日學校／家庭日期及已揀選嘅 iCloud 行程。「帶我開工」一次只顯示一件事、一個起步動作；已手排嘅次序優先，完成一步唔等於結案。自訂 Tags、Routine、工作日及共同跟進保留，見 [簡易模式](docs/simple-mode.md)。
 - 私人 Tags：全部可以新增、改名、移除。Derek 首次保留原有四個分類；其他用戶首次只設「個人、Wecare」。刪除後不會重建預設，不改 Task、scope、area 或分享權限。
 
 - 交辦確認：已修正「確認收到」被舊資料庫 guard 誤擋；收件人可先確認再接受，派出者可收到去重回覆。真實 RLS／trigger 測試、migration 及回復見 [`docs/assignment-acknowledgement-fix.md`](docs/assignment-acknowledgement-fix.md)。
 - 私人筆記：只填標題、內容及可選分類／Remark（車輛、個人財務、公司、工作、個人、家庭或自訂）；支援分類搜尋及同分頁草稿，儲存後不整頁重新載入。分類不會建立財務紀錄或改變分享權限。詳見 [`docs/simple-notes.md`](docs/simple-notes.md)。
-- Today 建議：簡易首頁只按 Priority，不因 Deadline 改寫優先次序。舊 Auto-Plan／capacity 資料及 API 保留兼容，但不再出現在預設流程。
+- Today 建議：未手排先按 Priority 建議，同級優先較近 Deadline。唔會改寫已排次序。舊 Auto-Plan／capacity 資料及 API 保留兼容，但不再出現在預設流程。
 - 自訂工作日：一次性任務可逐日加入真正要做的日子，完成日可留空，未填開始日時以第一個加入的日子為開始日；如有設定開始／完成日，仍會檢查日期範圍。Today 建議、瀏覽器通知與每日電郵只在選定日提示。舊任務保持原有提醒；使用者仍可明確手動加入 Today。修正及驗證見 [`docs/task-work-day-picker-fix.md`](docs/task-work-day-picker-fix.md)。
 - 手動排 Today：在「今日全部任務」由任務總表加入工作，再用上下按鈕排次序；第一項成為「現在做」。不會自行更改截止日期。
 - 各人使用同一簡易首頁：只顯示本人工作及明確揀選的 Today；安靜模式按帳戶獨立，不顯示健康標籤或個人表現排名。

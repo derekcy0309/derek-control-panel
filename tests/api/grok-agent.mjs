@@ -43,6 +43,7 @@ try{
   assert.equal((await request('/api/agent/session',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json'},body:JSON.stringify({key})})).status,403);
   assert.equal((await request('/api/control?view=bootstrap')).status,401);assert.equal((await request('/api/backup')).status,401);
   const brief=await request('/api/agent/brief');assert.equal(brief.status,200);const report=await brief.json();assert.match(report.text,/Own deadline/);assert.match(report.text,/Apple Calendar未連接/);assert.equal(report.days.length,3);assert.equal((await request('/api/agent/brief?owner_id=forged')).status,400);
+  assert.equal(report.familyDates,undefined);assert.equal(report.familyWarning,undefined);
   assert.equal((await fetch(base+'/api/calendar-brief')).status,401);assert.equal((await request('/api/calendar-brief?owner_id=forged')).status,400);
   revoked=true;assert.equal((await request('/api/agent')).status,401);
   console.log('PASS actual Grok API: hashed credential only, isolated cookie, read/create, no mutations, no normal user/backup access, CSRF and revocation');

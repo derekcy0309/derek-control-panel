@@ -68,24 +68,24 @@ test("task categories use the existing area and scope fields without a database 
   assert.match(categories, /"personal" \| "family" \| "sec" \| "wecare"/);
   assert.match(categories, /case "sec": return \{ area: "work", scope: "home" \}/);
   assert.match(categories, /case "wecare": return \{ area: "work", scope: "company" \}/);
-  assert.match(form, /tagIds: form.tag_ids/);
+  assert.match(form, /tagIds: selectedTags.length/);
   assert.doesNotMatch(form, /taskCategory: form\.task_category/);
   assert.match(api, /taskCategoryValue\(body\.taskCategory\)/);
   assert.doesNotMatch(categories, /supabase|migration/i);
 });
 
-test("task category is visible immediately after the name and required for new tasks", () => {
+test("capture shows the resolved category after the name without requiring another decision", () => {
   const form = read("components/forms/TaskForm.tsx");
   const name = form.indexOf('<span className="label">任務名稱</span>');
   const category = form.indexOf('<TaskTagPicker');
   const today = form.indexOf('加入今日 Today');
   assert.ok(name >= 0 && category > name && category < today);
   const picker = read("components/tasks/TaskTagPicker.tsx");
-  assert.match(picker, /Tags 分類（必填）/);
-  assert.match(picker, /aria-required="true"/);
+  assert.match(picker, /Tags 分類/);
+  assert.match(form, /defaultCaptureTag\(catalog,preferred\)/);
   assert.match(form, /task_category: ""/);
   assert.match(form, /task_category: taskCategoryFor\(initialTask\)/);
-  assert.match(form, /form.tag_ids.length === 0/);
+  assert.match(form, /tagLabel \|\| "無 Tag"/);
   assert.doesNotMatch(form.slice(form.indexOf('更多選項')), /<span className="label">分類/);
 });
 

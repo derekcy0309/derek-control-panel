@@ -11,7 +11,8 @@ import { taskCategoryFor, type TaskCategory } from "@/lib/task-categories";
 import { TaskTagPicker } from "@/components/tasks/TaskTagPicker";
 import { simplePriorities } from "@/lib/simple-mode";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
-import type { Task } from "@/lib/types";
+import type { PersonalTaskTag, Task } from "@/lib/types";
+import { defaultCaptureTag } from "@/lib/work-guide";
 
 export type TaskSaveResult = { task: Task; refreshRelated: boolean };
 
@@ -113,6 +114,8 @@ export function TaskForm({
   preset,
   participants = [],
   compact = false,
+  inline = false,
+  knownTags,
   statusSuggestions = [],
   onSaved,
   onCancel
@@ -124,6 +127,8 @@ export function TaskForm({
   preset?: Partial<TaskFormState>;
   participants?: Array<{ user_id: string; display_name: string }>;
   compact?: boolean;
+  inline?: boolean;
+  knownTags?: PersonalTaskTag[];
   statusSuggestions?: string[];
   onSaved: (result?: TaskSaveResult) => void;
   onCancel?: () => void;
@@ -184,6 +189,15 @@ export function TaskForm({
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftError, setDraftError] = useState("");
   const [tagsReady, setTagsReady] = useState(false);
+  const [catalog,setCatalog] = useState<PersonalTaskTag[]>([]);
+  const [preferred,setPreferred] = useState("");
+  const [optionsOpen,setOptionsOpen] = useState(Boolean(initialTask || preset?.status === "waiting"));
+  const prefKey = `dcp:capture-default-tag:v1:${userId}`;
+  useEffect(()=>{try {setPreferred(localStorage.getItem(prefKey) || "");} catch {setPreferred("");}},[prefKey]);
+  const defaultTag = defaultCaptureTag(catalog,preferred);
+  const activeTags = form.tag_ids.filter(id=>catalog.some(tag=>tag.id===id));
+  const selectedTags = activeTags.length || initialTask || !defaultTag ? activeTags : [defaultTag.id];
+  const tagLabel = catalog.filter(tag=>selectedTags.includes(tag.id)).map(tag=>tag.name).join("、");
   const customStatusListId = useId();
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
   const nextRoutineDueDate = form.due_date
@@ -287,8 +301,9 @@ export function TaskForm({
     event.preventDefault();
     if (saving || createdTaskId) return;
     setError("");
-    if (!tagsReady || form.tag_ids.length === 0) {
-      setError("請揀最少一個 Tag；未有合適的可按「管理我的 Tags」新增。");
+    if (!form.title.trim()) { setError("寫低個 Task 名就得。"); return; }
+    if (!tagsReady) {
+      setOptionsOpen(true); setError("分類未載入，請重試；你輸入嘅名稱仍然保留。");
       return;
     }
     const workSchedule = validateTaskWorkSchedule({
@@ -328,7 +343,8 @@ export function TaskForm({
 
     const payload = {
       area: form.area,
-      tagIds: form.tag_ids,
+      // No active tags means the user removed them all. Do not resurrect a preset.
+      tagIds: selectedTags.length || initialTask ? selectedTags : undefined,
       clientRequestId: form.client_request_id || crypto.randomUUID(),
       sourceType: form.source_type,
       taskType: form.task_type_label.trim() || null,
@@ -378,7 +394,7 @@ export function TaskForm({
       } else {
         const created = await controlAction<{ task: Task }>("create_task", payload);
         savedTask = created.task;
-        sessionStorage.removeItem(draftKey);
+        try { sessionStorage.removeItem(draftKey); } catch { /* The server has already saved the task. */ }
         if (form.recurrence_enabled) {
           try {
             await controlAction("save_task_recurrence", recurrencePayload(created.task.id));
@@ -397,8 +413,9 @@ export function TaskForm({
     }
     setSaving(false);
     if (!initialTask) {
-      sessionStorage.removeItem(draftKey);
-      setForm({ ...defaultState, client_request_id: crypto.randomUUID() });
+      try { sessionStorage.removeItem(draftKey); } catch { /* Saving succeeded outside browser storage. */ }
+      setForm({ ...defaultState, ...preset, client_request_id: crypto.randomUUID() });
+      setOptionsOpen(false); setDraftRestored(false);
     }
     if (savedTask) {
       onSaved({
@@ -413,8 +430,7 @@ export function TaskForm({
   }
 
   return (
-    <form className="grid gap-4" onSubmit={save}>
-      <p className="text-sm leading-6 text-slate-500">寫低件事、揀 Tags 就加得。可用手機或電腦鍵盤的語音聽寫，確認文字後先儲存。</p>
+    <form className="grid min-w-0 gap-3" aria-label={initialTask ? "修改 Task" : "新增 Task"} onSubmit={save}>
       {draftRestored ? <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" role="status">已恢復上次未送出的任務草稿；成功儲存前會繼續自動保留。</p> : null}
       {draftError ? <p role="status" className="text-sm text-amber-800">{draftError}</p> : null}
       {createdTaskId ? (
@@ -427,11 +443,16 @@ export function TaskForm({
           </div>
         </section>
       ) : null}
-      <label>
+      <div className={inline ? "flex flex-wrap items-end gap-2" : ""}><label className="block min-w-0 flex-1">
         <span className="label">任務名稱</span>
-        <input className="field mt-2" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus required />
+        <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="寫低要做嘅事，或者用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
       </label>
-      <TaskTagPicker value={form.tag_ids} taskId={initialTask?.id} disabled={saving} onReady={setTagsReady} onChange={(tag_ids) => setForm((current) => ({ ...current, tag_ids }))} />
+      {inline ? <Button type="submit" className="simple-add-task" disabled={saving || !tagsReady || Boolean(createdTaskId)}>{saving ? "儲存中…" : "＋ 加 Task"}</Button> : null}</div>
+      {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{tagsReady ? tagLabel || "無 Tag" : "讀取分類…"} · {form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {simplePriorities.find(p=>String(p.value)===form.requested_priority)?.label || "P2 一般"} · {form.due_date || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
+      <div hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
+      <TaskTagPicker value={selectedTags} taskId={initialTask?.id} initialCatalog={knownTags} disabled={saving} onReady={setTagsReady} onCatalog={setCatalog} onLoadError={()=>setOptionsOpen(true)} onChange={(tag_ids) => setForm((current) => ({ ...current, tag_ids }))} />
+      {!initialTask && catalog.length ? <label className="text-sm font-semibold">新增 Task 預設 Tag（呢部裝置）
+        <select className="field mt-1" value={defaultTag?.id ?? ""} onChange={e=>{const id=e.target.value;setPreferred(id);setForm(current=>({...current,tag_ids:[id]}));try{localStorage.setItem(prefKey,id);}catch{setError("預設 Tag 只適用於今次，瀏覽器未能記住設定。");}}}>{catalog.map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</select></label> : null}
       <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} />
       {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
         <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
@@ -663,8 +684,9 @@ export function TaskForm({
       ) : null}
         </div>
       </details>
+      </div></div>
       {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900" role="alert">{error}</p> : null}
-      <div className="sticky bottom-0 z-10 flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+      {!inline ? <div className="sticky bottom-0 z-10 flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
         <Button type="submit" disabled={saving || !tagsReady || Boolean(createdTaskId)}>
           {saving ? "儲存中..." : initialTask ? "儲存修改" : "加 Task"}
         </Button>
@@ -673,7 +695,7 @@ export function TaskForm({
             取消
           </Button>
         ) : null}
-      </div>
+      </div> : null}
     </form>
   );
 }

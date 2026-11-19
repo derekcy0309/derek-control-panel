@@ -46,7 +46,7 @@ test("tags are bounded, viewer private and cannot replace legacy scope/privacy",
   assert.match(migration,/security invoker set search_path = ''/); assert.doesNotMatch(migration,/security definer|update public\.tasks|delete from public\.tasks/i);
   assert.match(migration,/if initialized is null then return/); assert.match(migration,/user_id = \(select auth.uid\(\)\)/);
   const form=readFileSync("components/forms/TaskForm.tsx","utf8");
-  assert.match(form,/tagIds: form.tag_ids/); assert.doesNotMatch(form,/taskCategory: payload|<span className="label">能量|estimated_minutes: payload|energy_level: payload/);
+  assert.match(form,/tagIds: selectedTags.length/); assert.doesNotMatch(form,/taskCategory: payload|<span className="label">能量|estimated_minutes: payload|energy_level: payload/);
   assert.match(form,/clientRequestId:/); assert.match(form,/Tags 分類|TaskTagPicker/);
   const api=readFileSync("app/api/control/route.ts","utf8");
   assert.doesNotMatch(api,/priorityValueForDueDate|datedPriority/);
