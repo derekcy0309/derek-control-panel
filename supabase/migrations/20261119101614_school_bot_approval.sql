@@ -200,8 +200,13 @@ grant execute on function public.create_my_school_only_bot(text,text,integer,tex
 
 -- Keep the original, audited implementation intact and inaccessible via the
 -- public Data API. New school-only codes may use it to authenticate, never CRUD.
-alter function public.agent_access_operation(text,text,jsonb) set schema private;
-alter function private.agent_access_operation(text,text,jsonb) rename to agent_base_operation_before_school;
+-- Hosted service_role has no USAGE on the app's private schema. Do not
+-- broaden it: keep precisely one legacy entry point in an unexposed schema.
+create schema school_bot_internal;
+revoke all on schema school_bot_internal from public,anon,authenticated,service_role;
+grant usage on schema school_bot_internal to service_role;
+alter function public.agent_access_operation(text,text,jsonb) set schema school_bot_internal;
+alter function school_bot_internal.agent_access_operation(text,text,jsonb) rename to agent_base_operation_before_school;
 create function public.agent_access_operation(p_token_hash text,p_action text,p_payload jsonb default '{}'::jsonb)
 returns jsonb language plpgsql security invoker set search_path='' as $$
 declare school_only boolean; result jsonb;
@@ -209,7 +214,7 @@ begin
  if current_user<>'service_role' then raise exception 'AGENT_FORBIDDEN'; end if;
  select cardinality(g.create_tag_ids)=0 into school_only from public.agent_access_grants g where g.token_hash=p_token_hash;
  if school_only and p_action is distinct from 'status' then raise exception 'SCHOOL_ONLY'; end if;
- result:=private.agent_base_operation_before_school(p_token_hash,p_action,p_payload);
+ result:=school_bot_internal.agent_base_operation_before_school(p_token_hash,p_action,p_payload);
  if school_only then return result||jsonb_build_object('scope','school_only','permissions',jsonb_build_object('read',false,'create',false,'update',false,'delete',false)); end if;
  return result;
 end $$;
