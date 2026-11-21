@@ -205,7 +205,9 @@ try {
     await page.getByRole('button',{name:/P1 高 High/}).waitFor();
     assert.equal(await page.locator('.task-queue-row').count(),0,'queue starts collapsed');
     await page.getByRole('button',{name:/P1 高 High/}).click();
-    await page.getByRole('link',{name:'未安排的高 Priority',exact:true}).waitFor();
+    const highPriorityRow=page.locator('.task-queue-row').filter({hasText:'未安排的高 Priority'});
+    await highPriorityRow.locator('summary').click();
+    await highPriorityRow.getByRole('link',{name:'未安排的高 Priority',exact:true}).waitFor();
     assert.equal(navigations,0,'typing, saving and switching tabs never reload the document');assert.deepEqual(errors,[]);
     console.log(`PASS simple-mode ${role} ${width}px: visible save (8 palettes), click creates once and appears in task list without refresh, manual order, quiet, draft, keyboard retry`);
     await context.close();

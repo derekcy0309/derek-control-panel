@@ -34,7 +34,13 @@ try {
       let body = {};
       let status = 200;
       if (parsed.pathname === '/api/auth') body = { user: { id: userId } };
-      else if (parsed.pathname === '/api/control' && req.method() === 'GET') body = parsed.searchParams.get('view') === 'task_tags' ? {tags,taskTagIds:[tags[0].id]} : parsed.searchParams.get('view') === 'assignment_alerts' ? { assignments: [], currentUserId: userId, quietModeUntil: null } : {...snapshot(),taskTags:tags};
+      else if (parsed.pathname === '/api/control' && req.method() === 'GET') {
+        const view=parsed.searchParams.get('view');
+        if(view==='task_tags') body={tags,taskTagIds:[tags[0].id]};
+        else if(view==='assignment_alerts') body={assignments:[],currentUserId:userId,quietModeUntil:null};
+        else if(view==='work_guide') body={steps:[],checkpoint:null,openChildren:false};
+        else body={...snapshot(),taskTags:tags};
+      }
       else if (parsed.pathname === '/api/control' && req.method() === 'POST') {
         const input = req.postDataJSON();
         if (input.action === 'set_today_task') {
@@ -66,7 +72,7 @@ try {
     page.on('request', request => {
       if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations++;
     });
-    assert.equal(await page.getByRole('button', { name: '加 Task', exact: true }).count(), 2); // Same form via topbar/banner.
+    assert.equal(await page.getByRole('button', { name: '加 Task', exact: true }).count(), 1);
     await page.getByRole('button', { name: '加入現有任務', exact: true }).first().click();
     await page.getByLabel('搜尋要加入今日的任務').fill('驗證用現有');
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
@@ -74,11 +80,11 @@ try {
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
     await page.getByRole('link', { name: '驗證用現有任務', exact: true }).waitFor();
     await page.getByRole('button', { name: '加 Task', exact: true }).first().click();
-    const dialog = page.getByRole('dialog', { name: '加 Task' });
+    const dialog = page.getByRole('form', { name: '新增 Task' });
     await dialog.getByLabel('任務名稱', { exact: true }).fill('驗證用今日新任務');
+    await dialog.getByRole('button',{name:/更改設定/}).click();
     const category = dialog.getByRole('button',{name:'個人',exact:true});
-    assert.equal(await category.getAttribute('aria-pressed'),'false');
-    await category.click();
+    assert.equal(await category.getAttribute('aria-pressed'),'true');
     await dialog.getByRole('checkbox', { name: /加入今日 Today/ }).check();
     await dialog.getByText('日期／邊個跟',{exact:false}).click();
     await dialog.getByText('更多設定',{exact:false}).click();
@@ -116,17 +122,17 @@ try {
     assert.equal(await dialog.getByLabel('任務開始日').inputValue(), today);
     await dialog.getByRole('button', { name: `移除 ${today}`, exact: true }).waitFor();
     assert.equal(createdPayload, undefined, 'adding a date must not submit the task');
-    await dialog.getByRole('button', { name: '加 Task', exact: true }).click();
+    await dialog.getByRole('button', { name: '儲存任務', exact: true }).click();
     await dialog.getByRole('alert').filter({ hasText: '驗證用儲存失敗' }).waitFor();
     assert.equal(await dialog.getByRole('button', { name: `移除 ${today}`, exact: true }).count(), 1);
-    await dialog.getByRole('button', { name: '加 Task', exact: true }).click();
+    await dialog.getByRole('button', { name: '儲存任務', exact: true }).click();
     await page.getByRole('link', { name: '驗證用今日新任務', exact: true }).waitFor();
     assert.equal(createdPayload.addToToday, true);
     assert.deepEqual(createdPayload.workDates, [today]);
     assert.equal(createdPayload.dueDate, null);
     assert.equal(createdPayload.workStartDate, today);
     await page.getByRole('tab', { name: /任務總表/ }).click();
-    await page.getByRole('button', { name: /P2 一般 Normal/ }).click();
+    await page.locator('#task-action-list').getByRole('button', { name: /^P2 一般 Normal/ }).click();
     const taskRow=page.locator('.task-queue-row').filter({hasText:'驗證用今日新任務'});
     await taskRow.locator('summary').click();
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
