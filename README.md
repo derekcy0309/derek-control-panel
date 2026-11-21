@@ -6,6 +6,8 @@
 
 ## 主要能力
 
+- [我的網頁、主要幹道路況、隧道費及資訊站](docs/reading-room.md)：預設實用連結、私人收藏、香港交通及分時收費；新聞按需要打開。
+
 - 子女及學校：你可以逐個授權 Grok 或其他 bot。每項新增、改名、改日期或刪除建議都必須由擁有人登入確認。可以建立「只限學校」Code，唔會連帶開放工作或 Calendar。用法見 [學校 Bot 權限](docs/grok-agent-access.md)。
 
 - 私人三日總覽：首頁合併顯示本人 Panel 行程、選定 Apple Calendar 的唯讀快取及今日起三日未完成 Deadline。Apple 行程仍在 iPhone 修改，不進入共享 Task。Grok 可另授權讀本人日後新增 Task，並以 `/agent/brief` 一份精簡文字執行 08:30 Routine；Apple 授權及 Grok Routine 均需完成一次設定，未連接／未排程不會假稱啟用。見 [`docs/private-calendar-brief.md`](docs/private-calendar-brief.md)。

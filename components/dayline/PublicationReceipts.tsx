@@ -1,0 +1,10 @@
+"use client";
+import {useEffect,useState} from "react";
+import {series,type Series} from "@/lib/publications";
+type Receipt={series:Series;result:"issue"|"no_issue"|"failed"|null;checked:string|null;expired:boolean};
+const slots:Record<Series,[number[],number]>={home:[[2,4],10],ngo:[[3],10],chronic:[[5],10],weekly:[[6],9],us:[[1,2,3,4,5,6],20]};
+function latestExpected(k:Series,now=Date.now()){const hk=new Date(now+8*3600_000),[days,h]=slots[k];let t=Date.UTC(hk.getUTCFullYear(),hk.getUTCMonth(),hk.getUTCDate(),h-8);for(let i=0;i<8;i++,t-=86400_000)if(t+3600_000<=now&&days.includes(new Date(t+8*3600_000).getUTCDay()))return t;return 0;}
+export function PublicationReceipts(){const [rows,set]=useState<Receipt[]|null>(null),[error,err]=useState(false),[epoch,retry]=useState(0);
+ useEffect(()=>{const c=new AbortController();err(false);fetch("/api/publications/publisher",{cache:"no-store",signal:c.signal}).then(async r=>{if(!r.ok)throw Error();const j=await r.json();if(!Array.isArray(j.connections))throw Error();if(!c.signal.aborted)set(j.connections);}).catch(()=>{if(!c.signal.aborted)err(true);});return()=>c.abort();},[epoch]);
+ return <details className="dl-news-card"><summary>出刊接收狀態</summary><p>按香港時間。未收到排程回報，同「排程已確認今次冇新刊」係兩回事。</p>{error?<p role="alert">未能核實接收狀態。 <button onClick={()=>retry(x=>x+1)}>重試</button></p>:rows===null?<p>讀取中…</p>:<ul>{(Object.keys(series) as Series[]).map(k=>{const p=rows.find(r=>r.series===k);const t=p?.checked&&new Date(p.checked);return <li key={k}><b>{series[k]}</b> · {!p?"未連接自動出刊":p.expired?"授權已到期，需重新連接":p.result==="failed"?"上次同步失敗，保留舊刊":!t?"已連接，未收到首次排程回報":t.getTime()<latestExpected(k)?"未收到最近一期排程回報":p.result==="no_issue"?"原排程已確認今次冇新刊":"已收到刊物"}{t?<small>上次回報：{t.toLocaleString("zh-HK",{timeZone:"Asia/Hong_Kong",hour12:false})}</small>:null}</li>;})}</ul>}</details>;
+}

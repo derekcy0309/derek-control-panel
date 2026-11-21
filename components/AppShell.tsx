@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer, Compass
+  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer, Compass, Newspaper
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -33,6 +33,7 @@ const navGroups: NavGroupData[] = [
     items: [
       { href: "/", label: "今日總覽", icon: Sparkles },
       { href: "/work-guide", label: "開工導航", icon: Compass },
+      { href: "/briefing/preferences", label: "資訊站／我的網頁", icon: Newspaper },
       { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
   },
@@ -135,6 +136,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   async function signOut() {
     const response = await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" });
+    if(response.ok){try{localStorage.removeItem("dl:device-subscription:markets");localStorage.removeItem("dl:device-subscription:care");}catch{}}
     if (response.ok && currentUserId) {
       await clearOfflineWrites(currentUserId).catch(() => undefined);
       try {

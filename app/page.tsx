@@ -20,6 +20,8 @@ import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { daylineDate, daylineWeek } from "@/lib/dayline";
 import { DaylineNow, DaylineNext } from "@/components/dayline/TodayCards";
 import { WeatherStrip } from "@/components/dayline/WeatherStrip";
+import { HomeLinks } from "@/components/dayline/HomeLinks";
+import { PersonalInformation } from "@/components/dayline/InfoChoices";
 import { isMyTask, simplePriorities, simplePriority, simpleToday, sortByPriority } from "@/lib/simple-mode";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import { starterSteps } from "@/lib/work-guide";
@@ -135,6 +137,8 @@ function SimpleDashboard() {
       <div className="dl-board"><DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} tags={current.taskTags??[]} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
         <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
         <DaylineNext tasks={plan.top.slice(1)} tags={current.taskTags??[]} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/></div>
+      <PersonalInformation key={current.currentUser.id}/>
+      <HomeLinks key={current.currentUser.id} userId={current.currentUser.id}/>
       {pending.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">新交接（{pending.length}）</summary><p className="mt-2 text-sm text-slate-500">接受後先加入你的工作建議。</p>{pending.slice(0, 3).map((a) => <Link key={a.id} className="mt-2 flex min-h-12 items-center justify-between gap-2 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" href={`/tasks/${a.resource_id}`}><span>{current.taskCatalog.find((t) => t.id === a.resource_id)?.title || "新工作交接"}</span><span className="shrink-0">查看／接受 →</span></Link>)}<Link href="/sharing" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-indigo-700">查看全部交接 →</Link></details> : null}
       {decisions.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">等我決定（{decisions.length}）</summary>{decisions.slice(0, 3).map((task) => <Link key={task.id} className="mt-2 flex min-h-12 items-center justify-between rounded-xl bg-slate-50 p-3 text-sm font-semibold" href={`/tasks/${task.id}`}>{task.title}<ArrowRight className="h-4 w-4" /></Link>)}</details> : null}
     </div>:null}
