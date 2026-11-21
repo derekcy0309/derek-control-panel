@@ -1,8 +1,6 @@
 "use client";
-import Link from "next/link";
 import {useCallback,useEffect,useState} from "react";
 import {isInfoKey,off,preferenceNames,type InfoKey,type InfoPrefs} from "@/lib/publications";
-import {RoadWatch} from "./RoadWatch";
 import {PublicationUnreadHint} from "./PublicationUnreadHint";
 import {defaultRoads,validRoads} from "@/lib/road-presets";
 export function useInfoChoices(account?:string|null){
@@ -22,7 +20,6 @@ export function InfoSettings({model}:{model:ReturnType<typeof useInfoChoices>}){
  const {prefs,ready,error,busy,change,retry}=model;
  return <section className="dl-news-card"><h2>我想睇嘅資訊</h2><p>每項預設關閉，只影響你自己。開啟刊物唔會取得其他人嘅刊物。</p>
  {!ready?<p role="status">讀取設定中…</p>:null}{error?<p role="alert">{error} <button onClick={retry}>重新讀取</button></p>:null}
- <div className="dl-choices">{(["journals","news"] as InfoKey[]).map(k=><label key={k}><input type="checkbox" checked={prefs[k]} disabled={!ready||busy||!!error} onChange={e=>void change(k,e.target.checked)}/>{preferenceNames[k]}</label>)}</div><p><Link className="dl-textbtn" href="/briefing/traffic">首頁交通實況及路段設定（毋須訂閱）</Link></p></section>;
+ <div className="dl-choices">{(["journals","news"] as InfoKey[]).map(k=><label key={k}><input type="checkbox" checked={prefs[k]} disabled={!ready||busy||!!error} onChange={e=>void change(k,e.target.checked)}/>{preferenceNames[k]}</label>)}</div></section>;
 }
 export function PersonalInformation({model}:{model:ReturnType<typeof useInfoChoices>}){return model.ready&&model.prefs.journals?<PublicationUnreadHint/>:null;}
-export function HomeRoads({model}:{model:ReturnType<typeof useInfoChoices>}){return model.ready&&model.prefs.traffic?<RoadWatch compact model={model}/>:null;}

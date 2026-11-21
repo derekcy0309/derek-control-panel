@@ -65,9 +65,9 @@ export function TaskQueueSection({
         </span>
       </button>
       {open ? (
-        <div className="border-t border-black/5 px-3 py-3 sm:px-4">
+        <div className="dl-queue-section-body">
           {tasks.length ? (
-            <div className="grid gap-2 [content-visibility:auto]">
+            <div className="dl-queue-stack">
               {visibleTasks.map((task) => (
                 <TaskQueueRow
                   key={task.id}

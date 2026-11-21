@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer, Compass, Newspaper
+  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, X, Pill, Printer, Compass, Newspaper, Route
 } from "lucide-react";
 import clsx from "clsx";
 import { loadControlData } from "@/lib/control-api";
@@ -21,6 +21,7 @@ import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
 import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { daylineWeek } from "@/lib/dayline";
 import { DaylineMark } from "@/components/dayline/DaylineMark";
+import "@/app/dayline-traffic.css";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
@@ -34,7 +35,8 @@ const navGroups: NavGroupData[] = [
     items: [
       { href: "/", label: "今日總覽", icon: Sparkles },
       { href: "/work-guide", label: "開工導航", icon: Compass },
-      { href: "/briefing/preferences", label: "資訊站／我的網頁", icon: Newspaper },
+      { href: "/briefing", label: "資訊站／我的網頁", icon: Newspaper },
+      { href: "/traffic", label: "交通", icon: Route },
       { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
   },
@@ -91,7 +93,8 @@ const systemItems: NavItem[] = [
 const mobileNav = [
   { href: "/", label: "今日總覽", icon: Sparkles },
   { href: "/workspace/inbox", label: "收集箱", icon: Inbox },
-  { href: "/workspace/waiting", label: "等待中", icon: Clock3 }
+  { href: "/workspace/waiting", label: "等待中", icon: Clock3 },
+  { href: "/traffic", label: "交通", icon: Route }
 ] as const;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -164,7 +167,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push("/?newTask=1");
   }
 
-  if (pathname === "/") return <HomeFrame name={displayName} userId={currentUserId} system={systemGroup} onSignOut={signOut}
+  if (usesDaylineMasthead(pathname)) return <HomeFrame pathname={pathname} name={displayName} userId={currentUserId} system={systemGroup} onSignOut={signOut}
     gates={<>{mustChangePassword?<PasswordChangeGate onComplete={()=>setMustChangePassword(false)}/>:<AssignmentAlerts userId={currentUserId}/>}</>}>
     {children}{showEncouragement?<EncouragementFooter pathname={pathname}/>:null}
   </HomeFrame>;
@@ -215,7 +218,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <button className="icon-button" onClick={() => setMoreOpen(false)} aria-label="關閉"><X className="h-5 w-5" /></button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-              {navGroups.slice(1).map((group) => <NavGroup key={group.label} group={group} pathname={pathname} mobile />)}
+              {navGroups.map((group) => <NavGroup key={group.label} group={group} pathname={pathname} mobile />)}
               <NavGroup group={systemGroup} pathname={pathname} mobile />
               <button className="mt-3 min-h-11 w-full rounded-xl px-3 text-left font-semibold text-slate-600 hover:bg-slate-100" onClick={signOut}>登出</button>
             </div>
@@ -226,7 +229,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function HomeFrame({name,userId,system,onSignOut,gates,children}:{name:string;userId:string|null;system:NavGroupData;onSignOut:()=>Promise<void>;gates:React.ReactNode;children:React.ReactNode}){
+function usesDaylineMasthead(pathname: string) {
+  return pathname === "/" || pathname === "/calendar" || pathname === "/traffic" || isActive(pathname, "/briefing");
+}
+
+function HomeFrame({pathname,name,userId,system,onSignOut,gates,children}:{pathname:string;name:string;userId:string|null;system:NavGroupData;onSignOut:()=>Promise<void>;gates:React.ReactNode;children:React.ReactNode}){
   const today=useDaylineDate(), [tab,setTab]=useState("focus");
   useEffect(()=>{
     const onTab=(e:Event)=>setTab((e as CustomEvent<string>).detail);
@@ -234,13 +241,19 @@ function HomeFrame({name,userId,system,onSignOut,gates,children}:{name:string;us
   },[]);
   return <div className="dl-viewport"><div className="dl-shell" data-palette={daylineWeek(today)}>
     {gates}
-    <header className="dl-mast"><div className="dl-mastin">
+    <header className="dl-mast dl-mast--studio"><div className="dl-mastin">
       <Link href="/" className="dl-brand" aria-label="日序 Dayline · 今日總覽" onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}><DaylineMark/><b>日序</b><em>Dayline</em></Link>
-      <nav className="dl-nav" aria-label="主要導覽"><Link href="/" aria-current={tab==="focus"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}>今日總覽</Link><Link href="/#task-action-list" aria-current={tab==="tasks"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:tasks"))}>我的任務</Link><Link href="/calendar">日曆</Link></nav>
+      <nav className="dl-nav" aria-label="主要導覽">
+        <Link href="/" aria-current={pathname==="/"&&tab==="focus"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}>今日總覽</Link>
+        <Link href="/#task-action-list" aria-current={pathname==="/"&&tab==="tasks"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:tasks"))}>我的任務</Link>
+        <Link href="/calendar" aria-current={pathname==="/calendar"?"page":undefined}>日曆</Link>
+        <Link href="/briefing" aria-current={isActive(pathname,"/briefing")?"page":undefined}>資訊站</Link>
+        <Link href="/traffic" prefetch={false} aria-current={pathname==="/traffic"?"page":undefined}>交通</Link>
+      </nav>
       <div className="dl-account"><span className="dl-who">{name}</span><span className="dl-avatar" aria-hidden="true">{Array.from(name)[0]?.toUpperCase()}</span></div>
       <details className="dl-all-nav" onKeyDown={e=>{if(e.key==="Escape"){e.currentTarget.open=false;e.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="更多功能"><Menu aria-hidden="true"/></summary>
         <div className="dl-sheet-nav" onClick={e=>{const a=(e.target as HTMLElement).closest("a");if(a){e.currentTarget.closest("details")?.removeAttribute("open");if(a.getAttribute("href")==="/")window.dispatchEvent(new Event("dayline:overview"));}}}><h2>更多功能</h2><div className="dl-toolrow"><Link href="/capture">快速收集</Link><Link href="/search">搜尋</Link><Link href="/#task-action-list" onClick={()=>window.dispatchEvent(new Event("dayline:tasks"))}>我的任務</Link></div>
-          {[...navGroups,system].map(group=><NavGroup key={group.label} group={group} pathname="/" mobile/>)}
+          {[...navGroups,system].map(group=><NavGroup key={group.label} group={group} pathname={pathname} mobile/>)}
           <LiveClock/><button type="button" className="min-h-11 underline" onClick={()=>void onSignOut()}>登出</button>
         </div></details>
     </div></header>
@@ -303,12 +316,12 @@ function NavGroup({ group, pathname, mobile = false }: { group: NavGroupData; pa
 
 function NavLink({ item, active }: { item: NavItem; active: boolean }) {
   const Icon = item.icon;
-  return <Link href={item.href} className={clsx("sidebar-link", active && "is-active")}><Icon className="h-[1.1rem] w-[1.1rem]" /><span>{item.label}</span></Link>;
+  return <Link href={item.href} prefetch={item.href==="/traffic"?false:undefined} aria-current={active?"page":undefined} className={clsx("sidebar-link", active && "is-active")}><Icon className="h-[1.1rem] w-[1.1rem]" /><span>{item.label}</span></Link>;
 }
 
 function MobileLink({ item, active }: { item: (typeof mobileNav)[number]; active: boolean }) {
   const Icon = item.icon;
-  return <Link href={item.href} className={clsx("mobile-nav-item", active && "is-active")}><Icon className="h-5 w-5" /><span>{item.label}</span></Link>;
+  return <Link href={item.href} prefetch={item.href==="/traffic"?false:undefined} aria-current={active?"page":undefined} className={clsx("mobile-nav-item", active && "is-active")}><Icon className="h-5 w-5" /><span>{item.label}</span></Link>;
 }
 
 function isActive(pathname: string, href: string) {

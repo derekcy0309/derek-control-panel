@@ -40,7 +40,7 @@ export function DaylineAgenda({brief,error,busy,reload,stop,userId}:{brief:Dashb
   const any=brief&&brief.days.some(d=>d.events.length||d.deadlines.length||(brief.familyDates??[]).some(f=>f.date===d.date));
   const school=brief?.nextSchoolDate;
   return <section className="dl-agenda" aria-labelledby="private-brief-title">
-    <div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true"><b/>AGENDA</span><h2 id="private-brief-title">行程同限期</h2></div><button type="button" onClick={reload} disabled={busy} className="dl-agenda-refresh" aria-label="更新行程同限期"><RefreshCw aria-hidden="true"/>{busy?"讀取中":"更新"}</button></div>
+    <div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true"><b/>AGENDA · 呢三日</span><h2 id="private-brief-title">行程同限期</h2></div><div className="dl-agenda-actions"><Link className="dl-text-btn" href="/calendar">日曆 →</Link><button type="button" onClick={reload} disabled={busy} className="dl-agenda-refresh" aria-label="更新行程同限期"><RefreshCw aria-hidden="true"/>{busy?"讀取中":"更新"}</button></div></div>
     {busy&&!brief?<p role="status" className="dl-agenda-state">讀緊你嘅三日安排…</p>:null}
     {error?<p role="alert" className="dl-agenda-state">{error} {brief?"以下保留上次結果。":""}</p>:null}
     {brief?<>{brief.sources.filter(s=>s.state==="stale").map(s=><p key={s.label} role="alert" className="dl-agenda-state">{s.label} 未能更新。{calendarErrorMessage(s.errorCode)}{s.lastSync?" 上次更新："+daylineDate(briefDate(new Date(s.lastSync)),true)+" "+briefTime(s.lastSync):""}</p>)}

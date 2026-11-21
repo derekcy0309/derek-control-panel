@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { Check, ListPlus, Printer, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
-import { SectionArtwork } from "@/components/SectionArtwork";
 import { TaskForm, type TaskSaveResult } from "@/components/forms/TaskForm";
 import { TaskDueCalendar } from "@/components/tasks/TaskDueCalendar";
 import { TaskPrintSheet } from "@/components/tasks/TaskPrintSheet";
@@ -128,24 +127,22 @@ export function TaskActionList({
   };
 
   return (
-    <section id="task-action-list" className="task-list-root scroll-mt-24 space-y-5" aria-labelledby="task-action-list-heading">
+    <section id="task-action-list" className="task-list-root dl-editorial-queue scroll-mt-24 space-y-5" aria-labelledby="task-action-list-heading">
       <div className="no-print space-y-5">
-        <section data-section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} className="task-list-hero section-hero flex flex-col justify-between gap-4 rounded-2xl p-5 shadow-soft sm:flex-row sm:items-center">
-          <div className="relative z-10">
-            <p className="text-sm font-extrabold text-indigo-700">Action Center</p>
-            <h2 id="task-action-list-heading" className="mt-1 text-2xl font-bold text-ink">任務總表</h2>
-            <p className="mt-2 text-sm font-semibold text-slate-600">
-              {restful ? "需要時先打開清單；任務沒有被移動。" : "按 Priority 分組，揀 Tag 或搜尋；需要時先打開，唔使一次睇晒。"}
+        <section className="dl-queue-heading">
+          <div>
+            <h2 id="task-action-list-heading">任務總表</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {restful ? "需要時先打開清單；任務沒有被移動。" : "按 Priority 分組。揀一件先睇細節。"}
             </p>
           </div>
-          <div className="relative z-10 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => window.print()}><Printer className="h-5 w-5" />列印 A4 清單</Button>
             <Button variant="secondary" onClick={() => bulkMode ? cancelBulkMode() : setBulkMode(true)}>
               {bulkMode ? <X className="h-5 w-5" /> : <ListPlus className="h-5 w-5" />}
               {bulkMode ? "取消多選" : "多選加入今日"}
             </Button>
           </div>
-          <SectionArtwork section={selectedCategory === "family" ? "family" : selectedCategory === "personal" ? "personal" : "work"} compact />
         </section>
 
         {bulkMode ? (
@@ -166,7 +163,7 @@ export function TaskActionList({
         {todayMessage ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800" role="status">{todayMessage}</p> : null}
         {todayError ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800" role="alert">{todayError}</p> : null}
 
-        <section className="panel space-y-3 p-3 sm:p-4" aria-label="選擇任務 Tags">
+        <section className="panel dl-queue-filters space-y-3 p-3 sm:p-4" aria-label="選擇任務 Tags">
           <input className="field" type="search" aria-label="搜尋 Task" placeholder="搵 Task…" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex flex-wrap gap-2">
             {[{ value: "", label: "全部" }, ...(data.taskTags ?? []).map((tag) => ({ value: tag.id, label: tag.name })), { value: "untagged", label: "未分類" }].map((option) => {

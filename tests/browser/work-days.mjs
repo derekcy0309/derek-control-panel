@@ -127,6 +127,8 @@ try {
     assert.equal(createdPayload.workStartDate, today);
     await page.getByRole('tab', { name: /任務總表/ }).click();
     await page.getByRole('button', { name: /P2 一般 Normal/ }).click();
+    const taskRow=page.locator('.task-queue-row').filter({hasText:'驗證用今日新任務'});
+    await taskRow.locator('summary').click();
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
     const edit = page.getByRole('dialog', { name: '修改任務' });
     await edit.getByText('更多設定',{exact:false}).click();
@@ -138,6 +140,7 @@ try {
     await edit.waitFor({ state: 'hidden' });
     assert.deepEqual(updatedPayload.changes.work_dates, [today, tomorrowDate]);
     assert.equal(updatedPayload.changes.due_date, null);
+    if(await taskRow.locator('details').getAttribute('open')===null)await taskRow.locator('summary').click();
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
     await edit.getByText('更多設定',{exact:false}).click();
     await edit.getByText('自訂哪幾日做／提醒', { exact: false }).click();

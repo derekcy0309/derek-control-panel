@@ -21,12 +21,13 @@ import { daylineDate, daylineWeek } from "@/lib/dayline";
 import { DaylineNow, DaylineNext } from "@/components/dayline/TodayCards";
 import { WeatherStrip } from "@/components/dayline/WeatherStrip";
 import { HomeLinks } from "@/components/dayline/HomeLinks";
-import { HomeRoads, PersonalInformation, useInfoChoices } from "@/components/dayline/InfoChoices";
+import { PersonalInformation, useInfoChoices } from "@/components/dayline/InfoChoices";
 import { isMyTask, simplePriorities, simplePriority, simpleToday, sortByPriority } from "@/lib/simple-mode";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import { starterSteps } from "@/lib/work-guide";
 import { shiftIsoDate } from "@/lib/due-priority";
 import type { Task } from "@/lib/types";
+import "./dayline-editorial-work.css";
 
 export default function HomePage() { return <AuthGate><SimpleDashboard /></AuthGate>; }
 
@@ -127,17 +128,23 @@ function SimpleDashboard() {
   const weekNames={almond:"暖杏",mist:"霧藍",mint:"薄荷",mauve:"淡紫"};
   const nav=<ActionCenterTabs active={activeTab} todayCount={plan.planned.length} taskCount={active.length} onChange={setActiveTab}/>;
   return <>
-    <header className="dl-intro"><div><div className="dl-calendarline"><span className="dl-miniline"/><time dateTime={today}>{daylineDate(today,true)}</time></div><h1>今日總覽<span className="dl-title-dot" aria-hidden="true">.</span></h1></div>
+    <header className="dl-intro dl-editorial-intro"><div><div className="dl-calendarline"><span className="dl-miniline"/>{activeTab==="focus"?<time dateTime={today}>{daylineDate(today,true)}</time>:<span>WORK LIST</span>}</div><h1>{activeTab==="focus"?"今日總覽":activeTab==="today"?"今日工作":"我的任務"}</h1>{activeTab==="focus"?<p className="dl-editorial-welcome">一次做一件。先由眼前一步開始。</p>:null}</div>
       <button type="button" className="dl-add" aria-expanded={captureOpen} aria-controls="dayline-add" onClick={()=>{setCaptureOpen(!captureOpen);setFocusCapture(!captureOpen);}}><Plus aria-hidden="true"/>加 Task</button></header>
     <div id="dayline-add" hidden={!captureOpen} className="dl-capture">{captureOpen?<TaskForm key={current.currentUser.id} inline userId={current.currentUser.id} knownTags={current.taskTags} participants={current.participants} onSaved={saved}/>:null}</div>
     {error ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">同步未成功，保留上次畫面。{error}<button className="ml-2 min-h-11 underline" onClick={() => void reload()}>重試</button></p> : null}
     {message ? <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p> : null}
     {actionError ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{actionError}</p> : null}
     {activeTab==="focus"?<div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus">
-      <WeatherStrip/>
-      <div className="dl-board"><DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} tags={current.taskTags??[]} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
+      <div className="dl-board dl-editorial-board">
+        <DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} tags={current.taskTags??[]} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
+        <DaylineNext tasks={plan.top.slice(1)} tags={current.taskTags??[]} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/>
         <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
-        <DaylineNext tasks={plan.top.slice(1)} tags={current.taskTags??[]} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/></div>
+        <figure className="dl-harbour-figure">
+          <figcaption><span>維港晨光</span><em lang="en">Harbour Morning</em></figcaption>
+          <div className="dl-harbour-illustration" aria-hidden="true"/>
+          <WeatherStrip/>
+        </figure>
+      </div>
       <PersonalInformation key={current.currentUser.id} model={info}/>
       <HomeLinks key={current.currentUser.id} userId={current.currentUser.id}/>
       {pending.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">新交接（{pending.length}）</summary><p className="mt-2 text-sm text-slate-500">接受後先加入你的工作建議。</p>{pending.slice(0, 3).map((a) => <Link key={a.id} className="mt-2 flex min-h-12 items-center justify-between gap-2 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" href={`/tasks/${a.resource_id}`}><span>{current.taskCatalog.find((t) => t.id === a.resource_id)?.title || "新工作交接"}</span><span className="shrink-0">查看／接受 →</span></Link>)}<Link href="/sharing" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-indigo-700">查看全部交接 →</Link></details> : null}
@@ -159,7 +166,6 @@ function SimpleDashboard() {
     {activeTab === "today" ? <TodayAllTasks tasks={current.tasks} availableTasks={sortByPriority(current.taskQueueCatalog)} planning={current.planning} today={today} onChanged={reload} onStart={(task) => void start(task)} onComplete={complete} onBrowseTasks={() => setActiveTab("tasks")} /> : null}
     {activeTab === "tasks" ? <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks"><TaskActionList data={current} onChanged={reload} onTaskSaved={saved} /></div> : null}
     {focusTask ? <FocusMode task={focusTask} defaultMinutes={current.settings.focus_minutes ?? 25} currentUserId={current.currentUser.id} participants={current.participants} sharedTask={Boolean(focusTask.visibility && focusTask.visibility !== "private")} onClose={() => setFocusTask(null)} onChanged={() => void reload()} /> : null}
-    {activeTab==="focus"?<HomeRoads key={current.currentUser.id} model={info}/>:null}
     <footer className="dl-footer"><span>日序 Dayline · 香港時間</span><span><i aria-hidden="true"/>今週配色：{weekNames[daylineWeek(today)]}</span></footer>
   </>;
 }

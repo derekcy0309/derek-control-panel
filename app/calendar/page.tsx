@@ -1,33 +1,97 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import Link from "next/link";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { daylineDate } from "@/lib/dayline";
+import { addBriefDays, type DashboardBrief } from "@/lib/calendar-brief";
+import { calendarMonday, calendarMonth, makeMonthAgenda, validCalendarDate, type MonthAgendaRow } from "@/lib/dayline-agenda";
+import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { useControlData } from "@/hooks/useControlData";
+import "../dayline-editorial-work.css";
 
 export default function CalendarPage() { return <AuthGate><CalendarContent /></AuthGate>; }
 
+const weekdays = ["一","二","三","四","五","六","日"];
+const kindLabel = { schedule:"行程", school:"學校", deadline:"Deadline", family:"家庭", item:"項目" };
+
 function CalendarContent() {
-  const { data, loading, error, reload } = useControlData(); const [cursor, setCursor] = useState(() => new Date()); const [adding, setAdding] = useState(false);
-  useEffect(()=>{const d=new URLSearchParams(window.location.search).get("date");if(!d||!/^\d{4}-\d{2}-\d{2}$/.test(d))return;const at=new Date(d+"T12:00:00");if(Number.isFinite(at.getTime())&&at.getDate()===Number(d.slice(8)))setCursor(at);},[]);
-  const events = useMemo(() => { if (!data) return []; return [...data.tasks.filter((item) => item.due_date).map((item) => ({ id: item.id, date: item.due_date!, title: item.title, area: item.area || (item.scope === "company" ? "work" : "family"), kind: "任務", privacy: "full" })), ...data.operatingItems.filter((item) => item.due_date).map((item) => ({ id: item.id, date: item.due_date!, title: item.metadata.calendarPrivacy === "busy" && item.owner_id !== data.currentUser.id ? "忙碌" : item.title, area: item.area, kind: item.item_type === "event" ? "日程" : "項目", privacy: String(item.metadata.calendarPrivacy || "full") }))].sort((a, b) => a.date.localeCompare(b.date)); }, [data]);
+  const { data, loading, error, reload } = useControlData();
+  const today = useDaylineDate();
+  const [cursor,setCursor] = useState<string|null>(null);
+  const [adding,setAdding] = useState(false);
+  const [source,setSource] = useState<{ owner:string; brief:DashboardBrief|null; error:boolean }|null>(null);
+  const owner=data?.currentUser.id;
+  useEffect(()=>{setCursor(validCalendarDate(new URLSearchParams(window.location.search).get("date")));},[]);
+  useEffect(()=>{
+    if(!owner)return;
+    const controller=new AbortController();
+    void fetch("/api/calendar-brief",{cache:"no-store",credentials:"same-origin",signal:controller.signal})
+      .then(async response=>{
+        if(!response.ok)throw new Error("Brief unavailable");
+        const brief:DashboardBrief=await response.json();
+        if(!Array.isArray(brief.days) || !Array.isArray(brief.sources))throw new Error("Invalid brief");
+        if(!controller.signal.aborted)setSource({owner,brief,error:false});
+      })
+      .catch(()=>{if(!controller.signal.aborted)setSource({owner,brief:null,error:true});});
+    return ()=>controller.abort();
+  },[owner,today]);
+  const read=source?.owner===owner ? source : null;
+  const agenda=useMemo(()=>data ? makeMonthAgenda(data.tasks,data.operatingItems,data.currentUser.id,read?.brief??null):new Map<string,MonthAgendaRow[]>(),[data,read]);
   if (loading || error || !data) return <LoadingState error={error} />;
-  const year = cursor.getFullYear(), month = cursor.getMonth(); const first = new Date(year, month, 1); const last = new Date(year, month + 1, 0); const cells = Array.from({ length: first.getDay() + last.getDate() }, (_, index) => index < first.getDay() ? null : index - first.getDay() + 1);
-  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`; const monthEvents = events.filter((event) => event.date.startsWith(monthPrefix));
-  return <div className="space-y-5"><section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="eyebrow">Calendar</p><h1 className="page-title mt-1">日曆</h1><p className="muted mt-2 text-sm leading-6">只顯示你擁有、明確分享、已接受指派或已同意共同管理的日期。</p></div><Button onClick={() => setAdding(true)}><Plus className="h-5 w-5" />新增日程</Button></section>
-    <section className="panel overflow-hidden"><header className="flex items-center justify-between border-b border-slate-200 p-4"><button className="icon-button" onClick={() => setCursor(new Date(year, month - 1, 1))} aria-label="上個月"><ChevronLeft className="h-5 w-5" /></button><h2 className="text-lg font-bold">{year} 年 {month + 1} 月</h2><button className="icon-button" onClick={() => setCursor(new Date(year, month + 1, 1))} aria-label="下個月"><ChevronRight className="h-5 w-5" /></button></header><div className="hidden grid-cols-7 border-b border-slate-200 text-center text-xs font-bold text-slate-500 sm:grid">{"日一二三四五六".split("").map((day) => <div key={day} className="py-2">{day}</div>)}</div><div className="hidden grid-cols-7 sm:grid">{cells.map((day, index) => { const date = day ? `${monthPrefix}-${String(day).padStart(2, "0")}` : ""; const dayEvents = monthEvents.filter((event) => event.date === date); return <div key={index} className="min-h-28 border-b border-r border-slate-100 p-2">{day ? <><p className="text-xs font-bold text-slate-500">{day}</p><div className="mt-1 space-y-1">{dayEvents.slice(0, 3).map((event) => <div key={`${event.kind}-${event.id}`} className={`truncate rounded-md px-2 py-1 text-xs font-semibold ${event.area === "work" ? "bg-indigo-50 text-indigo-700" : event.area === "family" ? "bg-blue-50 text-blue-700" : "bg-teal-50 text-teal-700"}`}>{event.title}</div>)}</div></> : null}</div>; })}</div><div className="divide-y divide-slate-100 sm:hidden">{monthEvents.length ? monthEvents.map((event) => <div key={`${event.kind}-${event.id}`} className="flex gap-3 p-4"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-sm font-bold">{event.date.slice(8)}</div><div><p className="font-semibold">{event.title}</p><p className="muted mt-1 text-xs">{daylineDate(event.date)} · {event.kind}</p></div></div>) : <p className="p-6 text-center text-sm text-slate-500">本月沒有日程。</p>}</div></section>
-    {adding ? <EventModal onClose={() => setAdding(false)} onSaved={() => { setAdding(false); void reload(); }} /> : null}
+  const selected=cursor??today;
+  const {month,dates}=calendarMonth(selected);
+  const weekStarts=calendarMonday(selected);
+  const monthEntries=dates.filter(date=>date.startsWith(month)&&agenda.has(date));
+  const selectedRows=agenda.get(selected)??[];
+  const apple=read?.brief?.sources.find(source=>source.label==="Apple Calendar");
+  function moveMonth(offset:number){
+    const next=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5))-1+offset,1)).toISOString().slice(0,10);
+    setCursor(next.startsWith(today.slice(0,7))?today:next);
+  }
+  return <div className="dl-editorial-calendar">
+    <header className="dl-intro dl-editorial-intro"><div><p className="dl-calendarline"><span className="dl-miniline"/>WEEK AHEAD</p><h1>日曆</h1><p className="dl-editorial-welcome">一眼分清行程、學校安排同 Deadline。</p></div><button type="button" className="dl-add" onClick={()=>setAdding(true)}><Plus aria-hidden="true"/>新增日程</button></header>
+    <section className="dl-calendar-board" aria-label="日曆日期">
+      <header className="dl-calendar-tools"><button type="button" className="icon-button" onClick={()=>moveMonth(-1)} aria-label="上個月"><ChevronLeft aria-hidden="true"/></button><h2>{Number(month.slice(0,4))} 年 {Number(month.slice(5))} 月</h2><button type="button" className="icon-button" onClick={()=>moveMonth(1)} aria-label="下個月"><ChevronRight aria-hidden="true"/></button><button type="button" className="dl-text-btn" onClick={()=>setCursor(today)}>返今日</button></header>
+      <div className="dl-calendar-month">
+        <div className="dl-calendar-weekdays" aria-hidden="true">{weekdays.map(w=><span key={w}>星期{w}</span>)}</div>
+        <div className="dl-calendar-grid">{dates.map(date=>{
+          const rows=agenda.get(date)??[];
+          return <button key={date} type="button" data-other={!date.startsWith(month)} aria-label={daylineDate(date,true)+(rows.length?"，"+rows.length+" 項":"")} aria-pressed={date===selected} aria-current={date===today?"date":undefined} onClick={()=>setCursor(date)}><span className="dl-calendar-number">{Number(date.slice(8))}</span><span className="dl-calendar-peek" aria-hidden="true">{rows.slice(0,2).map(row=><span key={row.id} data-kind={row.kind}>{row.title}</span>)}{rows.length>2?<small>另有 {rows.length-2} 項</small>:null}</span></button>;
+        })}</div>
+      </div>
+      <div className="dl-calendar-mobile">
+        <div className="dl-calendar-mobile-tools"><button type="button" className="dl-text-btn" onClick={()=>setCursor(addBriefDays(selected,-7))}>← 上星期</button><button type="button" className="dl-text-btn" onClick={()=>setCursor(addBriefDays(selected,7))}>下星期 →</button></div>
+        <div className="dl-calendar-week">{weekdays.map((w,index)=>{
+          const date=addBriefDays(weekStarts,index),count=agenda.get(date)?.length??0;
+          return <button key={w} type="button" aria-pressed={date===selected} aria-current={date===today?"date":undefined} onClick={()=>setCursor(date)} aria-label={daylineDate(date,true)+(count?"，"+count+" 項":"")}><small>星期{w}</small><b>{Number(date.slice(8))}</b>{count?<span className="dl-calendar-dot" aria-hidden="true"/>:null}</button>;
+        })}</div>
+      </div>
+    </section>
+    <section className="dl-calendar-selected" aria-labelledby="dayline-calendar-agenda"><div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true">DAY AGENDA</span><h2 id="dayline-calendar-agenda">{daylineDate(selected,true)}</h2></div></div>
+      {selectedRows.length ? <CalendarRows rows={selectedRows}/> : <p className="dl-calendar-empty">呢日暫時冇已讀取嘅安排。</p>}
+    </section>
+    <details className="dl-calendar-overview"><summary>睇全月安排</summary>{monthEntries.length?monthEntries.map(date=><section key={date} className="dl-calendar-overview-day"><h3>{daylineDate(date,true)}</h3><CalendarRows rows={agenda.get(date)??[]}/></section>):<p className="dl-calendar-empty">本月暫時冇已讀取嘅安排。</p>}</details>
+    <p className="dl-calendar-sources">Panel 只顯示你有權查看嘅資料。iPhone 同步只讀取由今日起計三日；要改返 iPhone。{!read?" 讀緊 Calendar 來源…":read.error?" 暫未讀到外部行程。":apple?.state==="stale"?" iPhone 來源暫未更新。":apple?.state==="not_connected"?" 尚未連接 iPhone。":apple?.state==="select_calendars"?" 未揀要顯示嘅 Calendar。":""} <Link href="/settings#private-calendar">私人 Calendar 設定</Link></p>
+    {adding ? <EventModal initialDate={selected} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); void reload(); }} /> : null}
   </div>;
 }
 
-function EventModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function CalendarRows({rows}:{rows:MonthAgendaRow[]}) {
+  return <ul className="dl-calendar-events">{rows.map(row=><li key={row.id}>
+    <span className="dl-calendar-time">{row.when}</span>
+    <div className="dl-calendar-event" data-kind={row.kind}><span className="dl-calendar-kind">{kindLabel[row.kind]}</span>{row.href?<Link href={row.href}>{row.title}</Link>:<strong>{row.title}</strong>}<small>{row.detail}</small></div>
+  </li>)}</ul>;
+}
+
+function EventModal({ initialDate, onClose, onSaved }: { initialDate: string; onClose: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(initialDate);
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [area, setArea] = useState<"work" | "family" | "personal">("family");

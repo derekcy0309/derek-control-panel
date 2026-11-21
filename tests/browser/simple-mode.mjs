@@ -96,7 +96,7 @@ try {
     await page.getByRole('heading',{name:'行程同限期',exact:true}).waitFor();
     await page.locator('.dl-event').filter({hasText:role+' 固定行程'}).waitFor();
     const firstEvent=await page.locator('.dl-event').first().boundingBox(),firstTask=await page.locator('.dl-focus').boundingBox();
-    assert.ok(firstEvent && firstTask && firstEvent.y+firstEvent.height<=920);if(width<600)assert.ok(firstEvent.y>firstTask.y);else assert.ok(firstEvent.x>firstTask.x);
+    assert.ok(firstEvent && firstTask && firstEvent.y+firstEvent.height<=920, JSON.stringify({width,firstEvent,firstTask}));if(width<600)assert.ok(firstEvent.y>firstTask.y);else assert.ok(firstEvent.x>firstTask.x);
     assert.ok(await page.locator('.dl-calendarline').innerText().then(t=>t.includes('星期')));
     assert.equal(await page.getByRole('form',{name:'新增 Task'}).count(),0);
     await page.getByText('生效警告：測試警告',{exact:true}).waitFor();
@@ -157,6 +157,9 @@ try {
     await page.getByRole('searchbox',{name:'搜尋 Task'}).fill(newTitle);
     const queue=page.locator('#task-action-list');
     await queue.getByRole('button',{name:/^P2 一般 Normal/}).click();
+    const newTaskRow=queue.locator('.task-queue-row').filter({hasText:newTitle});
+    assert.equal(await newTaskRow.locator('details').getAttribute('open'),null,'a new task starts collapsed');
+    await newTaskRow.locator('summary').click();
     const newTask=queue.getByRole('link',{name:newTitle,exact:true});await newTask.waitFor();
     assert.equal(await newTask.count(),1);assert.equal(todayReads,readsAfterSave,'saved Task must appear in the list without another Today read');assert.equal(navigations,0);
     await page.getByRole('tab',{name:/今日重點/}).click();

@@ -1,12 +1,13 @@
 "use client";
 import Link from "next/link";
 import {useEffect,useState} from "react";
-import {Bookmark,ChartNoAxesCombined,Library,Newspaper} from "lucide-react";
+import {ArrowLeft,Bookmark,ChartNoAxesCombined,Settings2} from "lucide-react";
 import {isNewsSection,marketBrief,marketIndices,sections,type NewsIssue,type NewsSection,type Story} from "@/lib/briefing";
 import {HomeLinks,writeLink} from "./HomeLinks";
 import {InfoSettings,useInfoChoices} from "./InfoChoices";
 import {PublicationShelf} from "./PublicationShelf";
-import {RoadWatch} from "./RoadWatch";
+import {EditorialCover, type EditorialArt} from "./EditorialCover";
+import styles from "./reading-room.module.css";
 const dateText=(value:string)=>new Intl.DateTimeFormat("zh-HK",{timeZone:"Asia/Hong_Kong",month:"short",day:"numeric",weekday:"short",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(value));
 function IndexCharts(){
   const [show,setShow]=useState(false),[index,setIndex]=useState(0);
@@ -28,7 +29,9 @@ function NewsPage({section}:{section:NewsSection}){
   useEffect(()=>{const c=new AbortController();setLoading(true);setError("");
     fetch("/api/briefing?section="+section,{cache:"no-store",credentials:"same-origin",signal:c.signal}).then(async r=>{if(!r.ok)throw Error();const value=await r.json() as NewsIssue;if(!c.signal.aborted)setData(value);}).catch(()=>{if(!c.signal.aborted)setError("暫時讀唔到新聞，請檢查連線再試。");}).finally(()=>{if(!c.signal.aborted)setLoading(false);});return ()=>c.abort();
   },[section,updated]);
-  return <><div className="dl-news-subhead"><h2>{sections[section]}</h2><button className="dl-textbtn" disabled={loading} onClick={()=>setUpdated(x=>x+1)}>{loading?"讀取中…":"重新讀取"}</button></div>
+  const art: EditorialArt | null = section==="gadgets"?"gadgets":section==="markets"?"market":section==="care"?"medical":null;
+  return <>{art?<div className={styles.topicArt}><EditorialCover art={art} eager /></div>:null}
+    <div className="dl-news-subhead"><span className="dl-section-kicker">來源與消息</span><button className="dl-textbtn" disabled={loading} onClick={()=>setUpdated(x=>x+1)}>{loading?"讀取中…":"重新讀取"}</button></div>
     {error?<p role="alert">{error}{data?" 以下保留上次畫面。":""}</p>:null}
     {section==="markets"&&data?<section className="dl-news-card"><span className="dl-section-kicker">MARKET BRIEF / 香港時間</span><h3>美股／港股速讀</h3><p>各市場揀一條近期重點，優先大市、AI、醫療同新上市。留意刊登時間，唔當即時報價或收市總結。</p><ul>{marketBrief(data.groups,new Date(data.checkedAt)).map(x=><StoryLine key={x.market} story={x.story}/>)}</ul>{!marketBrief(data.groups,new Date(data.checkedAt)).length?<p>暫無可核實日期嘅近期市場重點。</p>:null}</section>:null}
     {section==="markets"?<IndexCharts/>:null}
@@ -41,7 +44,14 @@ function NewsPage({section}:{section:NewsSection}){
 export function NewsDesk({section}:{section:string}){
   const model=useInfoChoices(),publication=["medical","evening","publications"].includes(section);
   const key=publication?"journals":"news";
-  return <main className="dl-desk"><Link href="/" className="dl-textbtn">返今日總覽</Link><header><span className="dl-section-kicker">DAYLINE / READING ROOM</span><h1><Newspaper aria-hidden="true"/>資訊站</h1><p>想睇先打開。常用網站同稍後睇嘅新聞都喺自己帳戶。</p></header>
-    <nav aria-label="資訊分類"><Link href="/briefing/medical" aria-current={section==="medical"?"page":undefined}>醫療期刊</Link><Link href="/briefing/evening" aria-current={section==="evening"?"page":undefined}>美股晚報</Link><Link href="/briefing/publications" aria-current={section==="publications"?"page":undefined}>所有刊物</Link><Link href="/briefing/traffic" aria-current={section==="traffic"?"page":undefined}>交通路況</Link>{Object.entries(sections).map(([s,l])=><Link href={"/briefing/"+s} key={s} aria-current={section===s?"page":undefined}>{l}</Link>)}<Link href="/briefing/library" aria-current={section==="library"?"page":undefined}><Library aria-hidden="true"/>我的收藏</Link><Link href="/briefing/preferences" aria-current={section==="preferences"?"page":undefined}>資訊設定</Link></nav>
-    {section==="library"?<HomeLinks full/>:section==="preferences"?<InfoSettings model={model}/>:section==="traffic"?<RoadWatch model={model}/>:!model.ready?<p role="status">讀取你嘅設定中…</p>:!model.prefs[key]||model.error?<InfoSettings model={model}/>:publication?<PublicationShelf key={section} section={section}/>:isNewsSection(section)?<NewsPage key={section} section={section}/>:null}</main>;
+  const title=section==="library"?"我的網頁同收藏":section==="preferences"?"資訊設定":isNewsSection(section)?sections[section]:"刊物庫";
+  const openPublication=publication&&model.ready&&model.prefs.journals&&!model.error;
+  return <div className={`dl-desk ${styles.detailRoom}`}>
+    <div className={styles.breadcrumb}>
+      <Link href="/briefing" className={styles.quiet}><ArrowLeft aria-hidden="true"/> 資訊站</Link>
+      {section!=="preferences"?<Link href="/briefing/preferences" className={styles.quiet}><Settings2 aria-hidden="true"/> 資訊設定</Link>:null}
+    </div>
+    {openPublication?null:<div className={styles.detailHeader}><p className={styles.kicker}>READING ROOM</p><h1>{title}</h1></div>}
+    {section==="library"?<HomeLinks full/>:section==="preferences"?<InfoSettings model={model}/>:!model.ready?<p role="status">讀取你嘅設定中…</p>:!model.prefs[key]||model.error?<InfoSettings model={model}/>:publication?<PublicationShelf key={section} section={section}/>:isNewsSection(section)?<NewsPage key={section} section={section}/>:null}
+  </div>;
 }
