@@ -110,7 +110,7 @@ grant execute on function public.dayline_set_info(text,boolean),public.dayline_u
 -- No software receives an Auth refresh token, database password or service-role key.
 create table dayline_reading.publishers (
  owner_id uuid references auth.users(id), series text check(series in ('home','ngo','chronic','weekly','us')),
- key_hash bytea not null unique, expires_at timestamptz not null, checked_at timestamptz, result text,
+ key_hash bytea not null unique, expires_at timestamptz not null, checked_at timestamptz, result text, last_issue_date date,
  primary key(owner_id,series)
 );
 alter table dayline_reading.publishers enable row level security;
@@ -133,13 +133,13 @@ begin
  if outcome='issue' and payload->>'series'=binding.series and payload->>'sourceKind'='codex-scheduled' then receipt:=dayline_reading.ingest(binding.owner_id,payload,previous);
  elsif outcome in ('no_issue','failed') and payload is null then receipt:=outcome;
  else raise exception 'invalid delivery';end if;
- update dayline_reading.publishers set checked_at=now(),result=outcome where owner_id=binding.owner_id and series=binding.series;
+ update dayline_reading.publishers set checked_at=now(),result=receipt,last_issue_date=case when outcome='issue' then (payload->>'published')::date else last_issue_date end where owner_id=binding.owner_id and series=binding.series;
  return receipt;
 end $$;
 create function public.dayline_publisher_key(topic text,digest_hex text) returns void language sql security invoker set search_path='' as $$ select dayline_reading.credential(topic,digest_hex) $$;
 create function public.dayline_deliver(proof text,payload jsonb,previous text,outcome text) returns text language sql security invoker set search_path='' as $$ select dayline_reading.deliver(proof,payload,previous,outcome) $$;
 create function dayline_reading.sync_status() returns setof jsonb language sql stable security definer set search_path='' as $$
- select jsonb_build_object('series',p.series,'checked',p.checked_at,'result',p.result,'expired',p.expires_at<=now()) from dayline_reading.publishers p where p.owner_id=(select auth.uid()) and (select dayline_reading.active_reader())
+ select jsonb_build_object('series',p.series,'checked',p.checked_at,'published',p.last_issue_date,'result',p.result,'expired',p.expires_at<=now()) from dayline_reading.publishers p where p.owner_id=(select auth.uid()) and (select dayline_reading.active_reader())
 $$;
 create function public.dayline_sync_status() returns setof jsonb language sql stable security invoker set search_path='' as $$ select * from dayline_reading.sync_status() $$;
 grant usage on schema dayline_reading to anon;
