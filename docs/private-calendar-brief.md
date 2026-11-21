@@ -31,6 +31,7 @@ Settings → 私人 Calendar 及 Grok 日報：
 - Apple 密碼經既有 `GOOGLE_TOKEN_ENCRYPTION_KEY` AES-256-GCM 加密，明文另有 apple-purpose 前綴驗證。只在 server 解密，authenticated 連 ciphertext 欄位亦不可 SELECT；不交 Grok、不輸出 log。
 - App 專用密碼不是 Apple 原生 readonly scope；由程式 transport 限制 HTTPS、只准 Apple CalDAV 主機及 GET／OPTIONS／PROPFIND／REPORT，禁止 PUT／DELETE／POST 等寫入。redirect 每一跳重新檢查，不能轉發 credentials 到其他主機。
 - 釘選 `tsdav` 2.5.0／`ical.js` 2.2.1。首頁與 Grok 摘要讀取固定三日，日曆頁讀取所選月份。兩者要求 server 展開 recurrence，並支援本機 recurrence／exception／cancellation 解析。未知時區、過大回應、展開上限會明確失敗，不會悄悄漏報。
+- 多個已選 iCloud 日曆分批並行，最多同時讀三個；仍共用原有傳輸總時限及大小上限。等更新期間可睇返同月份已載入畫面；服務失敗會如實提示，不把部分資料或舊結果冒充新資料。
 - 快取只留最少顯示欄位，不留原始 ICS、description、attendees、附件。最多 200 個事件，超限明確標記不是完整清單。刷新成功以一個 DB upsert 原子替換；比較 fetched_at 防舊回應覆蓋新快取，鎖定 connection revision 防更改 Calendar 選擇後的舊同步落地。
 - Dashboard／Grok 讀取時更新，5 分鐘內重用 server 快取；失敗退回同一 window 的舊快取並顯示 stale，跨日不冒充最新空清單。未連接顯示 not_connected。瀏覽器 API 永遠 private/no-store，不加入 PWA 離線快取。
 - `/api/calendar-brief` 驗證人用 auth，owner 由 session 決定；不接受任意 owner／日期參數。

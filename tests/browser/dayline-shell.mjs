@@ -21,7 +21,7 @@ const taskDetail = {
 };
 
 async function prepare(page, {admin = false, signedIn = true} = {}) {
-  const errors = [], requests = [], writes = [];
+  const errors = [], requests = [], writes = [], controlViews = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => {
     if (message.type() === "error" && /hydration error|cannot be a descendant/.test(message.text())) errors.push(message.text());
@@ -45,7 +45,14 @@ async function prepare(page, {admin = false, signedIn = true} = {}) {
     } else if (!signedIn || (pathname === "/api/admin/users" && !admin)) {
       status = signedIn ? 403 : 401; json = { error: "無權限" };
     } else if (pathname === "/api/control") {
-      if (view === "assignment_alerts") json = { assignments: [], currentUserId: owner, quietModeUntil: null };
+      controlViews.push(view);
+      if (view === "shell") json = {
+        currentUser,
+        profile: { user_id: owner, active: true, is_admin: admin, must_change_password: false },
+        settings: { theme: "light", visual_intensity: "balanced", accent_colour: "indigo", dashboard_density: "comfortable", pinned_pages: [] },
+        showEncouragement: false
+      };
+      else if (view === "assignment_alerts") json = { assignments: [], currentUserId: owner, quietModeUntil: null };
       else if (view === "task_detail") json = taskDetail;
       else if (view === "work_guide") json = { steps: [], checkpoint: null, openChildren: false };
       else if (view === "task_checkpoints") json = { checkpoints: [], latest: null };
@@ -70,7 +77,7 @@ async function prepare(page, {admin = false, signedIn = true} = {}) {
     else if (pathname === "/api/hk-traffic") json = { at: now, roads: [], spots: [], notices: [], tolls: [], vehicle: "PC" };
     return route.fulfill({ json, status });
   });
-  return { requests, writes, errors };
+  return { requests, writes, errors, controlViews };
 }
 
 try {
@@ -78,7 +85,7 @@ try {
     const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block", locale: "zh-HK", timezoneId: "Asia/Hong_Kong", reducedMotion: "reduce" });
     try {
       const page = await context.newPage();
-      const admin = width === 1280, { requests, writes, errors } = await prepare(page, { admin });
+      const admin = width === 1280, { requests, writes, errors, controlViews } = await prepare(page, { admin });
       const nav = page.getByRole("navigation", { name: "主要導覽", exact: true });
       const menuToggle = page.locator(".dl-mast .dl-all-nav > summary");
       const menu = page.locator(".dl-mast .dl-sheet-nav");
@@ -161,8 +168,15 @@ try {
       await page.locator(".dl-mast").waitFor({ state: "hidden" });
       await page.locator(".todo-print-root").waitFor({ state: "visible" });
       await page.emulateMedia({ media: "screen" });
+      const beforeTraffic = controlViews.length;
+      const shellLoaded = page.waitForResponse(res => {
+        const url = new URL(res.url());
+        return url.pathname === "/api/control" && url.searchParams.get("view") === "shell" && res.ok();
+      });
       await nav.getByRole("link", { name: "交通", exact: true }).click();
       await check("/traffic", "交通實況", "交通");
+      await shellLoaded;
+      assert.equal(controlViews.slice(beforeTraffic).includes("bootstrap"), false, "top bar must not fetch tasks/finances to render traffic");
       assert.equal(requests.includes("/api/admin/users"), false, "a menu does not preload private accounts");
       if (admin) {
         await pick("系統設定", "帳戶活動");

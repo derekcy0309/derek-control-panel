@@ -10,7 +10,7 @@ import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import { noteMetadata, validateNoteInput } from "@/lib/notes";
 import { validatePinnedPages } from "@/lib/dayline-pinned-pages";
-import type { BodyDoubleTaskOption } from "@/lib/types";
+import type { BodyDoubleTaskOption, ControlShellData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +21,10 @@ export async function GET(request: NextRequest) {
   if (context instanceof Response) return context;
 
   const view = request.nextUrl.searchParams.get("view") ?? "bootstrap";
+  if (view === "shell") {
+    if (request.nextUrl.searchParams.size !== 1) return jsonError("頂欄資料不接受其他參數。", 400);
+    return shellData(context);
+  }
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "work_guide") return workGuide(context, request.nextUrl.searchParams.get("taskId") ?? "");
@@ -94,20 +98,12 @@ export async function GET(request: NextRequest) {
   const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
 
   if (!profile.data) {
-    const created = await client.from("user_profiles").insert({ user_id: user.id, display_name: displayName }).select("*").single();
+    const created = await insertMissingOwnRow(client, "user_profiles", user.id, { display_name: displayName });
     if (created.error) return databaseError(created.error);
     profile.data = created.data;
   }
   if (!settings.data) {
-    const supportProfile = defaultSupportProfile(user, displayName);
-    const gentle = supportProfile === "depression";
-    const created = await client.from("user_settings").insert({
-      user_id: user.id,
-      email: user.email ?? null,
-      gentle_mode: gentle,
-      dashboard_density: gentle ? "calm" : "comfortable",
-      support_profile: supportProfile
-    }).select("*").single();
+    const created = await insertMissingOwnRow(client, "user_settings", user.id, initialSettings(user, displayName));
     if (created.error) return databaseError(created.error);
     settings.data = created.data;
   }
@@ -141,6 +137,50 @@ export async function GET(request: NextRequest) {
     taskFollowers: taskFollowers.data ?? [],
     showEncouragement: encouragementVisibleFor(user)
   }, { headers: privateHeaders() });
+}
+
+const shellProfileColumns = "display_name,active,is_admin,must_change_password";
+const shellSettingsColumns = "theme,visual_intensity,accent_colour,dashboard_density,pinned_pages";
+
+async function shellData({ client, user }: RequestContext) {
+  const displayName = inferDisplayName(user);
+  const [profile, settings] = await Promise.all([
+    client.from("user_profiles").select(shellProfileColumns).eq("user_id", user.id).maybeSingle(),
+    client.from("user_settings").select(shellSettingsColumns).eq("user_id", user.id).maybeSingle()
+  ]);
+  const readError = profile.error ?? settings.error;
+  if (readError) return databaseError(readError);
+
+  // The login trigger normally provisions these rows. The same owner-only
+  // fallback as Bootstrap preserves first-login behavior if a row is missing.
+  const [readyProfile, readySettings] = await Promise.all([
+    profile.data ? Promise.resolve(profile) : insertMissingOwnRow(client, "user_profiles", user.id, { display_name: displayName }, shellProfileColumns),
+    settings.data ? Promise.resolve(settings) : insertMissingOwnRow(client, "user_settings", user.id, initialSettings(user, displayName), shellSettingsColumns)
+  ]);
+  const provisionError = readyProfile.error ?? readySettings.error;
+  if (provisionError) return databaseError(provisionError);
+  const p = readyProfile.data;
+  const s = readySettings.data;
+  if (!p || !s) return jsonError("未能讀取頂欄設定，請重新載入。", 503);
+  const payload: ControlShellData = {
+    currentUser: { id: user.id, displayName: p.display_name },
+    profile: { active: p.active, is_admin: p.is_admin, must_change_password: p.must_change_password },
+    settings: {
+      theme: s.theme, visual_intensity: s.visual_intensity, accent_colour: s.accent_colour,
+      dashboard_density: s.dashboard_density, pinned_pages: s.pinned_pages
+    },
+    showEncouragement: encouragementVisibleFor(user)
+  };
+  return Response.json(payload, { headers: privateHeaders() });
+}
+
+async function insertMissingOwnRow<Columns extends string = "*">(client: SupabaseClient, table: "user_profiles" | "user_settings", userId: string, values: Record<string, unknown>, columns: Columns = "*" as Columns) {
+  const inserted = await client.from(table).insert({ ...values, user_id: userId }).select(columns).single();
+  if (inserted.error?.code !== "23505") return inserted;
+  // Another page request may have provisioned the row after our read. Do not
+  // overwrite its preferences; re-read only the authenticated owner's row.
+  const existing = await client.from(table).select(columns).eq("user_id", userId).maybeSingle();
+  return existing.data || existing.error ? existing : inserted;
 }
 
 function encouragementVisibleFor(user: User) {
@@ -345,23 +385,12 @@ async function todayDashboard({ client, user }: RequestContext) {
   if (firstError) return databaseError(firstError);
 
   if (!profile.data) {
-    const created = await client.from("user_profiles")
-      .insert({ user_id: user.id, display_name: displayName })
-      .select("*")
-      .single();
+    const created = await insertMissingOwnRow(client, "user_profiles", user.id, { display_name: displayName });
     if (created.error) return databaseError(created.error);
     profile.data = created.data;
   }
   if (!settings.data) {
-    const supportProfile = defaultSupportProfile(user, displayName);
-    const gentle = supportProfile === "depression";
-    const created = await client.from("user_settings").insert({
-      user_id: user.id,
-      email: user.email ?? null,
-      gentle_mode: gentle,
-      dashboard_density: gentle ? "calm" : "comfortable",
-      support_profile: supportProfile
-    }).select("*").single();
+    const created = await insertMissingOwnRow(client, "user_settings", user.id, initialSettings(user, displayName));
     if (created.error) return databaseError(created.error);
     settings.data = created.data;
   }
@@ -3205,6 +3234,17 @@ function defaultSupportProfile(user: User, displayName: string) {
     )
   ) return "depression";
   return "balanced";
+}
+
+function initialSettings(user: User, displayName: string) {
+  const supportProfile = defaultSupportProfile(user, displayName);
+  const gentle = supportProfile === "depression";
+  return {
+    email: user.email ?? null,
+    gentle_mode: gentle,
+    dashboard_density: gentle ? "calm" : "comfortable",
+    support_profile: supportProfile
+  };
 }
 
 function hkDateString() {

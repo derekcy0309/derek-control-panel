@@ -4,6 +4,7 @@ import type {
   BodyDoubleData,
   AdminAccountUser,
   ControlData,
+  ControlShellData,
   FocusSession,
   PersonalTaskTag,
   InboxCaptureFile,
@@ -24,6 +25,10 @@ let lastRefreshAt = 0;
 
 export async function loadControlData(): Promise<ControlData> {
   return controlRequest<ControlData>("/api/control?view=bootstrap", { method: "GET" });
+}
+
+export async function loadControlShellData(signal?: AbortSignal): Promise<ControlShellData> {
+  return controlRequest<ControlShellData>("/api/control?view=shell", { method: "GET", signal });
 }
 
 export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser[]; truncated: boolean; currentUserId: string }> {
