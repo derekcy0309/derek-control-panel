@@ -40,8 +40,8 @@ function NewsPage({section}:{section:NewsSection}){
 }
 export function NewsDesk({section}:{section:string}){
   const model=useInfoChoices(),publication=["medical","evening","publications"].includes(section);
-  const key=publication?"journals":section==="traffic"?"traffic":"news";
+  const key=publication?"journals":"news";
   return <main className="dl-desk"><Link href="/" className="dl-textbtn">返今日總覽</Link><header><span className="dl-section-kicker">DAYLINE / READING ROOM</span><h1><Newspaper aria-hidden="true"/>資訊站</h1><p>想睇先打開。常用網站同稍後睇嘅新聞都喺自己帳戶。</p></header>
     <nav aria-label="資訊分類"><Link href="/briefing/medical" aria-current={section==="medical"?"page":undefined}>醫療期刊</Link><Link href="/briefing/evening" aria-current={section==="evening"?"page":undefined}>美股晚報</Link><Link href="/briefing/publications" aria-current={section==="publications"?"page":undefined}>所有刊物</Link><Link href="/briefing/traffic" aria-current={section==="traffic"?"page":undefined}>交通路況</Link>{Object.entries(sections).map(([s,l])=><Link href={"/briefing/"+s} key={s} aria-current={section===s?"page":undefined}>{l}</Link>)}<Link href="/briefing/library" aria-current={section==="library"?"page":undefined}><Library aria-hidden="true"/>我的收藏</Link><Link href="/briefing/preferences" aria-current={section==="preferences"?"page":undefined}>資訊設定</Link></nav>
-    {section==="library"?<HomeLinks full/>:section==="preferences"?<InfoSettings model={model}/>:!model.ready?<p role="status">讀取你嘅設定中…</p>:!model.prefs[key]||model.error?<InfoSettings model={model}/>:publication?<PublicationShelf key={section} section={section}/>:section==="traffic"?<RoadWatch/>:isNewsSection(section)?<NewsPage key={section} section={section}/>:null}</main>;
+    {section==="library"?<HomeLinks full/>:section==="preferences"?<InfoSettings model={model}/>:section==="traffic"?<RoadWatch model={model}/>:!model.ready?<p role="status">讀取你嘅設定中…</p>:!model.prefs[key]||model.error?<InfoSettings model={model}/>:publication?<PublicationShelf key={section} section={section}/>:isNewsSection(section)?<NewsPage key={section} section={section}/>:null}</main>;
 }

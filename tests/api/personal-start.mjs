@@ -2,18 +2,19 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
-const port=3191,base='http://localhost:'+port,backend='http://127.0.0.1:4191',rows=new Map(),faults=[];
+const port=3191,base='http://localhost:'+port,backend='http://127.0.0.1:4191',rows=new Map(),settings=new Map(),faults=[];
 const ids={derek:'10000000-0000-4000-8000-000000000001',suki:'10000000-0000-4000-8000-000000000002',amigo:'10000000-0000-4000-8000-000000000003'};
 const api=http.createServer(async(req,res)=>{
  let result=null,status=200;const u=new URL(req.url,backend),p=u.searchParams,actor=req.headers.authorization?.slice(7),id=ids[actor];
  try{if(u.pathname==='/auth/v1/user'){assert.ok(id);result={id,email:actor==='derek'?'derekcy0309@gmail.com':actor+'@example.test',email_confirmed_at:'2026-01-01',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{},created_at:'2026-01-01'};}
  else if(u.pathname.endsWith('/rpc/touch_current_user_last_seen'))result=null;
  else if(u.pathname.endsWith('/user_profiles')){assert.equal(p.get('user_id'),'eq.'+id);result=[{active:actor!=='amigo'}];}
- else if(u.pathname.endsWith('/dayline_info_choices')){assert.equal(p.get('user_id'),'eq.'+id);result=[];}
+ else if(u.pathname.endsWith('/dayline_info_choices')){assert.equal(p.get('user_id'),'eq.'+id);result=settings.has(id)?[settings.get(id)]:[];}
+ else if(u.pathname.endsWith('/rpc/dayline_set_routes')){let t='';for await(const c of req)t+=c;const b=JSON.parse(t);settings.set(id,{journals:false,news:false,traffic:false,...settings.get(id),road_presets:b.routes});result=null;}
  else if(u.pathname.endsWith('/dayline_web_links')){
-  if(req.method==='POST'){let txt='';for await(const c of req)txt+=c;const b=JSON.parse(txt);assert.equal(b.owner_id,id);assert.ok(['site','later'].includes(b.shelf));assert.ok(String(req.headers.prefer).includes('ignore-duplicates'));if(!rows.has(b.id))rows.set(b.id,{...b,archived_at:null});status=201;result=null;}
+  if(req.method==='POST'){let txt='';for await(const c of req)txt+=c;const b=JSON.parse(txt);assert.equal(b.owner_id,id);assert.ok(['site','later'].includes(b.shelf));assert.ok(String(req.headers.prefer).includes('ignore-duplicates'));if(!rows.has(b.id))rows.set(b.id,{archived_at:null,...b});status=201;result=null;}
   else {assert.equal(p.get('owner_id'),'eq.'+id);
-   let found=[...rows.values()].filter(v=>v.owner_id===id&&(!p.has('id')||p.get('id')==='eq.'+v.id)&&(!p.has('archived_at')||!v.archived_at));
+   const queryId=p.get('id');let found=[...rows.values()].filter(v=>v.owner_id===id&&(!queryId||queryId==='eq.'+v.id||queryId.startsWith('in.(')&&queryId.slice(4,-1).split(',').includes(v.id))&&(!p.has('archived_at')||!v.archived_at));
    if(req.method==='PATCH'){let txt='';for await(const c of req)txt+=c;const b=JSON.parse(txt);for(const v of found)Object.assign(v,b);}
    result=req.headers.accept?.includes('vnd.pgrst.object')?found[0]??null:found;
   }}
@@ -42,10 +43,20 @@ try{
  assert.deepEqual((await (await req('derek',path)).json()).links,[]);
  assert.equal((await req('derek',path,input)).status,200);assert.equal(rows.size,1);
  assert.equal((await req('derek',path+'?owner_id='+ids.suki)).status,400);
+ const get=async who=>(await req(who,path)).json(),preset=(await get('derek')).shortcuts[0];assert.equal((await get('derek')).shortcuts.length,5);
+ assert.equal((await req('suki',path,{action:'remove',id:preset.id})).status,404);
+ for(let tries=0;tries<2;tries++)assert.equal((await req('derek',path,{action:'remove',id:preset.id})).status,200);
+ assert.equal((await get('derek')).shortcuts.length,4);assert.equal((await get('suki')).shortcuts.length,5);
+ assert.equal((await req('derek',path,{action:'save',shelf:'site',title:'私人標籤',url:preset.url})).status,200);
+ assert.equal((await get('derek')).shortcuts.length,5);assert.equal((await get('suki')).shortcuts[0].title,preset.title);
  assert.equal((await req('derek','/api/briefing?section=local&user_id=test')).status,400);
  assert.equal((await req('derek','/api/briefing?section=care')).status,403);
  assert.equal((await req('suki','/api/briefing?section=care')).status,403);
  assert.deepEqual((await(await req('derek','/api/information')).json()).prefs,{journals:false,news:false,traffic:false});
+ const info='/api/information';assert.equal((await req('derek',info,{routes:['tm-in','SJ5:TWTM']})).status,200);
+ assert.deepEqual((await(await req('derek',info)).json()).routes,['tm-in','SJ5:TWTM']);assert.ok((await(await req('suki',info)).json()).routes.includes('r3'));
+ assert.equal((await req('derek',info,{routes:['cht','cht']})).status,422);assert.equal((await req('derek',info,{routes:[],user_id:ids.suki})).status,422);
+ assert.equal((await req('derek',info,{routes:[]},'https://foreign.invalid')).status,403);assert.equal((await req('amigo',info,{routes:[]})).status,403);
  assert.equal((await req(null,'/api/hk-traffic?vehicle=wrong')).status,400);
  assert.equal((await req(null,'/api/market-chart?index=6')).status,400);
  const chart=await fetch(base+'/api/market-chart?index=2',{redirect:'manual'});assert.equal(chart.status,302);const target=new URL(chart.headers.get('location'));assert.equal(target.origin,'https://www.tradingview-widget.com');assert.equal(chart.headers.get('referrer-policy'),'no-referrer');assert.match(decodeURIComponent(target.hash),/SP:SPX/);assert.doesNotMatch(decodeURIComponent(target.hash),/derek|cookie|page-uri/i);

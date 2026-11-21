@@ -2,7 +2,7 @@ import {createHash} from "node:crypto";
 import {NextRequest} from "next/server";
 import {privateJson} from "@/lib/server/request-context";
 import {activeStartReader} from "@/lib/server/start-reader";
-import {websiteAddress} from "@/lib/start-links";
+import {usefulLinks,websiteAddress} from "@/lib/start-links";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 const cols="id,title,url,shelf";
@@ -16,9 +16,13 @@ function linkId(user:string,shelf:string,url:string) {
 export async function GET(req:NextRequest){
   const ctx=await activeStartReader(req);if(ctx instanceof Response)return ctx;
   if(req.nextUrl.search)return privateJson({error:"只可查看自己嘅收藏。"},400);
-  const {data,error}=await ctx.client.from("dayline_web_links").select(cols).eq("owner_id",ctx.user.id).is("archived_at",null).order("updated_at",{ascending:false}).order("id").limit(121);
-  if(error)return privateJson({error:"暫時讀唔到收藏，請重試。"},503);
-  const rows=data??[];return privateJson({ownerId:ctx.user.id,links:rows.slice(0,120).filter(l=>websiteAddress(l.url)),more:rows.length>120});
+  const defaults=usefulLinks.map(l=>({...l,shelf:"site" as const,id:linkId(ctx.user.id,"site",l.url)}));
+  const [active,overrides]=await Promise.all([ctx.client.from("dayline_web_links").select(cols).eq("owner_id",ctx.user.id).is("archived_at",null).order("updated_at",{ascending:false}).order("id").limit(121),
+    ctx.client.from("dayline_web_links").select("id,title,url,shelf,archived_at").eq("owner_id",ctx.user.id).in("id",defaults.map(x=>x.id))]);
+  if(active.error||overrides.error)return privateJson({error:"暫時讀唔到收藏，請重試。"},503);
+  const rows=active.data??[],byId=new Map((overrides.data??[]).map(x=>[x.id,x]));
+  const shortcuts=defaults.flatMap(l=>{const own=byId.get(l.id);return own?.archived_at?[]:[own?{id:own.id,url:own.url,title:own.title,shelf:own.shelf}:l];});
+  return privateJson({ownerId:ctx.user.id,links:rows.slice(0,120).filter(l=>websiteAddress(l.url)),shortcuts,more:rows.length>120});
 }
 export async function POST(req:NextRequest){
   if(req.headers.get("origin")!==req.nextUrl.origin)return privateJson({error:"請喺日序頁面操作。"},403);
@@ -27,6 +31,14 @@ export async function POST(req:NextRequest){
   const body=await req.json().catch(()=>null);if(!body||typeof body!=="object"||Array.isArray(body)||Object.keys(body).some(k=>!["action","id","title","url","shelf"].includes(k)))return privateJson({error:"收藏資料格式唔正確。"},400);
   if(body.action==="remove"){
     if(typeof body.id!=="string"||!uuid.test(body.id))return privateJson({error:"請選擇自己嘅收藏。"},422);
+    const preset=usefulLinks.find(l=>linkId(ctx.user.id,"site",l.url)===body.id);
+    if(preset){
+      const now=new Date().toISOString();
+      const created=await ctx.client.from("dayline_web_links").upsert({id:body.id,owner_id:ctx.user.id,...preset,shelf:"site",archived_at:now},{onConflict:"id",ignoreDuplicates:true});
+      if(created.error)return privateJson({error:"未能移除捷徑，請重試。"},503);
+      const changed=await ctx.client.from("dayline_web_links").update({archived_at:now}).eq("id",body.id).eq("owner_id",ctx.user.id).select("id").maybeSingle();
+      return changed.error||!changed.data?privateJson({error:"未能確認捷徑已移除，請重試。"},503):privateJson({ok:true});
+    }
     const {data,error}=await ctx.client.from("dayline_web_links").update({archived_at:new Date().toISOString()}).eq("id",body.id).eq("owner_id",ctx.user.id).is("archived_at",null).select("id").maybeSingle();
     if(error)return privateJson({error:"未能移除，請重試。"},503);
     return data?privateJson({ok:true}):privateJson({error:"呢個收藏已移除，或唔屬於你。"},404);

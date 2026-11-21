@@ -1,6 +1,7 @@
 import xml from "xml-js";
 import type {Element} from "xml-js";
 import type {Journey,RoadNotice,RoadState,Toll} from "../roadwatch.ts";
+import {detectorNames,type Spot} from "../road-presets.ts";
 // Short place names follow TD's Journey Time Indicators v2 spec; do not guess new IDs.
 const starts:Record<string,string>={H1:"告士打道東行（稅務大樓）",H2:"堅拿道天橋北行",H3:"東區走廊西行（城市花園）",H4:"黃泥涌道北行",H5:"興發街北行",H6:"淺水灣道北行",H7:"黃竹坑道北行",H8:"黃竹坑道東行",H9:"鴨脷洲橋道北行",H11:"東區走廊西行（鯉景灣）",K01:"渡船街南行",K02:"加士居道東行",K03:"窩打老道南行",K04:"公主道南行",K05:"啟福道北行",K06:"漆咸道北南行",K07:"西九龍公路西行（南昌）",K08:"啟祥道西行",N01:"洪天路南行",N02:"朗天路南行",N03:"元朗公路東行（十八鄉）",N05:"大埔公路東行（廣福邨）",N06:"青沙公路西行",N07:"福民路北行",N08:"寶順路南行（頌明苑）",N09:"環保大道西行",N10:"寶康路南行",N11:"寶邑路西行",N12:"寶順路南行（調景嶺）",N13:"翠嶺路東行",SJ1:"大埔公路南行（沙田馬場）",SJ2:"大老山隧道公路南行（石門）",SJ3:"吐露港公路南行（科學園）",SJ4:"新田公路南行（錦綉花園）",SJ5:"屯門公路南行（井財街）"};
 const ends:Record<string,string>={CH:"紅隧",EH:"東隧",WH:"西隧",ABT:"灣仔（香港仔隧道）",WNCG:"灣仔（黃泥涌峽道）",PFL:"中區（薄扶林道）",ACTT:"機場（三號幹線）",ATSCA:"機場（八號幹線）",ATL:"機場（大欖隧道）",TMCLK:"機場（屯門赤鱲角隧道）",SSCPR:"上水（青山公路）",SSYLH:"上水（九號幹線）",LRT:"九龍中（獅子山隧道）",SMT:"荃灣（城門隧道）",TCT:"九龍東（大老山隧道）",TKTL:"汀九（大欖隧道）",TKTM:"汀九（屯門公路）",TLH:"沙田（吐露港公路）",TPR:"沙田（大埔公路）",KTPR:"九龍（大埔公路）",TSCA:"西九龍（八號幹線）",TWCP:"荃灣西（青山公路）",TWTM:"荃灣西（屯門公路）",CWBR:"九龍（清水灣道）",MOS:"九龍（二號幹線）",TKOLTT:"九龍（將藍隧道）",TKOT:"九龍（將軍澳隧道）"};
@@ -22,6 +23,19 @@ export function journeys(data:string):Journey[]{
     const key=origin+":"+r.DESTINATION_ID;if((out.get(key)?.at??"")>at)continue;
     out.set(key,{key,origin,start,dest,area:origin.startsWith("H")?"港島":origin.startsWith("K")?"九龍":"新界",status,minutes:timed?Number(r.JOURNEY_DATA):null,at});
   }return [...out.values()];
+}
+// Only fixed, TD-identified detectors, never a user's whereabouts. Report speed, not an invented congestion class.
+export function detectorSpots(input:string):Spot[]{
+ if(input.length>2200000||/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(input)||!/<raw_speed_volume_list\b/.test(input)||!/<\/raw_speed_volume_list>\s*$/.test(input))throw Error("invalid detector feed");
+ const date=/<date>(\d{4}-\d{2}-\d{2})<\/date>/.exec(input)?.[1],out=new Map<string,Spot>();if(!date)return [];
+ for(const p of input.matchAll(/<period>([\s\S]*?)<\/period>/g)){const time=/<period_to>(\d{2}:\d{2}:\d{2})<\/period_to>/.exec(p[1])?.[1],at=time&&hkTimestamp(date+"T"+time);if(!at)continue;
+  for(const d of p[1].matchAll(/<detector>([\s\S]*?)<\/detector>/g)){
+   const id=/<detector_id>([A-Z0-9]+)<\/detector_id>/.exec(d[1])?.[1];if(!id||!Object.hasOwn(detectorNames,id)||(out.get(id)?.at??"")>=at)continue;
+   let weighted=0,count=0;for(const l of d[1].matchAll(/<lane>([\s\S]*?)<\/lane>/g)){if(!/<valid>Y<\/valid>/i.test(l[1]))continue;
+    const s=/<speed>(\d+(?:\.\d+)?)<\/speed>/.exec(l[1]),v=/<volume>(\d+)<\/volume>/.exec(l[1]);if(!s||!v||+v[1]<=0||+s[1]>160)continue;weighted+=+s[1]*+v[1];count+=+v[1];}
+   if(count)out.set(id,{id,label:detectorNames[id as keyof typeof detectorNames],at,kph:Math.round(weighted/count)});
+  }
+ }return [...out.values()];
 }
 export function notices(data:string):RoadNotice[]{
   const latest=new Map<string,Record<string,string>>();
