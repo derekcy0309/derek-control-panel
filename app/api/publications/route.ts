@@ -1,7 +1,7 @@
 import {NextRequest} from "next/server";
 import {activeStartReader} from "@/lib/server/start-reader";
 import {privateJson} from "@/lib/server/request-context";
-import {isSeries,validBlocks} from "@/lib/publications";
+import {isSeries,isUnreadCount,validBlocks} from "@/lib/publications";
 export const dynamic="force-dynamic";
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export async function GET(req:NextRequest){
@@ -9,7 +9,7 @@ export async function GET(req:NextRequest){
  const p=req.nextUrl.searchParams;const view=p.get("view")??"list";
  const fail=()=>privateJson({error:"刊物庫暫時未能更新。舊刊不會當成新刊，請稍後重試。"},503);
  const validKeys=(keys:string[])=>[...p.keys()].every(k=>keys.includes(k)&&p.getAll(k).length===1);
- if(view==="count"&&validKeys(["view"])){const r=await ctx.client.rpc("dayline_unread");return r.error?fail():privateJson({unread:r.data});}
+ if(view==="count"&&validKeys(["view"])){const r=await ctx.client.rpc("dayline_unread");return r.error||!isUnreadCount(r.data)?fail():privateJson({unread:r.data});}
  if(view==="issue"&&validKeys(["view","id"])&&uuid.test(p.get("id")??"")){
    const r=await ctx.client.rpc("dayline_issue",{issue:p.get("id")});if(r.error)return fail();
    if(!r.data)return privateJson({error:"刊物未開啟、唔存在，或帳戶未獲授權。"},404);

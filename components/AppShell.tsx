@@ -20,6 +20,7 @@ import { LiveClock } from "@/components/LiveClock";
 import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
 import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { daylineWeek } from "@/lib/dayline";
+import { DaylineMark } from "@/components/dayline/DaylineMark";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
@@ -234,7 +235,7 @@ function HomeFrame({name,userId,system,onSignOut,gates,children}:{name:string;us
   return <div className="dl-viewport"><div className="dl-shell" data-palette={daylineWeek(today)}>
     {gates}
     <header className="dl-mast"><div className="dl-mastin">
-      <Link href="/" className="dl-brand" aria-label="日序 Dayline · 今日總覽" onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}><span className="dl-monogram" aria-hidden="true"><b/><b/><b/></span><b>日序</b><em>Dayline</em></Link>
+      <Link href="/" className="dl-brand" aria-label="日序 Dayline · 今日總覽" onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}><DaylineMark/><b>日序</b><em>Dayline</em></Link>
       <nav className="dl-nav" aria-label="主要導覽"><Link href="/" aria-current={tab==="focus"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}>今日總覽</Link><Link href="/#task-action-list" aria-current={tab==="tasks"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:tasks"))}>我的任務</Link><Link href="/calendar">日曆</Link></nav>
       <div className="dl-account"><span className="dl-who">{name}</span><span className="dl-avatar" aria-hidden="true">{Array.from(name)[0]?.toUpperCase()}</span></div>
       <details className="dl-all-nav" onKeyDown={e=>{if(e.key==="Escape"){e.currentTarget.open=false;e.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="更多功能"><Menu aria-hidden="true"/></summary>
@@ -273,7 +274,7 @@ function PasswordChangeGate({ onComplete }: { onComplete: () => void }) {
 function Brand({ displayName, compact = false }: { displayName: string; compact?: boolean }) {
   return (
     <div className={compact ? "flex min-w-0 items-center gap-3 lg:hidden" : "brand-block"}>
-      <div className="brand-mark">D</div>
+      <DaylineMark standard/>
       <div className="min-w-0">
         {!compact ? <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-indigo-500">{displayName}</p> : null}
         <p className={clsx("truncate font-bold tracking-tight", compact ? "text-lg" : "mt-0.5 text-xl")}>日序 <i>Dayline</i></p>

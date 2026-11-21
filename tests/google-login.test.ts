@@ -23,6 +23,35 @@ test("PKCE flow cookies expire and reject incomplete/tampered inputs", () => {
   assert.equal(readGoogleFlow(JSON.stringify({ ...flow, next: "//evil.test" }), now)?.next, "/");
 });
 
+test("only publication pages preserve a canonical issue, list mode and paragraph", () => {
+  const id = "a0b0c0d0-1111-4222-8333-444455556666";
+  for (const section of ["medical", "evening", "publications"]) {
+    const path = "/briefing/" + section;
+    const expected = path + "?issue=" + id + "&mode=saved&at=p-12#p-12";
+    const input = path + "?q=private+search&issue=" + id.toUpperCase() + "&code=discard&mode=saved#p-12";
+    assert.equal(safeLoginDestination(input), expected);
+    assert.equal(safeLoginDestination(expected), expected);
+    assert.equal(safeLoginDestination(path + "?mode=unread&at=p-9#p-9"), path + "?mode=unread");
+    assert.equal(safeLoginDestination(path + "?issue=bad&mode=invalid#p-12"), path);
+    const flow = { verifier: "a".repeat(64), state: "b".repeat(64), next: input, createdAt: 1000 };
+    assert.equal(readGoogleFlow(JSON.stringify(flow), 1000)?.next, expected);
+  }
+  assert.equal(safeLoginDestination("/briefing/library?issue=" + id + "&mode=saved#p-1"), "/briefing/library");
+});
+
+test("a paragraph needs one valid issue, a bounded index and no ambiguous query values", () => {
+  const id = "00000000-1111-4222-8333-444455556666";
+  const path = "/briefing/medical";
+  const link = path + "?issue=" + id;
+  for (const at of ["p-0", "p-999", "p-1999"]) {
+    assert.equal(safeLoginDestination(link + "&at=" + at), link + "&at=" + at + "#" + at);
+  }
+  for (const suffix of ["&at=p-2000", "&at=p-01", "&at=invalid#p-1", "&at=p-1&at=p-2", "#private", "&mode=saved&mode=all"]) {
+    assert.equal(safeLoginDestination(link + suffix), link);
+  }
+  assert.equal(safeLoginDestination(link + "&issue=" + id + "#p-0"), path);
+});
+
 test("Google login requires both an enabled provider and closed registration", () => {
   assert.equal(googleProviderReady({ external: { google: true }, disable_signup: true }), "ready");
   assert.equal(googleProviderReady({ external: { google: false }, disable_signup: true }), "unavailable");

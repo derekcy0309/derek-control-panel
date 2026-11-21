@@ -7,6 +7,8 @@ export const isSeries = (s:unknown):s is Series=>typeof s==="string"&&Object.has
 export const preferenceNames = {journals:"刊物（醫療期刊及美股晚報）", news:"公開新聞", traffic:"交通路況"} as const;
 export type InfoKey=keyof typeof preferenceNames;
 export type InfoPrefs=Record<InfoKey,boolean>;
+export const isUnreadCount = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 export const off:InfoPrefs={journals:false,news:false,traffic:false};
 export const isInfoKey=(s:unknown):s is InfoKey=>typeof s==="string"&&Object.hasOwn(off,s);
 export type Block={text:string;heading:boolean;links:{label:string;href:string}[]};

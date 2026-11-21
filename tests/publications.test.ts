@@ -1,7 +1,11 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {isInfoKey,off,safeSource,isoDay,validBlocks} from "../lib/publications.ts";
+import {isInfoKey,off,safeSource,isoDay,validBlocks,isUnreadCount} from "../lib/publications.ts";
 import {preparePublication} from "../lib/server/publication-source.ts";
+test("only a known nonnegative integer is an unread count; a missing or invalid count is not zero",()=>{
+  for(const n of [0,1,5,2147483647])assert.equal(isUnreadCount(n),true);
+  for(const n of [null,undefined,false,"0",-1,1.5,Infinity,NaN,Number.MAX_SAFE_INTEGER+1])assert.equal(isUnreadCount(n),false);
+});
 const fixture={series:"ngo",published:"2026-11-21",from:"2026-11-08",until:"2026-11-21",title:"隔離測試期刊",lead:"一句重點",sourceKind:"email-seed",sourceRef:"fixture",format:"html",original:'<div><h2>標題</h2><p>BRCA <strong>段落</strong> <a href="https://example.org/source?a=1&amp;b=2">原文</a></p></div>'};
 test("all three personal subscriptions are separately off; dates must actually exist",()=>{assert.deepEqual(off,{journals:false,news:false,traffic:false});assert.equal(isInfoKey("constructor"),false);assert.equal(isoDay("2026-02-30"),false);});
 test("import retains exact original, parsed paragraph order, labels and valid source URLs",()=>{const d=preparePublication(fixture);assert.equal(d.original,fixture.original);assert.equal(d.blocks[0].text,"標題");assert.equal(d.blocks[1].text,"BRCA 段落 原文");assert.equal(d.blocks[1].links[0].href,"https://example.org/source?a=1&b=2");assert.equal(preparePublication({...fixture,sourceRef:"retry-from-another-transport"}).revision,d.revision);assert.notEqual(preparePublication({...fixture,lead:"更正"}).revision,d.revision);});

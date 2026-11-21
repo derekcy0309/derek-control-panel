@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
-import { googleLoginError } from "@/lib/google-login";
+import { googleLoginError, safeLoginDestination } from "@/lib/google-login";
+import { DaylineMark } from "@/components/dayline/DaylineMark";
+
+function currentDestination() {
+  const { pathname, search, hash } = window.location;
+  return safeLoginDestination(pathname + search + hash);
+}
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
@@ -47,10 +53,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             // magic/recovery link has successfully created our HttpOnly-cookie session.
             // A full navigation clears this non-persistent browser client session and
             // removes the one-time link fragment without ending the adopted session.
-            window.location.replace(window.location.pathname);
+            window.location.replace(currentDestination());
             return;
           }
-          if (window.location.hash || window.location.search.includes("code=")) window.history.replaceState({}, "", window.location.pathname);
+          if (window.location.hash || window.location.search.includes("code=")) window.history.replaceState({}, "", currentDestination());
         }
         const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
         if (response.ok && active) setAuthenticated(true);
@@ -89,8 +95,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setMessage("");
     try {
       const response = await fetch("/api/auth/google", {
-        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-        body: JSON.stringify({ next: window.location.pathname })
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", referrerPolicy: "no-referrer",
+        body: JSON.stringify({ next: currentDestination() })
       });
       const result = await response.json() as { url?: string; error?: string };
       if (!response.ok || !result.url) {
@@ -138,7 +144,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     if (!adopted.ok) { setMessage("驗證成功，但未能建立安全登入 session。請再試一次。"); return; }
     // Reload from the HttpOnly-cookie session.  Calling the Supabase client
     // signOut here can invalidate the refresh token that was just adopted.
-    window.location.replace(window.location.pathname);
+    window.location.replace(currentDestination());
   }
 
   async function signInWithPassword(event: React.FormEvent<HTMLFormElement>) {
@@ -166,13 +172,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-mist px-4 py-8">
       <div className="pointer-events-none absolute left-1/2 top-[-12rem] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
       <div className="panel relative w-full max-w-md p-6 [--section-accent:var(--accent)] [--section-soft:var(--accent-soft)] sm:p-8">
-        <div className="mb-6 flex items-center gap-3"><div className="brand-mark h-11 w-11"><KeyRound className="h-5 w-5" /></div><div><p className="eyebrow">日序 Dayline</p><h1 className="text-2xl font-bold tracking-tight">登入日序</h1></div></div>
-        <p className="text-sm leading-6 text-slate-600">使用與原有 Panel 帳戶相同的 Google 電郵，登入後直接進入系統。原有任務、資料及權限保持不變。</p>
+        <div className="mb-6 flex items-center gap-3"><DaylineMark standard/><div><p className="eyebrow">日序 Dayline</p><h1 className="text-2xl font-bold tracking-tight">登入日序</h1></div></div>
+        <p className="text-sm leading-6 text-slate-600">請用已獲邀嘅 Google 帳戶登入。</p>
         <Button className="mt-5 w-full" type="button" disabled={googleSubmitting || submitting} onClick={() => { void signInWithGoogle(); }}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M21.8 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.5a4.7 4.7 0 0 1-2 3.1c-.9.6-2 1-3.5 1a6.2 6.2 0 1 1 0-12.4c1.5 0 2.8.5 3.9 1.5l3-2.9A10.2 10.2 0 1 0 12 22.2c3 0 5.5-1 7.3-2.7 1.7-1.8 2.5-4.2 2.5-7.3Z" /></svg>
           {googleSubmitting ? "正在前往 Google…" : "使用 Google 登入"}
         </Button>
-        <p className="mt-3 text-xs leading-5 text-slate-500">不需要輸入 Panel 密碼，也不會取得 Gmail 郵件或 Google Calendar 內容。</p>
+        <p className="mt-3 text-xs leading-5 text-slate-500">登入只用作確認身份，唔會讀取 Gmail 或 Google Calendar。</p>
         {message ? <p className="mt-4 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-800" role="alert">{message}</p> : null}
         <details className="mt-5 border-t border-slate-200 pt-4">
           <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-slate-600">其他登入方法（後備）</summary>
@@ -190,9 +196,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         {authMode === "otp" && otpSent ? <button className="mt-3 min-h-11 w-full text-sm font-semibold text-indigo-700" type="button" onClick={() => { setOtpSent(false); setOtpCode(""); setMessage(""); }}>重新發送登入電郵</button> : null}
           </fieldset>
           </form>
+          <Link href="/agent" className="mt-4 flex min-h-11 items-center border-t border-slate-200 text-sm font-semibold text-indigo-700">Grok／AI Agent 專用登入</Link>
         </details>
-        <Link href="/agent" className="mt-4 flex min-h-11 items-center text-sm font-semibold text-indigo-700">Grok／AI Agent 專用登入</Link>
-        <div className="mt-5 flex items-start gap-2 border-t border-slate-200 pt-4 text-xs leading-5 text-slate-500"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /><p>登入資料使用 HttpOnly cookie 保存；敏感 session 不會寫入 localStorage。</p></div>
       </div>
     </div>
   );

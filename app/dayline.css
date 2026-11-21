@@ -21,6 +21,7 @@
 .dl-brand>b{font-size:25px;line-height:1;font-weight:750;letter-spacing:.065em}
 .dl-brand em{color:var(--accent);font:italic 22px/1 Georgia,"Times New Roman",serif;letter-spacing:-.055em}
 .dl-monogram{position:relative;align-self:center;width:32px;height:33px;margin-right:3px}
+.dl-mark-standard{display:inline-block;flex:none;--accent:#195b64;--art:#75a2a2;--art-edge:#376e72;--paper:#fff}
 .dl-monogram b{position:absolute;left:2px;top:3px;width:25px;height:23px;border:2px solid var(--accent);border-radius:2px 6px 2px 2px;transform:skewY(-11deg)}
 .dl-monogram b:nth-child(1){top:9px;left:0;background:var(--art);border-color:var(--art-edge)}
 .dl-monogram b:nth-child(2){top:6px;left:3px;background:var(--paper);border-color:var(--art-edge)}
@@ -252,6 +253,7 @@
 .dl-road-list,.dl-fares{list-style:none;margin:8px 0;padding:0}.dl-road-line,.dl-fares li{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line,#d8e2df);padding:10px 0}.dl-road-line>div{min-width:0;display:grid;gap:3px}.dl-road-line>div+div{flex:none;text-align:right}.dl-road-line strong,.dl-fares strong{font-weight:700}.dl-road-line span,.dl-road-line small,.dl-traffic-mini>p{font-size:.9rem}.dl-road-line b{justify-self:end;border-radius:8px;padding:2px 8px;color:#385352;background:#ebf0f0;font-size:.83rem}.dl-road-line b[data-state=clear]{color:#215348;background:#e3f2e9}.dl-road-line b[data-state=slow]{color:#6d4717;background:#fff0d5}.dl-road-line b[data-state=jam],.dl-road-line b[data-state=closed]{color:#7f3332;background:#fbe6e1}.dl-road-block{border-top:1px solid var(--line,#d8e2df);margin-top:16px;padding-top:16px}.dl-road-block h3,.dl-traffic-mini p:has(svg){display:flex;align-items:center;gap:7px}.dl-fares strong{white-space:nowrap}.dl-roadpage footer a{text-decoration:underline}.dl-traffic-mini>.dl-news-subhead{margin-top:0}
 .dl-useful h3{font-size:1rem;font-weight:650;margin:15px 0 4px}.dl-useful h3 small{font-weight:500;color:var(--soft,#51696a)}.dl-useful~p{font-size:.92rem}
 .dl-pub-line{display:block;width:fit-content;min-height:44px;padding:12px 16px;border-radius:14px;background:#edf2fc;color:#30457c;font-weight:700}
+.dl-pub-status{background:var(--band,#edf2f2);color:var(--ink,#263e49);text-align:start;border:1px solid var(--line,#cdd9db)}
 .dl-choices,.dl-pub-filters{display:flex;flex-wrap:wrap;align-items:end;gap:.75rem;margin:.8rem 0}
 .dl-choices label{display:flex;align-items:center;gap:.55rem;min-height:44px;padding:.4rem .75rem;background:#eef5f4;border-radius:12px;cursor:pointer}
 .dl-home-fares,.dl-news-card .dl-home-fares{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;list-style:none;padding:0;margin:.6rem 0}

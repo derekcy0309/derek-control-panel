@@ -9,16 +9,34 @@ export type GoogleLoginFlow = {
   createdAt: number;
 };
 
-// Never accept an external redirect, an API endpoint or another login callback.
+const publicationPages = new Set(["/briefing/publications", "/briefing/medical", "/briefing/evening"]);
+const issueId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const paragraphId = /^p-(?:0|[1-9]\d{0,2}|1\d{3})$/;
+
+// Keep only internal page names and the minimal navigation needed to reopen a
+// publication. Never carry a search term, OAuth code or generic return URL.
 export function safeLoginDestination(value: unknown): string {
   if (typeof value !== "string" || value.length > 1500 || !value.startsWith("/")) return "/";
-  let decoded: string;
-  try { decoded = decodeURIComponent(value); } catch { return "/"; }
-  if (/^[\/]{2}|[\\\u0000-\u0020]/.test(decoded)) return "/";
-  const parsed = new URL(value, "https://panel.invalid");
-  if (parsed.origin !== "https://panel.invalid" || /^\/(api|auth)(\/|$)/i.test(decodeURIComponent(parsed.pathname))) return "/";
-  // Query strings can contain old login codes/tokens. Return to the page only.
-  return parsed.pathname;
+  const unsafePath = /^\/\/|[%\\\u0000-\u0020\u007f]/;
+  try {
+    if (unsafePath.test(decodeURIComponent(value.split(/[?#]/, 1)[0]))) return "/";
+    const parsed = new URL(value, "https://panel.invalid");
+    const path = decodeURIComponent(parsed.pathname);
+    if (parsed.origin !== "https://panel.invalid" || unsafePath.test(path) || /^\/(api|auth)(\/|$)/i.test(path)) return "/";
+    if (!publicationPages.has(parsed.pathname)) return parsed.pathname;
+    const single = (key: string) => {
+      const values = parsed.searchParams.getAll(key);
+      return values.length === 1 ? values[0] : "";
+    };
+    const params = new URLSearchParams();
+    const issue = single("issue"), mode = single("mode");
+    if (issueId.test(issue)) params.set("issue", issue.toLowerCase());
+    if (["all", "unread", "saved"].includes(mode)) params.set("mode", mode);
+    const anchor = parsed.searchParams.has("at") ? single("at") : parsed.hash.slice(1);
+    if (params.has("issue") && paragraphId.test(anchor)) params.set("at", anchor);
+    const query = params.toString();
+    return parsed.pathname + (query ? "?" + query : "") + (params.has("at") ? "#" + anchor : "");
+  } catch { return "/"; }
 }
 
 export function readGoogleFlow(value: string | undefined, now = Date.now()): GoogleLoginFlow | null {

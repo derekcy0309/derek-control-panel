@@ -127,16 +127,16 @@ try {
     await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
     await guide.getByRole('button',{name:'再細一步'}).click();await guide.getByRole('button',{name:'起咗步，接住做'}).click();assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'記低下次點接'}).click();await guide.getByLabel('下次返嚟做乜？').fill('只係本分頁嘅草稿');
-    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
+    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
     assert.equal(await guide.getByLabel('下次返嚟做乜？').inputValue(),'只係本分頁嘅草稿');await guide.getByRole('button',{name:'取消',exact:true}).click();
     assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('status').filter({hasText:'成件 Task 未結案'}).waitFor();
     assert.equal(tasks[0].status,'not_started');assert.equal(guideWrites,1);
-    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
+    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
     await guide.getByText(guideRecords.get(tasks[0].id).next_minimum_step,{exact:true}).waitFor();
     await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('button',{name:'確認整件完成'}).waitFor();assert.equal(tasks[0].status,'not_started');
     await guide.getByRole('button',{name:'確認整件完成'}).click();await guide.getByRole('heading',{name:'我排第二件',exact:true}).waitFor();
-    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.locator('.dl-focus').waitFor();
+    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.locator('.dl-focus').waitFor();
     assert.equal(await page.locator('.dl-focus, .dl-queue-list details').count(),1);
     assert.match(await page.locator('.dl-focus').innerText(),/我排第二件/);
     await page.getByText('任務工具、提醒同篩選',{exact:true}).click();
@@ -170,7 +170,7 @@ try {
     assert.equal(todayReads,readsBeforeTyping);
     const draftAfterClose=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)||'null'),`dcp:task-form-draft:v1:${userId}:new`);
     assert.equal(draftAfterClose?.title,'草稿保留測試','closing the form must retain the entered draft');
-    await page.getByRole('link',{name:'開始呢件事',exact:true}).click();await guide.getByRole('link',{name:/返 Dashboard/}).click();
+    await page.getByRole('link',{name:'開始呢件事',exact:true}).click();await guide.getByRole('link',{name:/返今日總覽/}).click();
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');

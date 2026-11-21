@@ -6,7 +6,8 @@ test("email-link session adoption never signs out the newly authenticated user",
   const source = await readFile(new URL("../components/AuthGate.tsx", import.meta.url), "utf8");
 
   assert.match(source, /action: "adopt"/);
-  assert.match(source, /window\.location\.replace\(window\.location\.pathname\)/);
+  assert.match(source, /window\.location\.replace\(currentDestination\(\)\)/);
+  assert.match(source, /return safeLoginDestination\(pathname \+ search \+ hash\)/);
   assert.doesNotMatch(source, /supabase(?:\?\.)?\.auth\.signOut\(/);
 });
 

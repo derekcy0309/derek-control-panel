@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { verifyPublicationReturn, verifyUnreadHint } from './publication-entry.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
 const base = 'http://localhost:3138';
 let scenario = 'derek';
@@ -12,6 +13,7 @@ let providerEnabled = true;
 let signupDisabled = true;
 let exchanges = 0;
 let invitations = 0;
+let unreadResult=0, lastProviderCallback;
 const codes = new Map();
 const ids = { derek: '11111111-1111-4111-8111-111111111111', suki: '22222222-2222-4222-8222-222222222222', amigo: '33333333-3333-4333-8333-333333333333' };
 function user() { const email = `${scenario}@example.test`; return { id: ids[scenario] ?? ids.derek, aud: 'authenticated', role: 'authenticated', email, email_confirmed_at: '2026-01-01T00:00:00Z', app_metadata: { provider: 'google', providers: ['email', 'google'] }, user_metadata: {}, identities: scenario === 'wrong-provider' ? [{ provider: 'email' }] : [{ provider: 'google', identity_data: { email: scenario === 'mismatch-google' ? 'other@example.test' : email, email_verified: scenario !== 'unverified-google' } }] }; }
@@ -26,6 +28,7 @@ const backend = createServer(async (req, res) => {
   if (url.pathname === '/auth/v1/settings') return res.end(JSON.stringify({ external: { google: providerEnabled }, disable_signup: signupDisabled }));
   if (url.pathname === '/auth/v1/authorize') {
     const callback = new URL(url.searchParams.get('redirect_to'));
+    lastProviderCallback=new URL(callback);
     if (scenario === 'cancelled') callback.searchParams.set('error', 'access_denied');
     else {
       const code = `code-${codes.size}`;
@@ -56,6 +59,7 @@ const backend = createServer(async (req, res) => {
     return res.end(JSON.stringify({ id: '44444444-4444-4444-8444-444444444444', email: 'new@example.test', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} }));
   }
   if (url.pathname === '/rest/v1/activity_logs' && req.method === 'POST') { res.statusCode = 201; return res.end(''); }
+  if (url.pathname === '/rest/v1/rpc/dayline_unread') return res.end(JSON.stringify(unreadResult));
   if (url.pathname === '/rest/v1/user_profiles') {
     assert.equal(url.searchParams.get('user_id'), `eq.${user().id}`);
     return res.end(JSON.stringify(scenario === 'missing-profile' ? null : { user_id: user().id, active: scenario !== 'inactive', is_admin: scenario === 'derek' }));
@@ -121,6 +125,13 @@ try {
     assert.equal(cookies.some(cookie => cookie.name === 'dcp_google_flow'), false);
     const identity = await context.request.get(`${base}/api/auth`);
     assert.equal((await identity.json()).user.id, ids[role]);
+    if(role==='derek'&&width===390){
+      for(const [raw,expected] of [[null,503],[-1,503],[0,200],[5,200]]){
+        unreadResult=raw;const count=await context.request.get(base+'/api/publications?view=count');
+        assert.equal(count.status(),expected);const json=await count.json();
+        if(expected===200)assert.equal(json.unread,raw);else assert.equal(Object.hasOwn(json,'unread'),false);
+      }
+    }
     const inviteBefore = invitations;
     const invite = await context.request.post(`${base}/api/admin/invite`, { headers: { Origin: base }, data: { email: 'new@example.test', displayName: 'Local test' } });
     assert.equal(invite.status(), role === 'derek' ? 201 : 403);
@@ -132,6 +143,15 @@ try {
     console.log(`PASS simulated Google → existing ${role} identity → app → reload (${width}px)`);
     await context.close();
   }
+  scenario='derek';
+  for(const width of [390,1280]){
+    await verifyPublicationReturn(browser,base,width,{localOAuth:true});
+    assert.equal(lastProviderCallback.pathname,'/api/auth/google/callback');
+    assert.deepEqual([...lastProviderCallback.searchParams.keys()],['state']);
+    assert.equal(lastProviderCallback.hash,'');
+    await verifyUnreadHint(browser,base,width);
+  }
+  await verifyPublicationReturn(browser,base,390,{localOAuth:true,denied:true});
   for (const failure of ['cancelled', 'inactive', 'missing-profile', 'wrong-provider', 'unverified-google', 'mismatch-google']) {
     scenario = failure;
     const context = await browser.newContext({ serviceWorkers: 'block' });

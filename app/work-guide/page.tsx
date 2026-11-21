@@ -22,7 +22,7 @@ function WorkGuide(){
   const plan=data?simpleToday({tasks:data.tasks,planning:data.planning,dependencies:data.taskDependencies,assignments:data.assignments,userId:data.currentUser.id,today:hkDateIso()}):null;
   const task=plan?.ordered[0];
   return <main className="work-guide mx-auto max-w-3xl space-y-4">
-    <header className="flex flex-wrap items-center justify-between gap-2"><h1 className="page-title flex items-center gap-2"><Compass aria-hidden="true"/>開工導航</h1><Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/">← 返 Dashboard</Link></header>
+    <header className="flex flex-wrap items-center justify-between gap-2"><h1 className="page-title flex items-center gap-2"><Compass aria-hidden="true"/>開工導航</h1><Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/">← 返今日總覽</Link></header>
     {!error && data?<GuideWorkStop key={data.currentUser.id} userId={data.currentUser.id}/>:null}
     {error?<p role="alert" className="panel p-4">未能確認今日次序。<button className="min-h-11 underline" onClick={()=>void reload()}>重新載入</button></p>:null}
     {notice?<p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">{notice}</p>:null}
