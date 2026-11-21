@@ -67,6 +67,7 @@ try {
       await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.goto(url, { waitUntil: 'domcontentloaded' });
+    await page.addStyleTag({content:'nextjs-portal{display:none!important}'}); // Ignore only the local Next dev indicator in click targets; still assert page errors below.
     await page.getByRole('tab', { name: /今日全部/ }).click();
     let navigations = 0;
     page.on('request', request => {
