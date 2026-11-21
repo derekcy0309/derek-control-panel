@@ -51,3 +51,19 @@ test("human family lookup is owner-bound, three HK dates, bounded, excludes canc
  for(const call of [["eq","owner_id","owner"],["eq","area","family"],["gte","due_date","2026-11-20"],["lt","due_date","2026-11-23"],["is","archived_at",null],["not","status","in","(completed,cancelled)"],["limit",201]])assert.ok(calls.some(c=>JSON.stringify(c)===JSON.stringify(call)));
  assert.doesNotMatch(String(calls[0][1]),/metadata|description|notes/);
 });
+
+test("outbound email progresses one confirmed action at a time", () => {
+  const task = { title: "SEND EMAIL TO swd - 7 月ccsv attendance", next_action: null };
+  const detail: GuideDetail = { steps: [], checkpoint: null, openChildren: false };
+  let guide = guideInstruction(task, detail);
+  for (const expected of [/inbox/, /Compose/, /主旨/, /內文/, /附件/, /收件人/, /核對/, /傳送/]) {
+    assert.match(guide.text, expected);
+    assert.ok(guide.smaller);
+    detail.checkpoint = { completed_summary: guide.text, current_position: guide.follow ? guideContinue : guideReview, next_minimum_step: guide.follow };
+    guide = guideInstruction(task, detail);
+  }
+  assert.equal(guide.kind, "review");
+  detail.checkpoint = { completed_summary: null, current_position: guideContinue, next_minimum_step: "先同同事確認附件" };
+  assert.equal(guideInstruction(task, detail).follow, "");
+  assert.match(guideInstruction({title:"回覆電郵", next_action:null}, {...detail, checkpoint:null}).text, /對話/);
+});
