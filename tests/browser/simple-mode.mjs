@@ -35,6 +35,7 @@ try {
     await page.route('**/api/**',async route=>{
       const request=route.request();const url=new URL(request.url());let body={};let status=200;
       if(url.pathname==='/api/auth') body={user:{id:userId}};
+      else if(url.pathname==='/api/weather/hong-kong') body={observed:{temperature:24,icon:51,at:fixtureNow.toISOString()},forecast:[{date:today,low:21,high:25,icon:50,description:'測試天晴'}],warnings:['測試警告'],checkedAt:fixtureNow.toISOString()};
       else if(url.pathname==='/api/calendar-brief') body={generatedAt:new Date().toISOString(),from:today,untilExclusive:today,days:[{date:today,events:[{id:"long-calendar-fixture",uid:"long-calendar-fixture",title:`${role} 跨日行程`,start:"2026-07-18",end:"2036-07-19",allDay:true,source:"Apple"}],deadlines:[{id:tasks[0].id,title:`${role} 私人 Deadline`,due:today,priority:1,status:'not_started'}]}],sources:[{label:'Panel',state:'fresh',lastSync:new Date().toISOString()},{label:'Apple Calendar',state:'not_connected',lastSync:null}],truncated:false,warnings:['請檢查來源 Calendar 結束日期（測試）'],text:'Fixture brief'};
       else if(request.method()==='GET') {
         const view=url.searchParams.get('view');
@@ -65,49 +66,62 @@ try {
       if(url.pathname==='/api/calendar-brief'){
         assert.equal(request.method(),'GET');
         if(url.searchParams.get('view')==='work-stop')body={generatedAt:fixtureNow.toISOString(),events:[{title:pickup.title,start:pickup.start,end:pickup.end}],incomplete:false,panelOnly:true};
-        else{body.generatedAt=fixtureNow.toISOString();body.days[0].events.push(pickup);body.familyDates=[{id:'fixture-school',kind:'school',date:today,title:role+' 學校回條'},{id:'fixture-family',kind:'family',date:today,title:role+' 家庭限期'}];}
+        else{body.generatedAt=fixtureNow.toISOString();body.nextSchoolDate={id:'next-school',date:new Date(fixtureNow.getTime()+6*86400000).toISOString().slice(0,10),kind:'school',title:role+' 遠期限期'};body.days[0].events.push(pickup);body.familyDates=[{id:'fixture-school',kind:'school',date:today,title:role+' 學校回條'},{id:'fixture-family',kind:'family',date:today,title:role+' 家庭限期'}];}
       }
       await route.fulfill({status,json:body});
     });
     await page.goto(base,{waitUntil:'domcontentloaded'});
-    await page.getByRole('heading',{name:'今日做乜？'}).waitFor();
+    await page.getByRole('heading',{name:'今日總覽',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'行程同限期',exact:true}).waitFor();
+    await page.locator('.dl-event').filter({hasText:role+' 固定行程'}).waitFor();
+    const firstEvent=await page.locator('.dl-event').first().boundingBox(),firstTask=await page.locator('.dl-focus').boundingBox();
+    assert.ok(firstEvent && firstTask && firstEvent.y+firstEvent.height<=920);if(width<600)assert.ok(firstEvent.y>firstTask.y);else assert.ok(firstEvent.x>firstTask.x);
+    assert.ok(await page.locator('.dl-calendarline').innerText().then(t=>t.includes('星期')));
+    assert.equal(await page.getByRole('form',{name:'新增 Task'}).count(),0);
+    await page.getByText('生效警告：測試警告',{exact:true}).waitFor();
+    await page.getByRole('link',{name:new RegExp(role+' 遠期限期')}).waitFor();
+    if(width<600){await page.getByRole('button',{name:'三日預報'}).click();await page.locator('.dl-forecast').waitFor();await page.getByRole('button',{name:'三日預報'}).click();}
+    if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:process.env.SCREENSHOT_DIR+'/dashboard-'+role+'-'+width+'.png',fullPage:false});}
+    await page.getByText('幾點要收手／預留出門時間',{exact:true}).click();
     const stopHint=page.getByRole('region',{name:'幾點要收手',exact:true});await stopHint.getByText('15:10 收手 · 仲有 18 分鐘',{exact:true}).waitFor();
     await stopHint.getByText('預留時間：20 分鐘',{exact:true}).click();await stopHint.getByLabel('出門／準備要幾多分鐘？').fill('30');
     await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
     assert.equal(await page.evaluate(key=>localStorage.getItem(key),'dcp:work-stop:v1:'+userId),'30');
-    if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.getByLabel('一眼睇安排').waitFor();await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/dashboard-${role}-${width}.png`,fullPage:false});}
-    await page.getByText('逐日睇：今日、聽日、後日',{exact:true}).click();
-    await page.getByText(`${role} 私人 Deadline`,{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'三日行程同 Deadline',exact:true}).count(),1);
-    await page.getByText('全日 · 2026-07-18 至 2036-07-18',{exact:true}).waitFor();
+
+    await page.locator('.dl-more-rows > summary').first().click();
+    await page.getByText(`${role} 私人 Deadline`,{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'行程同限期',exact:true}).count(),1);
+    await page.getByText(/全日 · 2026年7月18日.*2036年7月18日/).waitFor();
     await page.getByRole('status').filter({hasText:'請檢查來源 Calendar 結束日期（測試）'}).waitFor();
     page.on('request',request=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())navigations++;});
-    assert.equal(await page.locator('.simple-focus-card').count(),2);
-    assert.match(await page.locator('.simple-focus-card').first().innerText(),/我排第一件/);
+    assert.equal(await page.locator('.dl-focus, .dl-queue-list details').count(),2);
+    assert.match(await page.locator('.dl-focus').innerText(),/我排第一件/);
     assert.equal(await page.getByText('能量',{exact:true}).count(),0);
     assert.equal(await page.getByText('依賴未完成',{exact:true}).count(),0);
-    assert.equal(await page.getByRole('link',{name:role+' 學校回條',exact:true}).getAttribute('href'),'/workspace/school#item-fixture-school');
-    await page.getByRole('link',{name:role+' 家庭限期',exact:true}).waitFor();
+    assert.equal(await page.locator('.dl-agenda a').filter({hasText:role+' 學校回條'}).getAttribute('href'),'/workspace/school#item-fixture-school');
+    await page.locator('.dl-agenda a').filter({hasText:role+' 家庭限期'}).waitFor();
     assert.deepEqual(await page.locator('[aria-label="Dashboard Tags"] .simple-tag-filter').allTextContents(),['全部',...names]);
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/${role}-${width}.png`,fullPage:true});}
-    await page.getByRole('link',{name:'帶我開工 →'}).click();
+    await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
     const guide=page.locator('.work-guide');await guide.getByRole('heading',{name:'我排第一件',exact:true}).waitFor();
     await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
     await guide.getByRole('button',{name:'再細一步'}).click();await guide.getByRole('button',{name:'起咗步，接住做'}).click();assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'記低下次點接'}).click();await guide.getByLabel('下次返嚟做乜？').fill('只係本分頁嘅草稿');
-    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'帶我開工 →'}).click();
+    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
     assert.equal(await guide.getByLabel('下次返嚟做乜？').inputValue(),'只係本分頁嘅草稿');await guide.getByRole('button',{name:'取消',exact:true}).click();
     assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('status').filter({hasText:'成件 Task 未結案'}).waitFor();
     assert.equal(tasks[0].status,'not_started');assert.equal(guideWrites,1);
-    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'帶我開工 →'}).click();
+    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
     await guide.getByText(guideRecords.get(tasks[0].id).next_minimum_step,{exact:true}).waitFor();
     await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('button',{name:'確認整件完成'}).waitFor();assert.equal(tasks[0].status,'not_started');
     await guide.getByRole('button',{name:'確認整件完成'}).click();await guide.getByRole('heading',{name:'我排第二件',exact:true}).waitFor();
-    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.locator('.simple-focus-card').first().waitFor();
-    assert.equal(await page.locator('.simple-focus-card').count(),1);
-    assert.match(await page.locator('.simple-focus-card').first().innerText(),/我排第二件/);
+    await guide.getByRole('link',{name:/返 Dashboard/}).click();await page.locator('.dl-focus').waitFor();
+    assert.equal(await page.locator('.dl-focus, .dl-queue-list details').count(),1);
+    assert.match(await page.locator('.dl-focus').innerText(),/我排第二件/);
+    await page.getByText('任務工具、提醒同篩選',{exact:true}).click();
     await page.getByRole('button',{name:'安靜模式',exact:true}).click();await page.getByRole('button',{name:'安靜中',exact:true}).waitFor();
     assert.ok(preferences.quiet_mode_until); // Per-account API; no other profile changes.
+    await page.getByRole('button',{name:'加 Task',exact:true}).click();
     const dialog=page.getByRole('form',{name:'新增 Task',exact:true});
     assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),1);
     await dialog.getByRole('button',{name:'＋ 加 Task'}).waitFor();
@@ -123,7 +137,8 @@ try {
     assert.equal(todayReads,readsBeforeTyping);
     const draftAfterClose=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)||'null'),`dcp:task-form-draft:v1:${userId}:new`);
     assert.equal(draftAfterClose?.title,'草稿保留測試','closing the form must retain the entered draft');
-    await page.getByRole('link',{name:'帶我開工 →'}).click();await guide.getByRole('link',{name:/返 Dashboard/}).click();
+    await page.getByRole('link',{name:'開始呢件事',exact:true}).click();await guide.getByRole('link',{name:/返 Dashboard/}).click();
+    await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
     await dialog.getByRole('button',{name:/更改設定/}).click();assert.equal(await dialog.getByRole('button',{name:'個人',exact:true}).getAttribute('aria-pressed'),'true');

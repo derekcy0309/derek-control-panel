@@ -349,7 +349,7 @@ test("Today retains authenticated manual planning and starts suggestions only af
   assert.match(controlRoute, /case\s+"accept_today_plan"/);
   assert.match(controlRoute, /client\.rpc\("accept_today_auto_plan"/);
   assert.match(todayPage, /set_today_task/);
-  assert.match(todayPage, /自己排今日/);
+  assert.match(todayPage, /onorder=\{\(\)=>setactivetab\("today"\)\}/);
   assert.match(todayPage, /建議，未加入今日/);
   assert.match(todayPage, /onstart/);
 });

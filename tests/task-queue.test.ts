@@ -134,7 +134,7 @@ test("sidebar keeps the daily loop open and removes the duplicate sharing route"
   assert.doesNotMatch(shell, /href: "\/workspace\/document"/);
   assert.ok(shell.indexOf('href: "/cashflow"') < shell.indexOf('label: "系統設定"'));
   assert.match(shell, /EncouragementFooter/);
-  assert.match(shell, /label: "行動中心"/);
+  assert.match(shell, /href: "\/", label: "今日總覽"/);
   assert.doesNotMatch(shell, /href: "\/tasks"/);
 });
 

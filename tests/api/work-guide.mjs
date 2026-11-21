@@ -18,7 +18,10 @@ const fixture=http.createServer(async(req,res)=>{
   else if(t==='apple_calendar_connections'){assert.equal(identity,'local-service');assert.ok(Object.values(people).includes(p.get('owner_id')?.slice(3)));result=[];}
   else if(t==='operating_items'){
    assert.ok(actor);assert.equal(p.get('owner_id'),'eq.'+actor);assert.equal(req.method,'GET');
-   if(p.get('area')==='eq.family'){familyReads.push(actor);result=[{id:uuid(8),item_type:'school',title:identity+' school fixture',due_date:day}];}
+   if(p.get('area')==='eq.family'&&p.get('item_type')==='eq.school'){
+     assert.equal(p.get('limit'),'1');assert.equal(p.get('archived_at'),'is.null');assert.equal(p.get('select'),'id,title,due_date');
+     const threshold=p.get('due_date').slice(4);assert.ok(threshold>day);result=[{id:uuid(17),title:identity+' next school',due_date:threshold}];
+   }else if(p.get('area')==='eq.family'){familyReads.push(actor);result=[{id:uuid(8),item_type:'school',title:identity+' school fixture',due_date:day}];}
    else if(p.get('schedule_status')==='in.(confirmed)'){assert.equal(p.get('item_type'),'eq.event');result=[{id:uuid(9),title:identity+' timed fixture',schedule_status:'confirmed',schedule_start_at:day+'T15:30:00+08:00',schedule_end_at:day+'T16:00:00+08:00'}];}
   } else if(t==='tasks'){
    if(p.has('id'))result=actor===people.derek && p.get('id')==='eq.'+task?[{id:task}]:[];
@@ -59,7 +62,8 @@ try{
  assert.equal((await post('derek',{...payload,next:'different intent'})).status,409);assert.equal(rows.length,1);assert.equal(audit.length,1);
  assert.equal(JSON.stringify(audit).includes('opened the example'),false);
  assert.equal((await (await read(guide,'derek')).json()).checkpoint.next_minimum_step,payload.next);
- for(const actor of Object.keys(people)){const response=await read('/api/calendar-brief',actor);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const b=await response.json();assert.equal(b.familyDates[0].title,actor+' school fixture');assert.equal(b.text.includes('school fixture'),false);}
+ assert.equal((await read('/api/calendar-brief')).status,401);assert.equal((await read('/api/calendar-brief?owner_id='+people.suki,'derek')).status,400);
+ for(const actor of Object.keys(people)){const response=await read('/api/calendar-brief',actor);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const b=await response.json();assert.equal(b.familyDates[0].title,actor+' school fixture');assert.equal(b.nextSchoolDate.title,actor+' next school');assert.equal(b.text.includes('school fixture')||b.text.includes('next school'),false);}
  const stop='/api/calendar-brief?view=work-stop';
  assert.equal((await read(stop)).status,401);assert.equal((await read(stop+'&owner_id=elsewhere','derek')).status,400);
  for(const actor of Object.keys(people)){const response=await read(stop,actor);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const b=await response.json();assert.equal(b.panelOnly,true);assert.deepEqual(b.events.map(e=>e.title),[actor+' timed fixture']);assert.deepEqual(Object.keys(b.events[0]).sort(),['end','start','title']);assert.ok(!('familyDates' in b)&&!('days' in b)&&!('text' in b));}

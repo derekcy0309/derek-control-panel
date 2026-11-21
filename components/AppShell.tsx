@@ -18,6 +18,8 @@ import { AssignmentAlerts } from "@/components/AssignmentAlerts";
 import { EncouragementFooter } from "@/components/EncouragementFooter";
 import { LiveClock } from "@/components/LiveClock";
 import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
+import { useDaylineDate } from "@/hooks/useDaylineDate";
+import { daylineWeek } from "@/lib/dayline";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
@@ -29,7 +31,7 @@ const navGroups: NavGroupData[] = [
     tone: "daily",
     defaultOpen: true,
     items: [
-      { href: "/", label: "行動中心", icon: Sparkles },
+      { href: "/", label: "今日總覽", icon: Sparkles },
       { href: "/work-guide", label: "開工導航", icon: Compass },
       { href: "/workspace/inbox", label: "收集箱", icon: Inbox }
     ]
@@ -85,7 +87,7 @@ const systemItems: NavItem[] = [
 ];
 
 const mobileNav = [
-  { href: "/", label: "行動中心", icon: Sparkles },
+  { href: "/", label: "今日總覽", icon: Sparkles },
   { href: "/workspace/inbox", label: "收集箱", icon: Inbox },
   { href: "/workspace/waiting", label: "等待中", icon: Clock3 }
 ] as const;
@@ -159,6 +161,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push("/?newTask=1");
   }
 
+  if (pathname === "/") return <HomeFrame name={displayName} userId={currentUserId} system={systemGroup} onSignOut={signOut}
+    gates={<>{mustChangePassword?<PasswordChangeGate onComplete={()=>setMustChangePassword(false)}/>:<AssignmentAlerts userId={currentUserId}/>}</>}>
+    {children}{showEncouragement?<EncouragementFooter pathname={pathname}/>:null}
+  </HomeFrame>;
   return (
     <div className="app-frame min-h-screen bg-mist text-ink" data-section={sectionIdentityForPath(pathname)}>
       {mustChangePassword ? <PasswordChangeGate onComplete={() => setMustChangePassword(false)} /> : null}
@@ -202,7 +208,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <section className="mobile-sheet" role="dialog" aria-modal="true" aria-label="更多功能">
             <div className="sheet-handle" />
             <div className="flex items-center justify-between px-5 pb-3">
-              <div><p className="eyebrow">{displayName} Panel</p><h2 className="text-xl font-bold">更多功能</h2></div>
+              <div><p className="eyebrow">日序 Dayline · {displayName}</p><h2 className="text-xl font-bold">更多功能</h2></div>
               <button className="icon-button" onClick={() => setMoreOpen(false)} aria-label="關閉"><X className="h-5 w-5" /></button>
             </div>
             <div className="max-h-[70vh] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -215,6 +221,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       ) : null}
     </div>
   );
+}
+
+function HomeFrame({name,userId,system,onSignOut,gates,children}:{name:string;userId:string|null;system:NavGroupData;onSignOut:()=>Promise<void>;gates:React.ReactNode;children:React.ReactNode}){
+  const today=useDaylineDate(), [tab,setTab]=useState("focus");
+  useEffect(()=>{
+    const onTab=(e:Event)=>setTab((e as CustomEvent<string>).detail);
+    window.addEventListener("dayline:tab",onTab);return()=>window.removeEventListener("dayline:tab",onTab);
+  },[]);
+  return <div className="dl-viewport"><div className="dl-shell" data-palette={daylineWeek(today)}>
+    {gates}
+    <header className="dl-mast"><div className="dl-mastin">
+      <Link href="/" className="dl-brand" aria-label="日序 Dayline · 今日總覽" onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}><span className="dl-monogram" aria-hidden="true"><b/><b/><b/></span><b>日序</b><em>Dayline</em></Link>
+      <nav className="dl-nav" aria-label="主要導覽"><Link href="/" aria-current={tab==="focus"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:overview"))}>今日總覽</Link><Link href="/#task-action-list" aria-current={tab==="tasks"?"page":undefined} onClick={()=>window.dispatchEvent(new Event("dayline:tasks"))}>我的任務</Link><Link href="/calendar">日曆</Link></nav>
+      <div className="dl-account"><span className="dl-who">{name}</span><span className="dl-avatar" aria-hidden="true">{Array.from(name)[0]?.toUpperCase()}</span></div>
+      <details className="dl-all-nav" onKeyDown={e=>{if(e.key==="Escape"){e.currentTarget.open=false;e.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="更多功能"><Menu aria-hidden="true"/></summary>
+        <div className="dl-sheet-nav" onClick={e=>{const a=(e.target as HTMLElement).closest("a");if(a){e.currentTarget.closest("details")?.removeAttribute("open");if(a.getAttribute("href")==="/")window.dispatchEvent(new Event("dayline:overview"));}}}><h2>更多功能</h2><div className="dl-toolrow"><Link href="/capture">快速收集</Link><Link href="/search">搜尋</Link><Link href="/#task-action-list" onClick={()=>window.dispatchEvent(new Event("dayline:tasks"))}>我的任務</Link></div>
+          {[...navGroups,system].map(group=><NavGroup key={group.label} group={group} pathname="/" mobile/>)}
+          <LiveClock/><button type="button" className="min-h-11 underline" onClick={()=>void onSignOut()}>登出</button>
+        </div></details>
+    </div></header>
+    <main className="dl-page" id="main-content"><OfflineWriteQueueStatus userId={userId}/>{children}</main>
+  </div></div>;
 }
 
 function PasswordChangeGate({ onComplete }: { onComplete: () => void }) {
@@ -245,8 +273,8 @@ function Brand({ displayName, compact = false }: { displayName: string; compact?
     <div className={compact ? "flex min-w-0 items-center gap-3 lg:hidden" : "brand-block"}>
       <div className="brand-mark">D</div>
       <div className="min-w-0">
-        {!compact ? <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-indigo-500">Control Panel</p> : null}
-        <p className={clsx("truncate font-bold tracking-tight", compact ? "text-lg" : "mt-0.5 text-xl")}>{displayName} Panel</p>
+        {!compact ? <p className="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-indigo-500">{displayName}</p> : null}
+        <p className={clsx("truncate font-bold tracking-tight", compact ? "text-lg" : "mt-0.5 text-xl")}>日序 <i>Dayline</i></p>
       </div>
     </div>
   );

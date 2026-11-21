@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, BellOff, CalendarDays, Check, CheckCircle2, Clock3, Compass, ListTodo, Play } from "lucide-react";
+import { ArrowRight, BellOff, CalendarDays, Check, CheckCircle2, Clock3, ListChecks, Plus, Play } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { ActionCenterTabs, type ActionCenterTab } from "@/components/ActionCenterTabs";
 import { FocusMode } from "@/components/FocusMode";
@@ -16,7 +16,10 @@ import { Button } from "@/components/ui/Button";
 import { useTodayData } from "@/hooks/useTodayData";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
-import { hkDateIso } from "@/lib/planning";
+import { useDaylineDate } from "@/hooks/useDaylineDate";
+import { daylineDate, daylineWeek } from "@/lib/dayline";
+import { DaylineNow, DaylineNext } from "@/components/dayline/TodayCards";
+import { WeatherStrip } from "@/components/dayline/WeatherStrip";
 import { isMyTask, simplePriorities, simplePriority, simpleToday, sortByPriority } from "@/lib/simple-mode";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import { starterSteps } from "@/lib/work-guide";
@@ -35,10 +38,16 @@ function SimpleDashboard() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
-  const today = hkDateIso();
+  const today = useDaylineDate();
+  const lastDate=useRef(today);
+  useEffect(()=>{if(lastDate.current!==today){lastDate.current=today;void reload();window.dispatchEvent(new Event("dcp:calendar-changed"));}},[today,reload]);
+  const [captureOpen,setCaptureOpen]=useState(false);
+  useEffect(()=>{window.dispatchEvent(new CustomEvent("dayline:tab",{detail:activeTab}));},[activeTab]);
 
   useEffect(() => {
-    const open = () => setFocusCapture(true);
+    const open = () => {setCaptureOpen(true);setFocusCapture(true);};
+    const overview=()=>setActiveTab("focus"), tasks=()=>setActiveTab("tasks");
+    window.addEventListener("dayline:overview",overview);window.addEventListener("dayline:tasks",tasks);
     const syncHash = () => { if (window.location.hash === "#task-action-list") setActiveTab("tasks"); if(window.location.hash==="#today-order") setActiveTab("today"); };
     window.addEventListener("dcp:open-task-form", open);
     window.addEventListener("hashchange", syncHash);
@@ -48,7 +57,7 @@ function SimpleDashboard() {
       open(); url.searchParams.delete("newTask"); url.searchParams.delete("quickTask");
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     }
-    return () => { window.removeEventListener("dcp:open-task-form", open); window.removeEventListener("hashchange", syncHash); };
+    return () => { window.removeEventListener("dayline:overview",overview);window.removeEventListener("dayline:tasks",tasks);window.removeEventListener("dcp:open-task-form", open); window.removeEventListener("hashchange", syncHash); };
   }, []);
   useEffect(()=>{if(focusCapture && data){document.getElementById("dashboard-task-name")?.focus();setFocusCapture(false);}},[focusCapture,data]);
 
@@ -68,7 +77,7 @@ function SimpleDashboard() {
   const plan = simpleToday({ tasks: current.tasks, planning: current.planning,
     dependencies: current.taskDependencies, assignments: current.assignments, userId: current.currentUser.id, today });
   const activeTag = current.taskTags?.some((tag) => tag.id === selectedTag) ? selectedTag : "";
-  const top = activeTag ? plan.ordered.filter((task) => task.personal_tag_ids?.includes(activeTag)).slice(0, 3) : plan.top;
+  const matches = (activeTag ? plan.ordered.filter((task) => task.personal_tag_ids?.includes(activeTag)) : plan.top).slice(0,3);
   const plannedIds = new Set(plan.planned.map((t) => t.id));
   const completed = plan.planned.filter((t) => t.status === "done").length;
   const progress = plan.planned.length ? Math.round(completed / plan.planned.length * 100) : 0;
@@ -112,38 +121,41 @@ function SimpleDashboard() {
     finally { setBusy(false); }
   }
 
-  return <div className="simple-dashboard space-y-5">
-    <header className="simple-dashboard-banner rounded-3xl px-5 py-5 sm:px-7">
-      <p className="text-sm font-semibold">{current.currentUser.displayName} · {formatDate(today)}</p>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-extrabold sm:text-4xl">今日做乜？</h1><Link href="/work-guide" className="guide-entry"><Compass className="h-5 w-5" aria-hidden="true"/>帶我開工 →</Link></div>
-      <p className="mt-2 text-sm">{plan.ordered[0] ? `而家先做：${plan.ordered[0].title}` : "未有要即刻開始嘅 Task。"}</p>
-    </header>
-    <section className="panel p-4" aria-label="一行加 Task"><TaskForm key={current.currentUser.id} inline userId={current.currentUser.id} knownTags={current.taskTags} participants={current.participants} onSaved={saved}/></section>
+  const weekNames={almond:"暖杏",mist:"霧藍",mint:"薄荷",mauve:"淡紫"};
+  const nav=<ActionCenterTabs active={activeTab} todayCount={plan.planned.length} taskCount={active.length} onChange={setActiveTab}/>;
+  return <>
+    <header className="dl-intro"><div><div className="dl-calendarline"><span className="dl-miniline"/><time dateTime={today}>{daylineDate(today,true)}</time></div><h1>今日總覽<span className="dl-title-dot" aria-hidden="true">.</span></h1></div>
+      <button type="button" className="dl-add" aria-expanded={captureOpen} aria-controls="dayline-add" onClick={()=>{setCaptureOpen(!captureOpen);setFocusCapture(!captureOpen);}}><Plus aria-hidden="true"/>加 Task</button></header>
+    <div id="dayline-add" hidden={!captureOpen} className="dl-capture">{captureOpen?<TaskForm key={current.currentUser.id} inline userId={current.currentUser.id} knownTags={current.taskTags} participants={current.participants} onSaved={saved}/>:null}</div>
+    {error ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">同步未成功，保留上次畫面。{error}<button className="ml-2 min-h-11 underline" onClick={() => void reload()}>重試</button></p> : null}
+    {message ? <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p> : null}
+    {actionError ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{actionError}</p> : null}
+    {activeTab==="focus"?<div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus">
+      <WeatherStrip/>
+      <div className="dl-board"><DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} tags={current.taskTags??[]} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
+        <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
+        <DaylineNext tasks={plan.top.slice(1)} tags={current.taskTags??[]} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/></div>
+      {pending.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">新交接（{pending.length}）</summary><p className="mt-2 text-sm text-slate-500">接受後先加入你的工作建議。</p>{pending.slice(0, 3).map((a) => <Link key={a.id} className="mt-2 flex min-h-12 items-center justify-between gap-2 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" href={`/tasks/${a.resource_id}`}><span>{current.taskCatalog.find((t) => t.id === a.resource_id)?.title || "新工作交接"}</span><span className="shrink-0">查看／接受 →</span></Link>)}<Link href="/sharing" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-indigo-700">查看全部交接 →</Link></details> : null}
+      {decisions.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">等我決定（{decisions.length}）</summary>{decisions.slice(0, 3).map((task) => <Link key={task.id} className="mt-2 flex min-h-12 items-center justify-between rounded-xl bg-slate-50 p-3 text-sm font-semibold" href={`/tasks/${task.id}`}>{task.title}<ArrowRight className="h-4 w-4" /></Link>)}</details> : null}
+    </div>:null}
+    <div className="dl-tabtools">{nav}</div>
+    {activeTab==="focus"?<details className="dl-support"><summary><ListChecks aria-hidden="true"/>任務工具、提醒同篩選</summary><div className="dl-support-body">
     <section className="grid grid-cols-3 gap-2 sm:gap-4" aria-label="我的工作概覽">
       <button type="button" className="simple-stat-card text-left" onClick={() => setActiveTab("today")}><span className="simple-stat-label"><CheckCircle2 className="h-4 w-4" />今日 Today</span><span className="simple-stat-number">{completed}<small>／{plan.planned.length}</small></span><span className="simple-progress-track"><span style={{ width: `${progress}%` }} /></span><span className="simple-stat-foot">已做完</span></button>
       <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "waiting"} onClick={() => { setActiveTab("focus"); setSummary(summary === "waiting" ? null : "waiting"); }}><span className="simple-stat-label"><Clock3 className="h-4 w-4" />等回覆</span><span className="simple-stat-number">{waiting.length}</span><span className="simple-stat-foot break-words">{waiting[0] ? [waiting[0].waiting_for && `等 ${waiting[0].waiting_for}`,waiting[0].title].filter(Boolean).join(" · ") : "暫時冇等緊嘅工作"}</span></button>
       <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "week"} onClick={() => { setActiveTab("focus"); setSummary(summary === "week" ? null : "week"); }}><span className="simple-stat-label"><CalendarDays className="h-4 w-4" />Task 限期 · 7 日</span><span className="simple-stat-number">{upcoming.length}</span><span className="simple-stat-foot break-words">{upcoming[0] ? `${formatDate(upcoming[0].due_date)} · ${upcoming[0].title}` : "暫時冇即將到期嘅 Task"}</span></button>
     </section>
-    {error ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">同步未成功，保留上次畫面。{error}<button className="ml-2 min-h-11 underline" onClick={() => void reload()}>重試</button></p> : null}
-    {message ? <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">{message}</p> : null}
-    {actionError ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{actionError}</p> : null}
-    <ActionCenterTabs active={activeTab} todayCount={plan.planned.length} taskCount={active.length} onChange={setActiveTab} />
-    {activeTab === "focus" ? <section id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus" className="space-y-4">
-      <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
       <div className="flex flex-wrap items-center gap-2"><div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1" aria-label="Dashboard Tags"><button type="button" aria-pressed={!activeTag} className={`simple-tag-filter shrink-0 ${!activeTag ? "is-active" : ""}`} onClick={() => setSelectedTag("")}>全部</button>{(current.taskTags ?? []).map((tag) => <button key={tag.id} type="button" aria-pressed={activeTag === tag.id} className={`simple-tag-filter shrink-0 ${activeTag === tag.id ? "is-active" : ""}`} onClick={() => setSelectedTag(tag.id)}>{tag.name}</button>)}</div><button type="button" className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold ${quiet ? "bg-indigo-100 text-indigo-900" : "bg-slate-100 text-slate-600"}`} disabled={busy} aria-pressed={quiet} onClick={() => void toggleQuiet()}><BellOff className="h-4 w-4" />{quiet ? "安靜中" : "安靜模式"}</button></div>
       {summary ? <section className="panel space-y-3 p-4" aria-label={summary === "waiting" ? "等回覆 Waiting" : "未來 7 日 Deadline"}><h2 className="font-extrabold">{summary === "waiting" ? "等回覆 Waiting" : "未來 7 日 Deadline"}</h2>{(summary === "waiting" ? waiting : upcoming).slice(0, 5).map((task) => <Link key={task.id} href={`/tasks/${task.id}`} className="flex min-h-12 items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold"><span className="min-w-0 break-words">{task.title}{summary === "waiting" && task.waiting_for ? <span className="mt-1 block text-xs font-normal text-slate-500">等 {task.waiting_for} · {task.waiting_on || "回覆"}</span> : null}</span><span className="shrink-0 text-xs text-slate-500">{formatDate(summary === "waiting" ? task.follow_up_date : task.due_date)}</span></Link>)}{!(summary === "waiting" ? waiting : upcoming).length ? <p className="text-sm text-slate-500">暫時冇相關工作。</p> : null}<button type="button" className="min-h-11 text-sm font-bold text-indigo-700" onClick={() => { setActiveTab("tasks"); setSummary(null); }}>打開完整清單 →</button></section> : null}
-      <div className="flex items-end justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">最多三件 · One at a time</p><h2 className="mt-1 text-xl font-extrabold">{plan.isSuggestion ? "按 Priority 建議" : "今日重點"}</h2></div><button type="button" className="min-h-11 text-sm font-bold text-indigo-700" onClick={() => setActiveTab("today")}>自己排今日 →</button></div>
-      {!top.length ? <section className="panel p-7 text-center"><ListTodo className="mx-auto h-8 w-8 text-indigo-300" /><p className="mt-3 font-bold">{activeTag ? "呢個 Tag 暫時冇今日重點。" : completed && completed === plan.planned.length ? "今日已排的工作做晒。" : "暫時冇可開始的工作。"}</p><p className="mt-1 text-sm text-slate-500">需要時可以加 Task，或者去「今日全部」查看安排。</p></section> : null}
-      {top[0] ? <SimpleTaskCard task={top[0]} index={0} inToday={plannedIds.has(top[0].id)} busy={busy} onStart={()=>void start(top[0])} onComplete={()=>void complete(top[0])}/> : null}
-      {top.length>1?<details className="panel p-3"><summary className="min-h-11 cursor-pointer py-2 font-semibold">之後做（{top.length-1}）</summary>{top.slice(1).map((task,index)=><SimpleTaskCard key={task.id} task={task} index={index+1} inToday={plannedIds.has(task.id)} busy={busy} onStart={()=>void start(task)} onComplete={()=>void complete(task)}/>)}</details>:null}
-      {pending.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">新交接（{pending.length}）</summary><p className="mt-2 text-sm text-slate-500">接受後先加入你的工作建議。</p>{pending.slice(0, 3).map((a) => <Link key={a.id} className="mt-2 flex min-h-12 items-center justify-between gap-2 rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" href={`/tasks/${a.resource_id}`}><span>{current.taskCatalog.find((t) => t.id === a.resource_id)?.title || "新工作交接"}</span><span className="shrink-0">查看／接受 →</span></Link>)}<Link href="/sharing" className="mt-2 inline-flex min-h-11 items-center text-sm font-bold text-indigo-700">查看全部交接 →</Link></details> : null}
-      {decisions.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">等我決定（{decisions.length}）</summary>{decisions.slice(0, 3).map((task) => <Link key={task.id} className="mt-2 flex min-h-12 items-center justify-between rounded-xl bg-slate-50 p-3 text-sm font-semibold" href={`/tasks/${task.id}`}>{task.title}<ArrowRight className="h-4 w-4" /></Link>)}</details> : null}
+      {matches.map((task,i)=><SimpleTaskCard key={task.id} task={task} index={i} inToday={plannedIds.has(task.id)} busy={busy} onStart={()=>void start(task)} onComplete={()=>void complete(task)}/>)}
+      {activeTag&&!matches.length?<p className="dl-tools-muted">呢個 Tag 暫時冇可開始嘅工作。</p>:null}
       <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-600">提醒及活動</summary><ReminderPanel reminders={current.reminders} participants={current.participants} currentUserId={current.currentUser.id} onChanged={reload} /></details>
-    </section> : null}
+    </div></details>:null}
     {activeTab === "today" ? <TodayAllTasks tasks={current.tasks} availableTasks={sortByPriority(current.taskQueueCatalog)} planning={current.planning} today={today} onChanged={reload} onStart={(task) => void start(task)} onComplete={complete} onBrowseTasks={() => setActiveTab("tasks")} /> : null}
     {activeTab === "tasks" ? <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks"><TaskActionList data={current} onChanged={reload} onTaskSaved={saved} /></div> : null}
     {focusTask ? <FocusMode task={focusTask} defaultMinutes={current.settings.focus_minutes ?? 25} currentUserId={current.currentUser.id} participants={current.participants} sharedTask={Boolean(focusTask.visibility && focusTask.visibility !== "private")} onClose={() => setFocusTask(null)} onChanged={() => void reload()} /> : null}
-  </div>;
+    <footer className="dl-footer"><span>日序 Dayline · 香港時間</span><span><i aria-hidden="true"/>今週配色：{weekNames[daylineWeek(today)]}</span></footer>
+  </>;
 }
 
 function SimpleTaskCard({ task, index, inToday, busy, onStart, onComplete }: { task: Task; index: number; inToday: boolean; busy: boolean; onStart: () => void; onComplete: () => void }) {

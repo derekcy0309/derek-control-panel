@@ -1,0 +1,57 @@
+import Link from "next/link";
+import { Bookmark, CalendarDays, RefreshCw } from "lucide-react";
+import { addBriefDays, briefDate, briefEventTime, briefTime, type BriefEvent, type DashboardBrief } from "@/lib/calendar-brief";
+import { daylineDate, visibleAgendaDays } from "@/lib/dayline";
+import { calendarErrorMessage } from "@/lib/calendar-errors";
+import { WorkStopHint } from "@/components/WorkStopHint";
+import type { StopSnapshot } from "@/lib/work-stop";
+
+type Row={id:string; title:string; stamp:string; group:string; info:string; href?:string; due?:boolean; family?:boolean};
+function eventRow(e:BriefEvent,date:string,now:number):Row {
+  const multi=e.allDay?addBriefDays(e.end.slice(0,10),-1)!==e.start.slice(0,10):briefDate(new Date(e.start))!==briefDate(new Date(e.end));
+  const time=briefEventTime(e).replace(/\d{4}-\d{2}-\d{2}/g,x=>daylineDate(x,e.start.slice(0,4)!==e.end.slice(0,4)));
+  const ongoing=!e.allDay&&Date.parse(e.start)<now&&Date.parse(e.end)>now;
+  return {id:e.source+":"+e.id+":"+e.start,title:e.title,stamp:e.allDay?"全日":ongoing?"進行中":briefTime(e.start),group:e.family?"家庭":e.source==="Apple"?"iPhone":"日曆",family:e.family,
+    info:(e.tentative?"待確認":"行程")+(multi||ongoing?" · "+time:!e.allDay&&e.start!==e.end?" · 至 "+briefTime(e.end):"")+(e.source==="Apple"?" · 唯讀":""),
+    href:e.source==="Panel"?"/calendar?date="+date:undefined};
+}
+function Line({row}:{row:Row}){
+  const body=<><span className="dl-stamp">{row.stamp}</span><span className="dl-event-copy"><strong>{row.title}</strong><span className="dl-chips"><b className={"dl-badge "+(row.family?"dl-family":"dl-school")}>{row.group}</b><span>{row.info}</span></span></span><span className="dl-node" aria-hidden="true"/></>;
+  return <div className={"dl-event"+(row.due?" dl-deadline":"")}>{row.href?<Link href={row.href}>{body}</Link>:<div>{body}</div>}</div>;
+}
+function Day({day,brief}:{day:DashboardBrief["days"][number];brief:DashboardBrief}){
+  const date=day.date;
+  const now=Date.parse(brief.generatedAt),today=briefDate(new Date(now));
+  const earlier=(e:BriefEvent)=>!e.allDay&&date===today&&Date.parse(e.end)<now;
+  const events=day.events.filter(e=>!earlier(e)).sort((a,b)=>Number(a.allDay)-Number(b.allDay)||a.start.localeCompare(b.start));
+  const rows:Row[]=[...events.map(e=>eventRow(e,date,now)),...(brief.familyDates??[]).filter(f=>f.date===date).map(f=>({id:"family:"+f.id,title:f.title,stamp:"限期",group:f.kind==="school"?"學校":"家庭",family:f.kind==="family",info:"日期／限期",due:true,href:"/workspace/"+f.kind+"#item-"+f.id})),...day.deadlines.map(t=>({id:"task:"+t.id,title:t.title,stamp:"限期",group:"Task",info:"當日截止",due:true,href:"/tasks/"+t.id}))];
+  const past=day.events.filter(earlier).map(e=>eventRow(e,date,now));
+  if(!rows.length&&!past.length)return null;
+  // Keep the next timed event AND nearest deadline in view without opening the rest.
+  const primary=rows.slice(0,3),due=rows.find(x=>x.due);
+  if(due&&!primary.some(x=>x.due)&&primary.length===3)primary[2]=due;
+  const rest=rows.filter(x=>!primary.includes(x));
+  return <section aria-label={daylineDate(date)}><div className="dl-dayline"><span>{date===today?"今日":date===addBriefDays(today,1)?"聽日":date===addBriefDays(today,2)?"後日":"日期"}</span><time dateTime={date}>{daylineDate(date)}</time></div>
+    <div className="dl-rail">{primary.map(x=><Line key={x.id} row={x}/>)}</div>
+    {rest.length||past.length?<details className="dl-more-rows"><summary>{rest.length?"其餘安排（"+rest.length+"）":""}{rest.length&&past.length?" · ":""}{past.length?"已過時間（"+past.length+"）":""}</summary><div className="dl-rail">{[...rest,...past].map(x=><Line key={x.id} row={x}/>)}</div></details>:null}
+  </section>;
+}
+export function DaylineAgenda({brief,error,busy,reload,stop,userId}:{brief:DashboardBrief|null;error:string;busy:boolean;reload:()=>void;stop:StopSnapshot|null;userId:string}){
+  const any=brief&&brief.days.some(d=>d.events.length||d.deadlines.length||(brief.familyDates??[]).some(f=>f.date===d.date));
+  const school=brief?.nextSchoolDate;
+  return <section className="dl-agenda" aria-labelledby="private-brief-title">
+    <div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true"><b/>AGENDA</span><h2 id="private-brief-title">行程同限期</h2></div><button type="button" onClick={reload} disabled={busy} className="dl-agenda-refresh" aria-label="更新行程同限期"><RefreshCw aria-hidden="true"/>{busy?"讀取中":"更新"}</button></div>
+    {busy&&!brief?<p role="status" className="dl-agenda-state">讀緊你嘅三日安排…</p>:null}
+    {error?<p role="alert" className="dl-agenda-state">{error} {brief?"以下保留上次結果。":""}</p>:null}
+    {brief?<>{brief.sources.filter(s=>s.state==="stale").map(s=><p key={s.label} role="alert" className="dl-agenda-state">{s.label} 未能更新。{calendarErrorMessage(s.errorCode)}{s.lastSync?" 上次更新："+daylineDate(briefDate(new Date(s.lastSync)),true)+" "+briefTime(s.lastSync):""}</p>)}
+      {brief.familyWarning?<p role="alert" className="dl-agenda-state">{brief.familyWarning}</p>:null}
+      {brief.truncated?<p role="status" className="dl-agenda-state">未能列出全部安排；完整清單可到日曆或任務查看。</p>:null}
+      {any?visibleAgendaDays(brief.days).map(day=><Day key={day.date} day={day} brief={brief}/>):<p className="dl-agenda-state">已讀取嘅資料內，三日暫無行程或限期。</p>}
+      {school?<div className="dl-later"><Bookmark aria-hidden="true"/><div><span>三日以外 · 下一個學校限期</span><Link href={"/workspace/school#item-"+school.id}><time dateTime={school.date}>{daylineDate(school.date)}</time>　{school.title}</Link></div></div>:null}
+      {brief.nextSchoolWarning?<p className="dl-agenda-state">三日以外嘅學校限期暫未能讀取。 <Link href="/workspace/school" className="underline">去子女及學校</Link></p>:null}
+      {brief.warnings?.map(w=><p className="dl-agenda-state" key={w} role="status">{w}</p>)}
+      {stop?<details className="dl-context"><summary>幾點要收手／預留出門時間</summary><WorkStopHint key={userId} userId={userId} snapshot={error?{...stop,incomplete:true}:stop}/></details>:null}
+      <details className="dl-context"><summary><CalendarDays aria-hidden="true"/>　日曆來源同設定</summary>{brief.sources.map(s=><p key={s.label} className="dl-agenda-state">{s.label}：{s.state==="fresh"?"已更新":s.state==="not_connected"?"未連接":s.state==="select_calendars"?"未揀 Calendar":"未能更新"}{s.lastSync?" · "+daylineDate(briefDate(new Date(s.lastSync)))+" "+briefTime(s.lastSync):""}</p>)}<p className="dl-agenda-state">已揀嘅 iCloud 行程只需入一次，要改請返 iPhone。 <Link className="underline" href="/settings#private-calendar">私人 Calendar 設定</Link></p></details>
+    </>:null}
+  </section>;
+}

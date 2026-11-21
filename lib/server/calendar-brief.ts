@@ -47,12 +47,14 @@ export async function refreshApple(owner:string,force=false,service=calendarServ
  }
 }
 // Both views use exactly the same owner scope; the guide has no reason to query deadlines or family records.
-function panelCalendarRows(client:SupabaseClient,owner:string,w:ReturnType<typeof briefWindow>,confirmedOnly=false){
- return client.from("operating_items").select("id,title,schedule_start_at,schedule_end_at,schedule_status").eq("owner_id",owner).eq("item_type","event").is("archived_at",null)
+function panelCalendarRows(client:SupabaseClient,owner:string,w:ReturnType<typeof briefWindow>,confirmedOnly=false,humanDashboard=false){
+ const table=client.from("operating_items");
+ const query=humanDashboard?table.select("id,title,schedule_start_at,schedule_end_at,schedule_status,area,calendar_target"):table.select("id,title,schedule_start_at,schedule_end_at,schedule_status");
+ return query.eq("owner_id",owner).eq("item_type","event").is("archived_at",null)
   .in("schedule_status",confirmedOnly?["confirmed"]:["confirmed","tentative"]).lt("schedule_start_at",w.end).gt("schedule_end_at",w.start).order("schedule_start_at").limit(201);
 }
-function panelEvents(rows:{id:string;title:string;schedule_start_at:string;schedule_end_at:string;schedule_status:string}[]):BriefEvent[]{
- return rows.slice(0,200).map(e=>({id:e.id,uid:"panel:"+e.id,title:e.title,start:e.schedule_start_at,end:e.schedule_end_at,allDay:false,source:"Panel",tentative:e.schedule_status==="tentative"}));
+function panelEvents(rows:{id:string;title:string;schedule_start_at:string;schedule_end_at:string;schedule_status:string;area?:string;calendar_target?:string}[],humanDashboard=false):BriefEvent[]{
+ return rows.slice(0,200).map(e=>({id:e.id,uid:"panel:"+e.id,title:e.title,start:e.schedule_start_at,end:e.schedule_end_at,allDay:false,source:"Panel",tentative:e.schedule_status==="tentative",...(humanDashboard&&(e.area==="family"||e.calendar_target==="family")?{family:true}:{})}));
 }
 export async function readWorkStop(owner:string,client:SupabaseClient,service=calendarService(),now=new Date()){
  const [panel,apple]=await Promise.all([panelCalendarRows(client,owner,briefWindow(now),true),refreshApple(owner,false,service,now)]);
@@ -60,15 +62,15 @@ export async function readWorkStop(owner:string,client:SupabaseClient,service=ca
  return makeStopSnapshot([...panelEvents(panel.data??[]),...apple.events],[apple.source],apple.truncated||(panel.data?.length??0)>200,now.toISOString());
 }
 // owner MUST originate from verified auth or agent_brief_owner; never HTTP input.
-export async function readCalendarBrief(owner:string,client:SupabaseClient,service=calendarService(),now=new Date()) {
+export async function readCalendarBrief(owner:string,client:SupabaseClient,service=calendarService(),now=new Date(),humanDashboard=false) {
  const w=briefWindow(now);
  const [tasks,panel,apple]=await Promise.all([
   client.from("tasks").select("id,title,due_date,requested_priority,status").eq("owner_id",owner).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").gte("due_date",w.from).lt("due_date",w.until).order("due_date").order("requested_priority").limit(201),
-  panelCalendarRows(client,owner,w),
+  panelCalendarRows(client,owner,w,false,humanDashboard),
   refreshApple(owner,false,service,now)
  ]);
  if(tasks.error||panel.error)throw new Error("CALENDAR_DATABASE");
  const deadlines:BriefDeadline[]=(tasks.data??[]).slice(0,200).map(t=>({id:t.id,title:t.title,due:t.due_date,priority:t.requested_priority??3,status:t.status}));
- const events=panelEvents(panel.data??[]);
+ const events=panelEvents(panel.data??[],humanDashboard);
  return makeCalendarBrief([...events,...apple.events],deadlines,[{label:"Panel",state:"fresh",lastSync:now.toISOString()},apple.source],now,apple.truncated||(tasks.data?.length??0)>200||(panel.data?.length??0)>200);
 }

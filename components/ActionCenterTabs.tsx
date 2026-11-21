@@ -22,8 +22,8 @@ export function ActionCenterTabs({
   onChange: (tab: ActionCenterTab) => void;
 }) {
   return (
-    <nav className="panel p-2" aria-label="行動中心分頁">
-      <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="行動中心內容">
+    <nav className="panel p-2" aria-label="今日總覽分頁">
+      <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="今日總覽內容">
         {tabs.map((tab) => {
           const selected = active === tab.id;
           const Icon = tab.icon;

@@ -166,7 +166,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     <div className="relative grid min-h-screen place-items-center overflow-hidden bg-mist px-4 py-8">
       <div className="pointer-events-none absolute left-1/2 top-[-12rem] h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-indigo-200/35 blur-3xl" />
       <div className="panel relative w-full max-w-md p-6 [--section-accent:var(--accent)] [--section-soft:var(--accent-soft)] sm:p-8">
-        <div className="mb-6 flex items-center gap-3"><div className="brand-mark h-11 w-11"><KeyRound className="h-5 w-5" /></div><div><p className="eyebrow">Derek Control Panel</p><h1 className="text-2xl font-bold tracking-tight">登入你的 Panel</h1></div></div>
+        <div className="mb-6 flex items-center gap-3"><div className="brand-mark h-11 w-11"><KeyRound className="h-5 w-5" /></div><div><p className="eyebrow">日序 Dayline</p><h1 className="text-2xl font-bold tracking-tight">登入日序</h1></div></div>
         <p className="text-sm leading-6 text-slate-600">使用與原有 Panel 帳戶相同的 Google 電郵，登入後直接進入系統。原有任務、資料及權限保持不變。</p>
         <Button className="mt-5 w-full" type="button" disabled={googleSubmitting || submitting} onClick={() => { void signInWithGoogle(); }}>
           <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor"><path d="M21.8 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.5a4.7 4.7 0 0 1-2 3.1c-.9.6-2 1-3.5 1a6.2 6.2 0 1 1 0-12.4c1.5 0 2.8.5 3.9 1.5l3-2.9A10.2 10.2 0 1 0 12 22.2c3 0 5.5-1 7.3-2.7 1.7-1.8 2.5-4.2 2.5-7.3Z" /></svg>

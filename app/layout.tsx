@@ -1,12 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
+import "./dayline.css";
 
 export const metadata: Metadata = {
-  title: { default: "Derek Control Panel", template: "%s · Derek Control Panel" },
+  title: { default: "日序 Dayline", template: "%s · 日序 Dayline" },
   description: "Derek、Suki 及 Amigo 共用的個人工作管理系統",
-  applicationName: "Derek Control Panel",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Control Panel" },
+  applicationName: "日序 Dayline",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "日序 Dayline" },
   formatDetection: { telephone: false }
 };
 

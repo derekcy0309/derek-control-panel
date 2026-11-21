@@ -2,13 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Derek Control Panel",
-    short_name: "Control Panel",
+    name: "日序 Dayline",
+    short_name: "日序 Dayline",
     description: "Derek、Suki 及 Amigo 共用的個人工作管理系統",
     start_url: "/",
     display: "standalone",
-    background_color: "#f7f7f5",
-    theme_color: "#4f46e5",
+    background_color: "#f2f6f7",
+    theme_color: "#195b64",
     lang: "zh-Hant-HK",
     orientation: "any",
     categories: ["productivity", "lifestyle"],

@@ -31,13 +31,13 @@ try{
    else{assert.equal(req.method(),'GET','No Task mutations are allowed');body=snapshot;}
    await route.fulfill({status,json:body});
   });
-  await page.goto(base,{waitUntil:'domcontentloaded'});const panel=page.getByRole('region',{name:'三日行程同 Deadline',exact:true});await panel.getByText('Deadline result 0',{exact:true}).waitFor();assert.equal(refreshes,0);
-  const initialReads=reads;phase=1;await panel.getByRole('button',{name:'更新',exact:true}).click();await panel.getByRole('button',{name:'更新中…',exact:true}).waitFor();assert.equal(await panel.getByRole('button',{name:'更新中…',exact:true}).isDisabled(),true);
+  await page.goto(base,{waitUntil:'domcontentloaded'});const panel=page.getByRole('region',{name:'行程同限期',exact:true});await panel.getByText('Deadline result 0',{exact:true}).waitFor();assert.equal(refreshes,0);
+  const initialReads=reads;phase=1;await panel.getByRole('button',{name:'更新行程同限期',exact:true}).click();await panel.getByRole('button',{name:'更新行程同限期',exact:true}).waitFor();assert.equal(await panel.getByRole('button',{name:'更新行程同限期',exact:true}).isDisabled(),true);
   assert.equal(refreshes,1);release();await panel.getByText('Deadline result 1',{exact:true}).waitFor();assert.equal(reads,initialReads+1);
-  phase=2;await panel.getByRole('button',{name:'更新',exact:true}).click();await panel.getByText('Deadline result 2',{exact:true}).waitFor();await panel.getByRole('alert').filter({hasText:'App 專用密碼重新連接'}).waitFor();assert.match(await panel.innerText(),/2026/);
-  phase=3;await panel.getByRole('button',{name:'更新',exact:true}).click();await panel.getByText('Deadline result 3',{exact:true}).waitFor();await panel.getByRole('alert').filter({hasText:'等 30 秒'}).waitFor();
-  phase=4;await panel.getByRole('button',{name:'更新',exact:true}).click();await panel.getByRole('alert').filter({hasText:'未能讀取伺服器回應'}).waitFor();assert.equal(await panel.getByText('Deadline result 3',{exact:true}).count(),1);assert.equal(await panel.getByRole('button',{name:'更新',exact:true}).isEnabled(),true);
-  phase=5;await panel.getByRole('button',{name:'更新',exact:true}).click();await panel.getByText('Deadline result 5',{exact:true}).waitFor();await panel.getByRole('alert').filter({hasText:'獨立重讀 Panel'}).waitFor();
+  phase=2;await panel.getByRole('button',{name:'更新行程同限期',exact:true}).click();await panel.getByText('Deadline result 2',{exact:true}).waitFor();await panel.getByRole('alert').filter({hasText:'App 專用密碼重新連接'}).waitFor();assert.match(await panel.innerText(),/2026/);
+  phase=3;await panel.getByRole('button',{name:'更新行程同限期',exact:true}).click();await panel.getByText('Deadline result 3',{exact:true}).waitFor();await panel.getByRole('alert').filter({hasText:'等 30 秒'}).waitFor();
+  phase=4;await panel.getByRole('button',{name:'更新行程同限期',exact:true}).click();await panel.getByRole('alert').filter({hasText:'未能讀取伺服器回應'}).waitFor();assert.equal(await panel.getByText('Deadline result 3',{exact:true}).count(),1);assert.equal(await panel.getByRole('button',{name:'更新行程同限期',exact:true}).isEnabled(),true);
+  phase=5;await panel.getByRole('button',{name:'更新行程同限期',exact:true}).click();await panel.getByText('Deadline result 5',{exact:true}).waitFor();await panel.getByRole('alert').filter({hasText:'獨立重讀 Panel'}).waitFor();
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   console.log(`PASS private brief ${width}px: real refresh POST, loading/duplicate guard, independent deadlines, safe source error/date, cooldown, retry and preserved prior results`);await context.close();
  }
