@@ -219,3 +219,11 @@ async function ensureFreshSession() {
   }
   await refreshInFlight;
 }
+
+export type CoachMessage = { role: "user" | "assistant"; content: string };
+
+export function askTaskCoach(input: { title: string; step: string; progress: string; messages: CoachMessage[] }) {
+  return controlRequest<{reply:string}>("/api/ai/task-coach", {
+    method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(input)
+  });
+}

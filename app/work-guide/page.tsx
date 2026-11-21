@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TaskCoach } from "@/components/TaskCoach";
 import { Compass } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { GuideWorkStop } from "@/components/WorkStopHint";
@@ -72,6 +73,7 @@ function OneTask({task,userId,reason,onCloseTask,refreshPlan}:{task:Task;userId:
     <p className="text-sm font-bold">{reason}</p><h2 className="text-2xl font-extrabold break-words">{task.title}</h2>
     {detail.checkpoint?.completed_summary?<p className="text-sm">上次做到：{detail.checkpoint.completed_summary}</p>:null}
     <div className="rounded-2xl bg-white p-4 text-slate-900"><p className="text-xs font-bold text-indigo-700">{review?"確認前唔會結案":waiting?"等結果":"而家只做呢一步"}</p><p className="mt-2 break-words text-xl font-bold">{mini?guide.smaller:guide.text}</p></div>
+    <TaskCoach title={task.title} step={mini?guide.smaller:guide.text} progress={detail.checkpoint?.completed_summary ?? ""}/>
     {review && detail.openChildren?<p>仲有未完成嘅子任務，先去原任務跟進。</p>:null}
     {!editing && !waiting?<div className="flex flex-wrap gap-2">
       {!review?<><Button disabled={busy} onClick={()=>void run(finishStep)}>{busy?"儲存中…":mini?"起咗步，接住做":"呢步搞掂"}</Button>{!mini?<Button variant="secondary" disabled={busy} onClick={()=>{setMini(true);setMessage("");}}>再細一步</Button>:null}</>:
