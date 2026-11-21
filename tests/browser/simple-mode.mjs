@@ -5,6 +5,27 @@ import { mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
 const base = process.env.VERIFY_URL || 'http://localhost:3142';
+// A button can accept clicks in Playwright even when its white label is invisible.
+// Inspect the actual rendered button in each weekly palette, including dark mode.
+async function assertSaveButtonReadable(button) {
+  const results = await button.evaluate(el => {
+    const shell=el.closest('.dl-shell'),root=document.documentElement;
+    const originalPalette=shell.getAttribute('data-palette'),originalTheme=root.getAttribute('data-theme'),transition=el.style.transition;
+    const ctx=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+    const colour=value=>{ctx.clearRect(0,0,1,1);ctx.fillStyle=value;ctx.fillRect(0,0,1,1);return [...ctx.getImageData(0,0,1,1).data];};
+    const lum=rgb=>rgb.slice(0,3).map(v=>{const n=v/255;return n<=0.04045?n/12.92:((n+0.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[0.2126,0.7152,0.0722][i],0);
+    const restore=(node,key,value)=>value===null?node.removeAttribute(key):node.setAttribute(key,value);
+    try {
+      el.style.transition='none';const samples=[];
+      for(const theme of ['light','dark']) for(const palette of ['mist','mint','mauve','almond']) {
+        root.setAttribute('data-theme',theme);shell.setAttribute('data-palette',palette);
+        const css=getComputedStyle(el),fg=colour(css.color),bg=colour(css.backgroundColor),a=lum(fg),b=lum(bg),box=el.getBoundingClientRect();
+        samples.push({theme,palette,alpha:[fg[3],bg[3]],contrast:(Math.max(a,b)+.05)/(Math.min(a,b)+.05),target:box.width>=44&&box.height>=44&&box.left>=0&&box.right<=innerWidth});
+      }return samples;
+    }finally{restore(root,'data-theme',originalTheme);restore(shell,'data-palette',originalPalette);getComputedStyle(el).getPropertyValue('background-color');el.style.transition=transition;}
+  });
+  for(const item of results){assert.deepEqual(item.alpha,[255,255],item.theme+' '+item.palette+' needs a solid surface');assert.ok(item.contrast>=4.5,JSON.stringify(item));assert.ok(item.target,'save button should be on-screen and at least 44px');}
+}
 let logs='';
 const server = process.env.VERIFY_URL ? null : spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','-p','3142'],{env:{...process.env,NEXT_PUBLIC_SUPABASE_URL:'https://example.supabase.co',NEXT_PUBLIC_SUPABASE_ANON_KEY:'local-mock',NEXT_TELEMETRY_DISABLED:'1'},stdio:['ignore','pipe','pipe']});
 server?.stdout.on('data',chunk=>{logs+=chunk;}); server?.stderr.on('data',chunk=>{logs+=chunk;});
@@ -124,9 +145,21 @@ try {
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     const dialog=page.getByRole('form',{name:'新增 Task',exact:true});
     assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),1);
-    await dialog.getByRole('button',{name:'＋ 加 Task'}).waitFor();
-    await dialog.getByLabel('任務名稱',{exact:true}).fill('簡易模式新增驗證');await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');
+    const saveButton=dialog.getByRole('button',{name:'儲存任務',exact:true}),newTitle='簡易模式新增驗證';
+    await dialog.getByLabel('任務名稱',{exact:true}).fill(newTitle);
+    await dialog.locator('button[type="submit"]:enabled').waitFor();
+    await assertSaveButtonReadable(saveButton);
+    if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await saveButton.scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SCREENSHOT_DIR+'/save-'+role+'-'+width+'.png',animations:'disabled',style:'nextjs-portal{display:none!important}'});}
+    await saveButton.click();
     await page.getByRole('status').filter({hasText:'Task 已儲存'}).waitFor();assert.equal(creates.length,1);assert.deepEqual(creates[0].tagIds,[tags[0].id]);assert.equal(creates[0].dueDate,null);assert.equal(creates[0].requestedPriority,3);
+    const readsAfterSave=todayReads;
+    await page.getByRole('tab',{name:/任務總表/}).click();
+    await page.getByRole('searchbox',{name:'搜尋 Task'}).fill(newTitle);
+    const queue=page.locator('#task-action-list');
+    await queue.getByRole('button',{name:/^P2 一般 Normal/}).click();
+    const newTask=queue.getByRole('link',{name:newTitle,exact:true});await newTask.waitFor();
+    assert.equal(await newTask.count(),1);assert.equal(todayReads,readsAfterSave,'saved Task must appear in the list without another Today read');assert.equal(navigations,0);
+    await page.getByRole('tab',{name:/今日重點/}).click();
     await dialog.getByRole('button',{name:/更改設定/}).click();assert.equal(await dialog.getByRole('button',{name:'個人',exact:true}).getAttribute('aria-pressed'),'true');
     await dialog.getByText('P3 低 Low',{exact:true}).click();
     await dialog.getByText('日期／邊個跟',{exact:false}).click();
@@ -146,10 +179,10 @@ try {
     await dialog.getByText('自訂哪幾日做／提醒',{exact:false}).click();
     await dialog.getByLabel('加入要做的日子').fill(today);await dialog.getByRole('button',{name:'加入',exact:true}).click();
     await dialog.getByRole('button',{name:`移除 ${today}`,exact:true}).waitFor();
-    createFailures=1;await dialog.getByRole('button',{name:'＋ 加 Task',exact:true}).click();
+    createFailures=1;await saveButton.click();
     await dialog.getByRole('alert').filter({hasText:'驗證用網絡失敗'}).waitFor();
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
-    await dialog.getByRole('button',{name:'＋ 加 Task',exact:true}).click();await dialog.getByRole('button',{name:/更改設定/}).waitFor();assert.equal(creates.length,3);
+    await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/更改設定/}).waitFor();assert.equal(creates.length,3);
     assert.equal(creates[1].clientRequestId,creates[2].clientRequestId);
     assert.equal(creates[2].requestedPriority,5);assert.equal(creates[2].energyLevel,undefined);assert.equal(creates[2].estimatedMinutes,undefined);
     assert.deepEqual(creates[2].workDates,[today]);assert.equal(creates[2].tagIds.length,1);
@@ -171,7 +204,7 @@ try {
     await page.getByRole('button',{name:/P1 高 High/}).click();
     await page.getByRole('link',{name:'未安排的高 Priority',exact:true}).waitFor();
     assert.equal(navigations,0,'typing, saving and switching tabs never reload the document');assert.deepEqual(errors,[]);
-    console.log(`PASS simple-mode ${role} ${width}px: manual order, next task, max three, quiet, tags CRUD, draft/failure/retry, work dates, no reload`);
+    console.log(`PASS simple-mode ${role} ${width}px: visible save (8 palettes), click creates once and appears in task list without refresh, manual order, quiet, draft, keyboard retry`);
     await context.close();
   }
 } finally {await browser?.close();server?.kill();}

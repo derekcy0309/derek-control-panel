@@ -447,7 +447,7 @@ export function TaskForm({
         <span className="label">任務名稱</span>
         <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="寫低要做嘅事，或者用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
       </label>
-      {inline ? <Button type="submit" className="simple-add-task" disabled={saving || !tagsReady || Boolean(createdTaskId)}>{saving ? "儲存中…" : "＋ 加 Task"}</Button> : null}</div>
+      {inline ? <Button type="submit" className="simple-add-task shrink-0 whitespace-nowrap" disabled={saving || !tagsReady || Boolean(createdTaskId)}>{saving ? "儲存中…" : "儲存任務"}</Button> : null}</div>
       {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{tagsReady ? tagLabel || "無 Tag" : "讀取分類…"} · {form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {simplePriorities.find(p=>String(p.value)===form.requested_priority)?.label || "P2 一般"} · {form.due_date || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
       <div hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
       <TaskTagPicker value={selectedTags} taskId={initialTask?.id} initialCatalog={knownTags} disabled={saving} onReady={setTagsReady} onCatalog={setCatalog} onLoadError={()=>setOptionsOpen(true)} onChange={(tag_ids) => setForm((current) => ({ ...current, tag_ids }))} />
