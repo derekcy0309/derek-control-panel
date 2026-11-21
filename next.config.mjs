@@ -2,7 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   async headers() {
-    return ["/workspace/school","/agent","/api/school-bot-review"].map(source=>({source,headers:[
+    return ["/workspace/school","/agent","/api/school-bot-review","/settings","/api/agent-access/personal"].map(source=>({source,headers:[
       {key:"Content-Security-Policy",value:"frame-ancestors 'none'"},
       {key:"X-Frame-Options",value:"DENY"},
       {key:"Referrer-Policy",value:"no-referrer"}

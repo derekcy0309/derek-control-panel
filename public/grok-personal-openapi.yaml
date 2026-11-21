@@ -1,0 +1,86 @@
+openapi: 3.1.0
+info:
+  title: 日序 Dayline · Grok 本人資料（私人）
+  version: 1.0.0
+  description: |
+    Derek 本人擁有的 Dayline 資料及所選 iCloud Calendar。不接受其他人的資料、任意 SQL 或直接刪除。
+    請使用這個連接專用的 Bearer Code，切勿放入 URL 或對話。只有 Derek 本人要求時才準備封存草稿；草稿不是刪除，必須由 Derek 親自登入日序核對及確認。
+servers:
+  - url: https://derek-control-panel.vercel.app
+security:
+  - trustedGrokCode: []
+paths:
+  /api/agent/personal:
+    get:
+      operationId: readOwnDaylineData
+      summary: 查閱 Derek 本人資料，或查一個 iCloud 月份
+      description: 不指定 dataset 會列出可用類別。需要更多結果才按 nextOffset 查下一頁。iCloud 查詢必須指定 month，不接受 limit 或 offset。每日簡報仍用原有三日端點。
+      parameters:
+        - name: dataset
+          in: query
+          schema:
+            type: string
+            enum: [tasks, notes, family, school, calendar, personal_records, finance_transactions, finance_expense_rules, finance_income_rules, finance_balances, medications, links, tags, icloud]
+        - name: month
+          in: query
+          description: 香港月份；只有支援月份篩選的資料類別才接受。
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 30, default: 15 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, maximum: 9999, default: 0 }
+      responses:
+        '200':
+          description: 私人、不可快取的單類資料或類別清單；以 API 回應實際欄位為準
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400': { description: 無效查詢 }
+        '401': { description: 未授權、已停用或 Access Code 已過期 }
+        '503': { description: 未能核對授權或讀取資料；不能當成沒有紀錄 }
+  /api/agent/personal/archive-requests:
+    post:
+      operationId: prepareOwnDaylineArchiveRequest
+      summary: 只準備一筆封存草稿，由 Derek 本人登入確認
+      description: 不會封存或刪除。只能用 Derek 本人提出的指定單筆請求。勿代替 Derek 確認。若回傳 202，請說「草稿已準備，未封存」，並請 Derek 到日序設定核對。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [dataset, recordId]
+              properties:
+                dataset: { type: string, enum: [tasks, notes, family, school, finance_transactions] }
+                recordId: { type: string, format: uuid }
+      responses:
+        '202':
+          description: 封存草稿待確認；資料未變更
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [requestId, status, archived, reviewPath, message]
+                properties:
+                  requestId: { type: string, format: uuid }
+                  status: { type: string, const: pending }
+                  archived: { type: boolean, const: false }
+                  reviewPath: { type: string }
+                  message: { type: string }
+        '401': { description: 未有專用 Access Code }
+        '404': { description: 連接不適用或紀錄不支援封存 }
+        '415': { description: 請提交 JSON }
+        '422': { description: 資料類別或紀錄識別碼不正確 }
+        '429': { description: 草稿達上限 }
+        '503': { description: 未能安全準備草稿 }
+components:
+  securitySchemes:
+    trustedGrokCode:
+      type: http
+      scheme: bearer
+      bearerFormat: dcp_trusted
