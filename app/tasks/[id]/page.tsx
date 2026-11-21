@@ -42,7 +42,7 @@ function TaskDetailContent() {
   const participantById = new Map(data.participants.map((person) => [person.user_id, person.display_name]));
 
   return (
-    <main className="mx-auto max-w-5xl space-y-4">
+    <div className="mx-auto max-w-5xl space-y-4">
       <Link className="inline-flex min-h-11 items-center gap-2 rounded-lg px-3 font-semibold text-slate-700 hover:bg-white" href="/#task-action-list"><ArrowLeft className="h-4 w-4" />返回任務</Link>
       <section>
         <p className="eyebrow">Task Detail</p>
@@ -77,6 +77,6 @@ function TaskDetailContent() {
           {data.activityLogs.length ? <ol className="space-y-3">{data.activityLogs.map((entry) => <li className="rounded-xl bg-slate-50 p-3 text-sm" key={entry.id}><p className="font-bold text-slate-900">{entry.summary || entry.action}</p><p className="mt-1 text-xs text-slate-500">{participantById.get(entry.actor_id) ?? (entry.actor_id === data.currentUser.id ? data.currentUser.displayName : "已授權使用者")} · {new Date(entry.created_at).toLocaleString("zh-HK")}</p></li>)}</ol> : <p className="text-sm text-slate-500">暫時未有歷史紀錄。</p>}
         </div>
       </details>
-    </main>
+    </div>
   );
 }

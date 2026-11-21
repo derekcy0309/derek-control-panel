@@ -18,7 +18,7 @@ export function TaskPrintSheet({ categoryLabel, buckets, groups, printedOn }: { 
     <section className="task-print-sheet hidden" aria-hidden="true">
       <header className="task-print-header">
         <div>
-          <h1>Derek Control Panel｜{categoryLabel}任務</h1>
+          <h1>日序 Dayline｜{categoryLabel}任務</h1>
           <p>未完成行動清單</p>
         </div>
         <p>列印日期：{printedOn}</p>

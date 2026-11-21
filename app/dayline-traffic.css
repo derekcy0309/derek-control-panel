@@ -1,16 +1,3 @@
-/* Masthead shared by Today, Calendar, Reading Room and the separate Road Desk. */
-.dl-mast--studio .dl-mastin { gap:clamp(13px,3.5cqw,48px) }
-.dl-mast--studio .dl-nav { gap:clamp(8px,1.6cqw,25px) }
-.dl-mast--studio .dl-nav a { padding-inline:3px }
-@container dayline (max-width:775px) {
-  .dl-mast--studio .dl-mastin { gap:0 11px; flex-wrap:wrap; padding-block:4px 0 }
-  .dl-mast--studio .dl-nav {
-    order:4; flex-basis:100%; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:0;
-  }
-  .dl-mast--studio .dl-nav a { justify-content:center; padding-inline:2px; font-size:clamp(.775rem,2.6cqw,.9rem) }
-  .dl-mast--studio .dl-all-nav { margin-left:0 }
-}
-
 /* Road Desk keeps colour mostly in the public basemap and real status flags. */
 .dl-road-desk {
   --road-ink:#1b3541; --road-muted:#49626c; --road-blue:#165775; --road-border:#cfdcde; --road-paper:#fffefa;

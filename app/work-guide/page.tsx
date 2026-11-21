@@ -21,7 +21,7 @@ function WorkGuide(){
   const [notice,setNotice]=useState("");
   const plan=data?simpleToday({tasks:data.tasks,planning:data.planning,dependencies:data.taskDependencies,assignments:data.assignments,userId:data.currentUser.id,today:hkDateIso()}):null;
   const task=plan?.ordered[0];
-  return <main className="work-guide mx-auto max-w-3xl space-y-4">
+  return <div className="work-guide mx-auto max-w-3xl space-y-4">
     <header className="flex flex-wrap items-center justify-between gap-2"><h1 className="page-title flex items-center gap-2"><Compass aria-hidden="true"/>開工導航</h1><Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/">← 返今日總覽</Link></header>
     {!error && data?<GuideWorkStop key={data.currentUser.id} userId={data.currentUser.id}/>:null}
     {error?<p role="alert" className="panel p-4">未能確認今日次序。<button className="min-h-11 underline" onClick={()=>void reload()}>重新載入</button></p>:null}
@@ -29,7 +29,7 @@ function WorkGuide(){
     {!error && !data?<p role="status">讀取你嘅今日安排…</p>:null}
     {!error && data && plan && (task?<OneTask key={data.currentUser.id+task.id} userId={data.currentUser.id} task={task} reason={plan.isSuggestion?"今日未手排，按 Priority 建議；同級先睇 Deadline。":"照你今日排嘅次序：而家先做呢件。"} onCloseTask={changed=>{saveTaskLocally(changed);setNotice(changed.recurrence_rule_id?"今次已做完，恆常工作會按原設定繼續。":"已確認成件 Task 完成。");if(changed.recurrence_rule_id)void reload();}} refreshPlan={reload}/>:
       <section className="panel space-y-3 p-5"><h2 className="section-title">{plan.planned.length?"今日已排嘅工作暫時冇下一件可以開始。":"暫時冇可以開始嘅工作。"}</h2><p>等回覆、未到工作日或被阻住嘅 Task 唔會自動補入嚟。</p><Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/#today-order">自己排今日 →</Link></section>)}
-  </main>;
+  </div>;
 }
 
 function OneTask({task,userId,reason,onCloseTask,refreshPlan}:{task:Task;userId:string;reason:string;onCloseTask:(task:Task)=>void;refreshPlan:()=>Promise<void>}){

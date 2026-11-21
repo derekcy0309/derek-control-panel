@@ -222,7 +222,7 @@ function CaptureContent() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto max-w-2xl space-y-5">
       <section className="rounded-2xl bg-white p-5 shadow-soft sm:p-7">
         <p className="eyebrow">Mobile Quick Capture</p>
         <h1 className="page-title mt-1">先收集，不用現在決定</h1>
@@ -255,6 +255,6 @@ function CaptureContent() {
       </form>
 
       <p className="muted px-2 text-xs leading-5">相片、文件和原始錄音最多 12 MB，預設私人。若瀏覽器不支援 PWA 分享或語音轉文字，仍可直接輸入、貼上網址或選擇檔案。</p>
-    </main>
+    </div>
   );
 }
