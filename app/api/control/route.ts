@@ -9,6 +9,7 @@ import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/serve
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import { noteMetadata, validateNoteInput } from "@/lib/notes";
+import { validatePinnedPages } from "@/lib/dayline-pinned-pages";
 import type { BodyDoubleTaskOption } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -2389,6 +2390,9 @@ async function saveSettings({ client, user }: RequestContext, body: Record<strin
   }
   if ("visual_intensity" in payload && !["quiet", "balanced", "vivid"].includes(String(payload.visual_intensity))) {
     return jsonError("視覺刺激設定不正確。", 422);
+  }
+  if ("pinned_pages" in payload && !validatePinnedPages(payload.pinned_pages)) {
+    return jsonError("頂欄捷徑只接受最多 5 個不重複嘅日序功能。", 422);
   }
   const result = await client.from("user_settings").update(payload).eq("user_id", user.id).select("*").single();
   if (result.error) return databaseError(result.error);

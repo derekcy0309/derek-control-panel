@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { daylineDate } from "@/lib/dayline";
-import { addBriefDays, type DashboardBrief } from "@/lib/calendar-brief";
+import { addBriefDays, briefEventOnDate, briefTime } from "@/lib/calendar-brief";
+import { appleCalendarMonthWindow, type AppleCalendarMonth } from "@/lib/apple-calendar-month";
+import { calendarErrorMessage } from "@/lib/calendar-errors";
 import { calendarMonday, calendarMonth, makeMonthAgenda, validCalendarDate, type MonthAgendaRow } from "@/lib/dayline-agenda";
 import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { useControlData } from "@/hooks/useControlData";
@@ -25,37 +27,73 @@ function CalendarContent() {
   const today = useDaylineDate();
   const [cursor,setCursor] = useState<string|null>(null);
   const [adding,setAdding] = useState(false);
-  const [source,setSource] = useState<{ owner:string; brief:DashboardBrief|null; error:boolean }|null>(null);
+  const [source,setSource] = useState<{ owner:string; month:string; run:number; result:AppleCalendarMonth|null; timedOut?:boolean }|null>(null);
+  const [run,setRun]=useState(0);
   const owner=data?.currentUser.id;
+  const selected=cursor??today;
+  const {month,dates}=calendarMonth(selected);
   useEffect(()=>{setCursor(validCalendarDate(new URLSearchParams(window.location.search).get("date")));},[]);
   useEffect(()=>{
     if(!owner)return;
+    const range=appleCalendarMonthWindow(month);
+    if(!range){setSource({owner,month,run,result:null});return;}
     const controller=new AbortController();
-    void fetch("/api/calendar-brief",{cache:"no-store",credentials:"same-origin",signal:controller.signal})
+    const timeout=window.setTimeout(()=>{
+      if(controller.signal.aborted)return;
+      setSource({owner,month,run,result:null,timedOut:true});
+      controller.abort();
+    },52000);
+    void fetch("/api/apple-calendar-month?month="+encodeURIComponent(month),{cache:"no-store",credentials:"same-origin",signal:controller.signal})
       .then(async response=>{
-        if(!response.ok)throw new Error("Brief unavailable");
-        const brief:DashboardBrief=await response.json();
-        if(!Array.isArray(brief.days) || !Array.isArray(brief.sources))throw new Error("Invalid brief");
-        if(!controller.signal.aborted)setSource({owner,brief,error:false});
+        if(!response.ok)throw new Error("Calendar unavailable");
+        const result:AppleCalendarMonth=await response.json();
+        if(result.month!==month || result.from!==range.from || result.until!==range.until
+          || !Array.isArray(result.events) || !["fresh","stale","not_connected","select_calendars"].includes(result.source?.state))
+          throw new Error("Invalid calendar");
+        if(!controller.signal.aborted)setSource({owner,month,run,result});
       })
-      .catch(()=>{if(!controller.signal.aborted)setSource({owner,brief:null,error:true});});
-    return ()=>controller.abort();
-  },[owner,today]);
-  const read=source?.owner===owner ? source : null;
-  const agenda=useMemo(()=>data ? makeMonthAgenda(data.tasks,data.operatingItems,data.currentUser.id,read?.brief??null):new Map<string,MonthAgendaRow[]>(),[data,read]);
+      .catch(()=>{if(!controller.signal.aborted)setSource({owner,month,run,result:null});})
+      .finally(()=>window.clearTimeout(timeout));
+    return ()=>{window.clearTimeout(timeout);controller.abort();};
+  },[owner,month,run,today]);
+  const read=source?.owner===owner && source?.month===month ? source : null;
+  const checking=!read || read.run!==run;
+  const apple=read?.result;
+  const agenda=useMemo(()=>data ? makeMonthAgenda(data.tasks,data.operatingItems,data.currentUser.id,null,apple??null):new Map<string,MonthAgendaRow[]>(),[data,apple]);
   if (loading || error || !data) return <LoadingState error={error} />;
-  const selected=cursor??today;
-  const {month,dates}=calendarMonth(selected);
   const weekStarts=calendarMonday(selected);
   const monthEntries=dates.filter(date=>date.startsWith(month)&&agenda.has(date));
   const selectedRows=agenda.get(selected)??[];
-  const apple=read?.brief?.sources.find(source=>source.label==="Apple Calendar");
+  const appleFresh=apple?.source.state==="fresh";
+  const anyICloudInMonth=appleFresh && apple?.events.some(event=>dates.some(date=>date.startsWith(month)&&briefEventOnDate(event,date)));
+  const selectedEmpty=checking ? "呢日暫時冇日序安排；iCloud 行程讀取中。"
+    : appleFresh&&!apple?.truncated ? "呢日冇已讀取嘅行程或安排。"
+    : "呢日暫時冇已讀取嘅安排；iCloud 結果可能未齊。";
   function moveMonth(offset:number){
     const next=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5))-1+offset,1)).toISOString().slice(0,10);
-    setCursor(next.startsWith(today.slice(0,7))?today:next);
+    if(validCalendarDate(next))setCursor(next.startsWith(today.slice(0,7))?today:next);
+  }
+  function moveWeek(offset:number){
+    const next=validCalendarDate(addBriefDays(selected,offset*7));
+    if(next)setCursor(next);
   }
   return <div className="dl-editorial-calendar">
-    <header className="dl-intro dl-editorial-intro"><div><p className="dl-calendarline"><span className="dl-miniline"/>WEEK AHEAD</p><h1>日曆</h1><p className="dl-editorial-welcome">一眼分清行程、學校安排同 Deadline。</p></div><button type="button" className="dl-add" onClick={()=>setAdding(true)}><Plus aria-hidden="true"/>新增日程</button></header>
+    <header className="dl-intro dl-editorial-intro"><div><p className="dl-calendarline"><span className="dl-miniline"/>CALENDAR</p><h1>日曆</h1><p className="dl-editorial-welcome">一眼分清行程、學校安排同 Deadline。</p></div><button type="button" className="dl-add" onClick={()=>setAdding(true)}><Plus aria-hidden="true"/>新增日程</button></header>
+    <section className="dl-calendar-icloud" aria-label="iPhone 行程來源">
+      <div>
+        <strong>iPhone 行程 <span>· iCloud Calendar</span></strong>
+        <p className="dl-calendar-sources" role="status">{checking?"讀緊呢個月嘅 iCloud 行程…"
+          :read?.timedOut?"讀取 iCloud 行程逾時，請稍後重試。"
+          :!apple?"呢個月嘅 iCloud 行程未能讀取，請重試。"
+          :apple.source.state==="not_connected"?"尚未連接 iCloud Calendar。"
+          :apple.source.state==="select_calendars"?"已連接 iCloud，但未揀要顯示嘅 Calendar。"
+          :apple.source.state==="stale"?calendarErrorMessage(apple.source.errorCode)
+          :apple.truncated?"已讀取部分行程；原有 Calendar 有更多資料未列出。"
+          :!anyICloudInMonth?"呢個月喺已揀嘅 iCloud Calendar 冇行程。"
+          :`已讀取所選 iCloud Calendar${apple.source.lastSync?" · "+briefTime(apple.source.lastSync)+"（香港時間）":""}。`}</p>
+      </div>
+      <div className="dl-calendar-icloud-actions"><Link href="/settings#private-calendar">私人 Calendar 設定</Link><button type="button" className="dl-text-btn" disabled={checking} onClick={()=>setRun(count=>count+1)}><RefreshCw size={14} aria-hidden="true"/>更新 iPhone 行程</button></div>
+    </section>
     <section className="dl-calendar-board" aria-label="日曆日期">
       <header className="dl-calendar-tools"><button type="button" className="icon-button" onClick={()=>moveMonth(-1)} aria-label="上個月"><ChevronLeft aria-hidden="true"/></button><h2>{Number(month.slice(0,4))} 年 {Number(month.slice(5))} 月</h2><button type="button" className="icon-button" onClick={()=>moveMonth(1)} aria-label="下個月"><ChevronRight aria-hidden="true"/></button><button type="button" className="dl-text-btn" onClick={()=>setCursor(today)}>返今日</button></header>
       <div className="dl-calendar-month">
@@ -66,7 +104,7 @@ function CalendarContent() {
         })}</div>
       </div>
       <div className="dl-calendar-mobile">
-        <div className="dl-calendar-mobile-tools"><button type="button" className="dl-text-btn" onClick={()=>setCursor(addBriefDays(selected,-7))}>← 上星期</button><button type="button" className="dl-text-btn" onClick={()=>setCursor(addBriefDays(selected,7))}>下星期 →</button></div>
+        <div className="dl-calendar-mobile-tools"><button type="button" className="dl-text-btn" onClick={()=>moveWeek(-1)}>← 上星期</button><button type="button" className="dl-text-btn" onClick={()=>moveWeek(1)}>下星期 →</button></div>
         <div className="dl-calendar-week">{weekdays.map((w,index)=>{
           const date=addBriefDays(weekStarts,index),count=agenda.get(date)?.length??0;
           return <button key={w} type="button" aria-pressed={date===selected} aria-current={date===today?"date":undefined} onClick={()=>setCursor(date)} aria-label={daylineDate(date,true)+(count?"，"+count+" 項":"")}><small>星期{w}</small><b>{Number(date.slice(8))}</b>{count?<span className="dl-calendar-dot" aria-hidden="true"/>:null}</button>;
@@ -74,10 +112,10 @@ function CalendarContent() {
       </div>
     </section>
     <section className="dl-calendar-selected" aria-labelledby="dayline-calendar-agenda"><div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true">DAY AGENDA</span><h2 id="dayline-calendar-agenda">{daylineDate(selected,true)}</h2></div></div>
-      {selectedRows.length ? <CalendarRows rows={selectedRows}/> : <p className="dl-calendar-empty">呢日暫時冇已讀取嘅安排。</p>}
+      {selectedRows.length ? <CalendarRows rows={selectedRows}/> : <p className="dl-calendar-empty">{selectedEmpty}</p>}
     </section>
     <details className="dl-calendar-overview"><summary>睇全月安排</summary>{monthEntries.length?monthEntries.map(date=><section key={date} className="dl-calendar-overview-day"><h3>{daylineDate(date,true)}</h3><CalendarRows rows={agenda.get(date)??[]}/></section>):<p className="dl-calendar-empty">本月暫時冇已讀取嘅安排。</p>}</details>
-    <p className="dl-calendar-sources">Panel 只顯示你有權查看嘅資料。iPhone 同步只讀取由今日起計三日；要改返 iPhone。{!read?" 讀緊 Calendar 來源…":read.error?" 暫未讀到外部行程。":apple?.state==="stale"?" iPhone 來源暫未更新。":apple?.state==="not_connected"?" 尚未連接 iPhone。":apple?.state==="select_calendars"?" 未揀要顯示嘅 Calendar。":""} <Link href="/settings#private-calendar">私人 Calendar 設定</Link></p>
+    <p className="dl-calendar-sources">日序只顯示你有權睇嘅資料。iCloud 行程唯讀，要改返 iPhone；Google、Exchange 同只存在手機嘅行程唔會由 iCloud 讀取。</p>
     {adding ? <EventModal initialDate={selected} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); void reload(); }} /> : null}
   </div>;
 }

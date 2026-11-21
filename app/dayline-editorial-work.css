@@ -119,6 +119,11 @@
 .dl-calendar-overview-day h3 { margin: .4rem 0; font-size: .91rem; font-weight: 730; }
 .dl-calendar-overview > .dl-calendar-empty { margin-bottom: .7rem; }
 .dl-calendar-sources a { text-decoration: underline; text-underline-offset: 2px; }
+.dl-calendar-icloud { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.3rem 1rem; padding:.7rem 1rem; border:1px solid var(--line); border-radius:.8rem; background:var(--paper); }
+.dl-calendar-icloud strong span { color:var(--soft); font-size:.83rem; font-weight:500; }
+.dl-calendar-icloud-actions { display:flex; flex-wrap:wrap; align-items:center; gap:0 .85rem; }
+.dl-calendar-icloud-actions > a { display:inline-flex; align-items:center; min-height:44px; color:var(--accent); font-size:.83rem; text-decoration:underline; text-underline-offset:2px; }
+.dl-calendar-icloud-actions > button { min-height:44px; gap:.3rem; }
 @media(max-width:699px) {
   .dl-calendar-month { display: none; }
   .dl-calendar-mobile { display: block; padding: 0 .55rem .65rem; }

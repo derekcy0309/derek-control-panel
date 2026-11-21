@@ -1,4 +1,5 @@
-import { addBriefDays, briefDate, briefEventTime, briefTime, type DashboardBrief } from "./calendar-brief.ts";
+import { addBriefDays, briefDate, briefEventOnDate, briefEventTime, briefTime, type BriefEvent, type DashboardBrief } from "./calendar-brief.ts";
+import { appleCalendarMonthWindow, type AppleCalendarMonth } from "./apple-calendar-month.ts";
 import { daylineDate } from "./dayline.ts";
 import type { OperatingItem, Task } from "./types.ts";
 
@@ -14,12 +15,10 @@ export function calendarMonday(date: string) {
 
 export function calendarMonth(date: string) {
   const month = date.slice(0,7);
-  const first = month + "-01";
-  const start = calendarMonday(first);
-  const last = new Date(Date.UTC(Number(month.slice(0,4)), Number(month.slice(5)), 0)).getUTCDate();
-  const until = addBriefDays(calendarMonday(month + "-" + last), 7);
+  const window=appleCalendarMonthWindow(month);
+  if(!window)return {month,dates:[] as string[]};
   const dates:string[] = [];
-  for (let day=start;day<until;day=addBriefDays(day,1)) dates.push(day);
+  for (let day=window.from;day<window.until;day=addBriefDays(day,1)) dates.push(day);
   return { month, dates };
 }
 
@@ -28,7 +27,7 @@ function storedTime(value: string | null | undefined) {
   return Number.isFinite(t) ? briefTime(value!) : null;
 }
 
-export function makeMonthAgenda(tasks:CalendarTask[], items:CalendarItem[], viewerId:string, brief:DashboardBrief | null) {
+export function makeMonthAgenda(tasks:CalendarTask[], items:CalendarItem[], viewerId:string, brief:DashboardBrief|null, appleMonth:AppleCalendarMonth|null=null) {
   const byDate = new Map<string, MonthAgendaRow[]>();
   function append(date:string, row:MonthAgendaRow) {
     const prior = byDate.get(date);
@@ -51,17 +50,27 @@ export function makeMonthAgenda(tasks:CalendarTask[], items:CalendarItem[], view
   for(const task of tasks){
     if(task.due_date)append(task.due_date,{id:"task:"+task.id,kind:"deadline",title:task.title,when:"限期",detail:"Task Deadline",href:"/tasks/"+task.id});
   }
-  // The authorized brief intentionally covers only three HKT dates. Do not
-  // guess dates and do not add the Panel items that already exist above.
+  const seenByDate=new Map<string,Set<string>>();
+  function appendEvent(date:string,event:BriefEvent){
+    if(event.source==="Panel" && localIds.has(event.id))return;
+    const key=event.source+":"+event.uid+":"+event.start;
+    let seen=seenByDate.get(date);
+    if(!seen){seen=new Set();seenByDate.set(date,seen);}
+    if(seen.has(key))return;
+    seen.add(key);
+    const when=briefEventTime(event).replace(/\d{4}-\d{2}-\d{2}/g,d=>daylineDate(d,event.start.slice(0,4)!==event.end.slice(0,4)));
+    append(date,{id:key,kind:"schedule",title:event.title,when,detail:event.source==="Apple"?"iPhone · 唯讀":event.tentative?"待確認":"已確認",start:event.allDay?undefined:briefTime(event.start)});
+  }
+  // If a brief is passed, keep its fixed owner-scoped dates and skip Panel
+  // rows already present in the user's regular workspace data.
   for(const day of brief?.days??[]){
-    const seenEvents=new Set<string>();
-    for(const event of day.events){
-      if(event.source==="Panel" && localIds.has(event.id))continue;
-      const key=event.uid+":"+event.start;
-      if(seenEvents.has(key))continue;
-      seenEvents.add(key);
-      const when=briefEventTime(event).replace(/\d{4}-\d{2}-\d{2}/g,d=>daylineDate(d,event.start.slice(0,4)!==event.end.slice(0,4)));
-      append(day.date,{id:key,kind:"schedule",title:event.title,when,detail:event.source==="Apple"?"iPhone · 唯讀":event.tentative?"待確認":"已確認",start:event.allDay?undefined:briefTime(event.start)});
+    for(const event of day.events)appendEvent(day.date,event);
+  }
+  if(appleMonth?.source.state==="fresh"){
+    // Apple remains a separate read-only source; no linked Task or shared item.
+    const events=appleMonth.events.filter(event=>event.source==="Apple");
+    for(const date of calendarMonth(appleMonth.month+"-01").dates){
+      for(const event of events)if(briefEventOnDate(event,date))appendEvent(date,event);
     }
   }
   for(const row of [...(brief?.familyDates??[]),...(brief?.nextSchoolDate?[brief.nextSchoolDate]:[])]){
@@ -74,7 +83,7 @@ export function makeMonthAgenda(tasks:CalendarTask[], items:CalendarItem[], view
 }
 
 export function validCalendarDate(date: string | null) {
-  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !appleCalendarMonthWindow(date.slice(0,7))) return null;
   const instant = new Date(date + "T12:00:00+08:00");
   return Number.isFinite(instant.getTime()) && briefDate(instant) === date ? date : null;
 }

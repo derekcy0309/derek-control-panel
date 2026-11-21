@@ -4,14 +4,14 @@ import { clearNoteDrafts } from "@/lib/notes";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   CalendarDays, CheckSquare2, ChevronDown, CircleUserRound, ClipboardCheck,
   Clock3, Command, HeartHandshake, Home, Inbox, Landmark, Menu, PawPrint, Search,
-  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, Pill, Printer, Compass, Newspaper, Route
+  Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, Pill, Printer, Compass, Newspaper, Route, SlidersHorizontal
 } from "lucide-react";
 import clsx from "clsx";
-import { loadControlData } from "@/lib/control-api";
+import { controlAction, loadControlData } from "@/lib/control-api";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 import { AssignmentAlerts } from "@/components/AssignmentAlerts";
@@ -21,7 +21,10 @@ import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
 import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { daylineWeek } from "@/lib/dayline";
 import { DaylineMark } from "@/components/dayline/DaylineMark";
+import { PinnedPageEditor } from "@/components/dayline/PinnedPageEditor";
+import { DEFAULT_PINNED_PAGES, TASKS_PIN, pinnedPageIsCurrent, pinnedPageLabel, readPinnedPages, type PinnedPageHref } from "@/lib/dayline-pinned-pages";
 import "@/app/dayline-shared-shell.css";
+import "@/app/dayline-pinned-nav.css";
 
 type NavItem = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 type NavTone = "daily" | "planning" | "collaboration" | "family" | "personal" | "system";
@@ -97,6 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showEncouragement, setShowEncouragement] = useState(false);
+  const [pinnedPages, setPinnedPages] = useState<readonly PinnedPageHref[]>(DEFAULT_PINNED_PAGES);
   const systemGroup: NavGroupData = {
     label: "系統設定",
     tone: "system",
@@ -114,6 +118,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setMustChangePassword(Boolean(data.profile.must_change_password));
         setIsAdmin(Boolean(data.profile.is_admin && data.profile.active));
         setShowEncouragement(Boolean(data.showEncouragement));
+        setPinnedPages(readPinnedPages(data.settings?.pinned_pages));
         if (data.settings) {
         applyAppearance(data.settings.theme, data.settings.visual_intensity);
         document.documentElement.dataset.accent = data.settings.accent_colour || "indigo";
@@ -148,15 +153,24 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     window.location.reload();
   }
 
-  return <DaylineFrame pathname={pathname} name={displayName} userId={currentUserId} system={systemGroup} onSignOut={signOut}
+  async function savePinnedPages(nextPins: PinnedPageHref[]) {
+    if (!currentUserId) throw new Error("Account settings are not loaded");
+    await controlAction("save_settings", { settings: { pinned_pages: nextPins } });
+    setPinnedPages(nextPins);
+  }
+
+  return <DaylineFrame pathname={pathname} name={displayName} userId={currentUserId} system={systemGroup} onSignOut={signOut} pins={pinnedPages} onSavePins={savePinnedPages}
     gates={<>{mustChangePassword?<PasswordChangeGate onComplete={()=>setMustChangePassword(false)}/>:<AssignmentAlerts userId={currentUserId}/>}</>}>
     {children}{showEncouragement ? <EncouragementFooter pathname={pathname} /> : null}
   </DaylineFrame>;
 }
 
-function DaylineFrame({pathname,name,userId,system,onSignOut,gates,children}:{pathname:string;name:string;userId:string|null;system:NavGroupData;onSignOut:()=>Promise<void>;gates:React.ReactNode;children:React.ReactNode}){
+function DaylineFrame({pathname,name,userId,system,onSignOut,pins,onSavePins,gates,children}:{pathname:string;name:string;userId:string|null;system:NavGroupData;onSignOut:()=>Promise<void>;pins:readonly PinnedPageHref[];onSavePins:(pins:PinnedPageHref[])=>Promise<void>;gates:React.ReactNode;children:React.ReactNode}){
   const today=useDaylineDate(), [tab,setTab]=useState("focus");
   const menu=useRef<HTMLDetailsElement>(null);
+  const pinTrigger=useRef<HTMLButtonElement>(null);
+  const [editingPins,setEditingPins]=useState(false);
+  const [pinNotice,setPinNotice]=useState("");
   const landing=pathname==="/";
   const isEditorialPage=landing||pathname==="/calendar"||pathname==="/traffic"||isActive(pathname,"/briefing");
   useEffect(()=>{
@@ -188,20 +202,29 @@ function DaylineFrame({pathname,name,userId,system,onSignOut,gates,children}:{pa
     setTab(view==="tasks"?"tasks":"focus");
     window.dispatchEvent(new Event("dayline:"+view));
   }
+  function closePinEditor(){
+    setEditingPins(false);
+    if(menu.current?.open)pinTrigger.current?.focus();
+  }
+  async function saveAndClosePins(nextPins:PinnedPageHref[]){
+    await onSavePins(nextPins);
+    setPinNotice("已儲存頂欄捷徑。");
+    closePinEditor();
+  }
   return <div className="dl-viewport"><div className="app-frame dl-shell dl-unified-chrome" data-palette={daylineWeek(today)} data-section={sectionIdentityForPath(pathname)}>
     {gates}
     <header className="dl-mast dl-mast--studio no-print"><div className="dl-mastin">
       <Link href="/" className="dl-brand" aria-label="日序 Dayline · 今日總覽" onClick={()=>changeHome("overview")}><DaylineMark/><b>日序</b><em>Dayline</em></Link>
-      <nav className="dl-nav" aria-label="主要導覽">
-        <Link href="/" aria-current={landing&&tab!=="tasks"?"page":undefined} onClick={()=>changeHome("overview")}>今日總覽</Link>
-        <Link href="/#task-action-list" aria-current={(landing&&tab==="tasks")||isActive(pathname,"/tasks")?"page":undefined} onClick={()=>changeHome("tasks")}>我的任務</Link>
-        <Link href="/calendar" aria-current={pathname==="/calendar"?"page":undefined}>日曆</Link>
-        <Link href="/briefing" aria-current={isActive(pathname,"/briefing")?"page":undefined}>資訊站</Link>
-        <Link href="/traffic" prefetch={false} aria-current={pathname==="/traffic"?"page":undefined}>交通</Link>
+      <nav className="dl-nav dl-nav--pinned" aria-label="主要導覽" style={{"--dl-pin-count":pins.length} as CSSProperties}>
+        {pins.map(href=><Link key={href} href={href} prefetch={false} aria-current={pinnedPageIsCurrent(href,pathname,tab)?"page":undefined} onClick={href==="/"?()=>changeHome("overview"):href===TASKS_PIN?()=>changeHome("tasks"):undefined}>{pinnedPageLabel(href)}</Link>)}
       </nav>
       <div className="dl-account"><span className="dl-who">{name}</span><span className="dl-avatar" aria-hidden="true">{Array.from(name)[0]?.toUpperCase()}</span></div>
       <details className="dl-all-nav" ref={menu} onKeyDown={e=>{if(e.key==="Escape"&&e.currentTarget.open){e.preventDefault();e.stopPropagation();e.currentTarget.open=false;e.currentTarget.querySelector("summary")?.focus();}}}><summary aria-label="更多功能" aria-controls="dayline-more"><Menu aria-hidden="true"/></summary>
-        <div className="dl-sheet-nav" id="dayline-more" onClick={e=>{if(e.target instanceof Element&&e.target.closest("a")&&menu.current)menu.current.open=false;}}><h2>更多功能</h2><div className="dl-toolrow">{landing?null:<Link href="/?newTask=1" prefetch={false}><Plus aria-hidden="true"/>加 Task</Link>}<Link href="/capture">快速收集</Link><Link href="/search">搜尋</Link><Link href="/#task-action-list" onClick={()=>changeHome("tasks")}>我的任務</Link></div>
+        <div className="dl-sheet-nav" id="dayline-more" onClick={e=>{if(e.target instanceof Element&&e.target.closest("a")&&menu.current)menu.current.open=false;}}><h2>更多功能</h2>
+          <button type="button" className="dl-pin-trigger" ref={pinTrigger} disabled={!userId} aria-expanded={editingPins} onClick={()=>{setPinNotice("");setEditingPins(open=>!open);}}><SlidersHorizontal aria-hidden="true"/>自訂頂欄捷徑</button>
+          {pinNotice?<p className="dl-pin-status" role="status">{pinNotice}</p>:null}
+          {editingPins?<PinnedPageEditor pins={pins} onSave={saveAndClosePins} onCancel={closePinEditor}/>:null}
+          <div className="dl-toolrow">{landing?null:<Link href="/?newTask=1" prefetch={false}><Plus aria-hidden="true"/>加 Task</Link>}<Link href="/capture">快速收集</Link><Link href="/search">搜尋</Link><Link href={TASKS_PIN} onClick={()=>changeHome("tasks")}>我的任務</Link></div>
           {[...navGroups,system].map(group=><NavGroup key={group.label} group={group} pathname={pathname} onOverview={()=>changeHome("overview")}/>)}
           <LiveClock/><button type="button" className="min-h-11 underline" onClick={()=>void onSignOut()}>登出</button>
         </div></details>

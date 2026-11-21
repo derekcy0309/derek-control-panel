@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createDAVClient, type DAVCalendar } from "tsdav";
 import ICAL from "ical.js";
 import { Temporal } from "@js-temporal/polyfill";
-import { briefWindow, type BriefEvent } from "../calendar-brief.ts";
+import { briefWindow, type BriefEvent, type CalendarReadWindow } from "../calendar-brief.ts";
 import { calendarErrorCode } from "../calendar-errors.ts";
 
 export type AppleCalendar = { id: string; name: string; url: string };
@@ -44,10 +44,13 @@ export async function discoverAppleCalendars(email: string,password: string): Pr
  return calendars.map(c=>({id:createHash("sha256").update(allowedAppleUrl(c.url).href).digest("hex"),name:typeof c.displayName==="string"?c.displayName.slice(0,100):"Calendar",url:allowedAppleUrl(c.url).href}));
 }
 export function parseAppleEvents(data: string, now=new Date()): BriefEvent[] {
+ return parseAppleEventsForWindow(data,briefWindow(now));
+}
+export function parseAppleEventsForWindow(data: string, window:Pick<CalendarReadWindow,"start"|"end">): BriefEvent[] {
  const root=new ICAL.Component(ICAL.parse(data)), zones=new Map<string,InstanceType<typeof ICAL.Timezone>>();
  for(const z of root.getAllSubcomponents("vtimezone")){const tz=new ICAL.Timezone(z);zones.set(tz.tzid,tz);}
  const components=root.getAllSubcomponents("vevent"), masterIds=new Set(components.filter(c=>!c.hasProperty("recurrence-id")).map(c=>String(c.getFirstPropertyValue("uid"))));
- const {start,end}=briefWindow(now), lower=Date.parse(start),upper=Date.parse(end);const result:BriefEvent[]=[];
+ const {start,end}=window, lower=Date.parse(start),upper=Date.parse(end);const result:BriefEvent[]=[];
  function zoneId(c:InstanceType<typeof ICAL.Component>,property:string){const value=c.getFirstProperty(property)?.getParameter("tzid");return typeof value==="string"?value:undefined;}
  function hydrate(c:InstanceType<typeof ICAL.Component>) {
   // Relate only this UID's explicitly hydrated exceptions, not every exception
@@ -90,13 +93,16 @@ export function parseAppleEvents(data: string, now=new Date()): BriefEvent[] {
  return result;
 }
 export async function fetchAppleEvents(email:string,password:string,calendars:AppleCalendar[],now=new Date()) {
- const dav=await client(email,password),window=briefWindow(now);let events:BriefEvent[]=[];
+ return fetchAppleWindowEvents(email,password,calendars,briefWindow(now));
+}
+export async function fetchAppleWindowEvents(email:string,password:string,calendars:AppleCalendar[],window:CalendarReadWindow,eventLimit=200) {
+ const dav=await client(email,password);let events:BriefEvent[]=[];
  for(const calendar of calendars){
   allowedAppleUrl(calendar.url);
   const objects=await dav.fetchCalendarObjects({calendar:{url:calendar.url} as DAVCalendar,timeRange:{start:new Date(window.start).toISOString(),end:new Date(window.end).toISOString()},expand:true,useMultiGet:false,urlFilter:()=>true}).catch(error=>{const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"?"APPLE_RESPONSE_INVALID":code);});
   if(objects.length>1000)throw new Error("APPLE_RESPONSE_LIMIT");
-  for(const object of objects)if(object.data){try{events.push(...parseAppleEvents(String(object.data),now));}catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"||code==="APPLE_NETWORK"?"APPLE_PARSE_FAILED":code);}}
+  for(const object of objects)if(object.data){try{events.push(...parseAppleEventsForWindow(String(object.data),window));}catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"||code==="APPLE_NETWORK"?"APPLE_PARSE_FAILED":code);}}
  }
  events=[...new Map(events.map(e=>[e.uid+":"+e.start,e])).values()].sort((a,b)=>a.start.localeCompare(b.start));
- return {events:events.slice(0,200),truncated:events.length>200};
+ return {events:events.slice(0,eventLimit),truncated:events.length>eventLimit};
 }

@@ -1,0 +1,35 @@
+.dl-mast .dl-nav--pinned { min-width: 0; }
+.dl-mast .dl-nav--pinned a { line-height: 1.22; text-align: center; }
+.dl-pin-trigger {
+  align-items: center; gap: .45rem; min-height: 44px; width: 100%;
+  display: flex; padding: .42rem .55rem; margin-block: .45rem;
+  border: 1px solid var(--line); border-radius: .65rem;
+  background: var(--band); color: var(--accent); text-align: left; font-weight: 700; font-size: .86rem;
+}
+.dl-pin-trigger[aria-expanded="true"] { border-color: var(--accent); }
+.dl-pin-editor { padding-block: .2rem .7rem; }
+.dl-pin-editor p, .dl-pin-status {
+  color: var(--soft); font-size: .81rem; line-height: 1.5;
+}
+.dl-pin-editor .dl-pin-error { color: var(--ink); background: var(--band); padding: .4rem .55rem; border-radius: .45rem; }
+.dl-pin-editor .dl-pin-hint, .dl-pin-editor .dl-pin-error { margin-top: .45rem; }
+.dl-pin-slots { display: grid; gap: .3rem; margin-top: .55rem; }
+.dl-pin-slot { display: grid; grid-template-columns: 3.1rem minmax(0, 1fr); gap: .35rem; align-items: center; font-size: .8rem; }
+.dl-pin-slot select {
+  width: 100%; min-width: 0; min-height: 44px; max-width: 100%;
+  color: var(--ink); background: var(--paper); padding: .25rem; border: 1px solid var(--line); border-radius: .5rem;
+  font-size: 1rem;
+}
+.dl-pin-actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .65rem; }
+.dl-pin-actions button {
+  min-height: 44px; border: 1px solid var(--line); border-radius: .5rem; padding: .3rem .5rem;
+  color: var(--ink); background: var(--paper); font-size: .81rem; font-weight: 700;
+}
+.dl-pin-actions .dl-pin-save { background: var(--accent); color: var(--dl-action-ink, #fff); margin-left: auto; border-color: var(--accent); }
+
+@container dayline (max-width: 775px) {
+  .dl-mast--studio .dl-nav--pinned {
+    grid-template-columns: repeat(var(--dl-pin-count, 5), minmax(0, 1fr));
+  }
+  .dl-mast--studio .dl-nav--pinned a { white-space: normal; overflow-wrap: anywhere; min-width: 0; padding-block: .2rem; }
+}

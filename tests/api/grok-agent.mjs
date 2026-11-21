@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 // NextURL normalizes loopback hosts to localhost; use the same origin a browser
 // uses, rather than weakening the application's Origin check for 127.0.0.1.
 const base='http://localhost:3146',key='dcp_grok_'+'x'.repeat(43),hash=createHash('sha256').update(key).digest('hex');
-let operations=0,revoked=false,logs='',schoolOpen=false,schoolApplies=0;
+let operations=0,revoked=false,logs='',schoolOpen=false,schoolApplies=0,pinSaves=0;
 const fixtureOwner='11111111-1111-4111-8111-111111111111',proposalId='55555555-5555-4555-8555-555555555555';
 const backend=http.createServer(async(req,res)=>{
   let result={},status=200;
@@ -28,6 +28,14 @@ const backend=http.createServer(async(req,res)=>{
     const body=JSON.parse(raw);assert.equal(body.p_action,'approve');assert.equal(body.p_id,proposalId);schoolApplies++;result='approved';
   }else if(req.url==='/rest/v1/rpc/touch_current_user_last_seen')result=null;
   else if(req.url?.startsWith('/rest/v1/user_profiles?')){assert.equal(req.headers.authorization,'Bearer human-session');result=[{is_admin:true,active:true}];}
+  else if(req.url?.startsWith('/rest/v1/user_settings?')){
+    assert.equal(req.method,'PATCH');assert.equal(req.headers.authorization,'Bearer human-session');
+    assert.equal(new URL(req.url,'http://fixture').searchParams.get('user_id'),'eq.'+fixtureOwner);
+    let raw='';for await(const part of req)raw+=part;
+    result=JSON.parse(raw);
+    assert.deepEqual(result,{pinned_pages:['/calendar','/cashflow']});
+    pinSaves++;
+  }
   else if(req.url==='/rest/v1/rpc/agent_brief_owner'){
     let raw='';for await(const part of req)raw+=part;assert.equal(JSON.parse(raw).p_token_hash,hash);assert.equal(raw.includes(key),false);result='11111111-1111-4111-8111-111111111111';
   }else if(req.url?.startsWith('/rest/v1/tasks?')){
@@ -69,7 +77,26 @@ try{
   assert.equal((await sendDecision(base,{Authorization:'Bearer '+key})).status,401);
   assert.equal((await sendDecision(base)).status,200);assert.equal(schoolApplies,1);
   assert.equal((await fetch(base+'/api/calendar-brief')).status,401);assert.equal((await request('/api/calendar-brief?owner_id=forged')).status,400);
+  const monthly='/api/apple-calendar-month?month=2026-12';
+  assert.equal((await fetch(base+monthly)).status,401,'anonymous month access');
+  assert.equal((await request(monthly)).status,401,'Grok cannot access monthly Apple events');
+  const human={Cookie:'dcp_access=human-session'};
+  for(const suffix of ['&owner_id='+fixtureOwner,'&month=2026-12','&until=2027-12-01']) {
+    assert.equal((await fetch(base+monthly+suffix,{headers:human})).status,400,'only a single month is accepted');
+  }
+  const ownMonth=await fetch(base+monthly,{headers:human});
+  assert.equal(ownMonth.status,200);
+  assert.match(ownMonth.headers.get('cache-control'),/private, no-store/);
+  const calendar=await ownMonth.json();
+  assert.equal(calendar.month,'2026-12');assert.equal(calendar.source.state,'not_connected');assert.deepEqual(calendar.events,[]);
+  const savePins=(pins)=>fetch(base+'/api/control',{method:'POST',headers:{...human,'Content-Type':'application/json'},body:JSON.stringify({action:'save_settings',settings:{pinned_pages:pins}})});
+  for(const pins of [['/admin/accounts'],['https://example.test'],['/calendar','/calendar']])assert.equal((await savePins(pins)).status,422);
+  assert.equal(pinSaves,0);
+  const pins=await savePins(['/calendar','/cashflow']);
+  assert.equal(pins.status,200);assert.match(pins.headers.get('cache-control'),/private, no-store/);
+  assert.deepEqual((await pins.json()).settings.pinned_pages,['/calendar','/cashflow']);assert.equal(pinSaves,1);
   revoked=true;assert.equal((await request('/api/agent')).status,401);
   console.log('PASS actual Grok API: hashed credential only, isolated cookie, read/create, no mutations, no normal user/backup access, CSRF and revocation');
+  console.log('PASS actual month and pin APIs: human account-scoped read/write isolation, bounded query inputs, owner-filtered settings and no public cache');
 }catch(error){throw new Error(`${error.message}\n${logs.slice(-1800)}`,{cause:error});}
 finally{server.kill();await new Promise(r=>backend.close(r));}
