@@ -4,7 +4,7 @@
 
 ## 私人儲存與回復
 
-本次 migration `20261121105452_dayline_publication_library.sql` 只新增獨立物件。每期身份為「擁有人＋系列＋出刊日」；授權名單、個人閱讀狀態、修訂內容分開。預設只授權擁有人。原始 HTML／Markdown 和公佈時的日期、涵蓋日期及來源識別保留；畫面只顯示文字、分段及安全 HTTP(S) 連結，唔會執行郵件 HTML。重試相同 digest 會回應 unchanged；修訂要提交上一版 digest，保留舊版。狀態唔受重試／修訂影響。
+本次 migration `20261121112726_dayline_publication_library.sql` 只新增獨立物件。每期身份為「擁有人＋系列＋出刊日」；授權名單、個人閱讀狀態、修訂內容分開。預設只授權擁有人。原始 HTML／Markdown 和公佈時的日期、涵蓋日期及來源識別保留；畫面只顯示文字、分段及安全 HTTP(S) 連結，唔會執行郵件 HTML。重試相同 digest 會回應 unchanged；修訂要提交上一版 digest，保留舊版。狀態唔受重試／修訂影響。
 
 回復應先還原至上一個已驗證 Vercel deployment，保留刊物、版本、收藏及設定，舊版不會讀取新增表。要暫停接收可撤銷逐份授權；唔好 DROP 刊物 schema／清空正式庫。權限先以隔離 PostgreSQL 及另一帳戶驗證。此 migration 不會代用戶開啟任何開關。
 

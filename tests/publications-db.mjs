@@ -24,7 +24,7 @@ const issues=inputs.map(preparePublication);
 try{
  await db.exec("create role anon;create role authenticated;create schema auth;create table auth.users(id uuid primary key);create table public.user_profiles(user_id uuid primary key,active boolean not null);create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;grant usage on schema auth to authenticated,anon;grant select on public.user_profiles to authenticated;");
  for(const id of [A,B,C]){await db.query("insert into auth.users values($1)",[id]);await db.query("insert into public.user_profiles values($1,$2)",[id,id!==C]);}
- await db.exec(await readFile(new URL("../supabase/migrations/20261121105452_dayline_publication_library.sql",import.meta.url),"utf8"));
+ await db.exec(await readFile(new URL("../supabase/migrations/20261121112726_dayline_publication_library.sql",import.meta.url),"utf8"));
  for(const d of issues)assert.equal(await ingest(d),"created");
  if(process.argv.includes("--browser")){const {verifyJournalUI}=await import("./browser/publications-flow.mjs");await verifyJournalUI(db,A,B);}
  await actor(A);assert.equal(await count(),0);await run("select public.dayline_set_info('journals',true)");assert.equal(await count(),5);
