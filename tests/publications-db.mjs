@@ -1,6 +1,6 @@
 // Disposable PostgreSQL (WASM), no live credentials. Private authorised seed envelopes enter via stdin only.
 import assert from "node:assert/strict";
-import {readFile} from "node:fs/promises";
+import {readFile,readdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import {pathToFileURL} from "node:url";
 import {resolve} from "node:path";
@@ -15,7 +15,7 @@ const count=()=>value("select public.dayline_unread() v");
 const lookup=(q="",mode="all",category="all")=>run("select x v from public.dayline_issues($1,'2026-11',$2,$3,0) x",[category,q,mode]).then(x=>x.map(y=>y.v));
 const ingest=(doc,prev=null)=>value("select dayline_reading.ingest($1,$2,$3) v",[A,JSON.stringify(doc),prev]);
 const raw={title:"QA 期刊",published:"2026-11-21",from:"2026-11-08",until:"2026-11-21",lead:"測試",format:"markdown",original:"# QA\n\n舊刊 BRCA 摘要 [來源](https://example.org/official)",sourceKind:"codex-scheduled",sourceRef:"qa"};
-let inputs=["home","ngo","chronic","weekly","us"].map(series=>({...raw,series,title:series.toUpperCase()+" QA 期刊"}));
+let inputs=["home","ngo","chronic","weekly","us"].map(series=>({...raw,series,sourceKind:series==="us"?"codex-trial":raw.sourceKind,title:series.toUpperCase()+" QA 期刊"}));
 if(process.argv.includes("--private-stdin")){
  if(process.stdin.isTTY)process.stdin.setRawMode(true);process.stdin.setEncoding("utf8");process.stdout.write("DAYLINE_PRIVATE_INPUT_READY\n");
  const line=await new Promise((ok,fail)=>{let s="";const read=chunk=>{s+=chunk;if(s.length>1200000){fail(Error("input too large"));return;}if(/[\r\n]/.test(s)){process.stdin.off("data",read);process.stdin.pause();ok(s.split(/[\r\n]/)[0]);}};process.stdin.on("data",read);});inputs=JSON.parse(Buffer.from(line,"base64").toString("utf8"));
@@ -26,6 +26,14 @@ try{
  for(const id of [A,B,C]){await db.query("insert into auth.users values($1)",[id]);await db.query("insert into public.user_profiles values($1,$2)",[id,id!==C]);}
  await db.exec(await readFile(new URL("../supabase/migrations/20261121112726_dayline_publication_library.sql",import.meta.url),"utf8"));
  for(const d of issues)assert.equal(await ingest(d),"created");
+ const migDir=new URL("../supabase/migrations/",import.meta.url);const trialMigrations=(await readdir(migDir)).filter(f=>f.endsWith("_distinguish_published_trial.sql"));assert.equal(trialMigrations.length,1);
+ const oldTrial=await value("select id v from dayline_reading.editions where series='us'");
+ await db.exec(await readFile(new URL(trialMigrations[0],migDir),"utf8"));
+ const roadMigs=(await readdir(migDir)).filter(f=>f.endsWith("_home_road_presets.sql"));assert.equal(roadMigs.length,1);await db.exec(await readFile(new URL(roadMigs[0],migDir),"utf8"));
+ await actor(A);await run("select public.dayline_set_routes($1::text[])",[["tm-in","SJ5:TWTM"]]);await assert.rejects(run("select public.dayline_set_routes($1::text[])",[["cht","cht"]]));
+ assert.deepEqual(await value("select road_presets v from public.dayline_info_choices where user_id=$1",[A]),["tm-in","SJ5:TWTM"]);await actor(B);assert.equal((await run("select * from public.dayline_info_choices where user_id=$1",[A])).length,0);
+ await actor();await db.exec("set role anon");await assert.rejects(run("select public.dayline_set_routes('{}'::text[])"));await actor();
+ assert.equal(await value("select id v from dayline_reading.editions where series='us' and is_trial"),oldTrial);
  if(process.argv.includes("--browser")){const {verifyJournalUI}=await import("./browser/publications-flow.mjs");await verifyJournalUI(db,A,B);}
  await actor(A);assert.equal(await count(),0);await run("select public.dayline_set_info('journals',true)");assert.equal(await count(),5);
  await run("insert into public.dayline_web_links(id,owner_id,shelf,title,url) values($1,$1,'site','私用','https://example.test')",[A]);await actor(B);assert.equal((await run("select * from public.dayline_web_links")).length,0);assert.equal((await run("update public.dayline_web_links set title='別人' where id=$1 returning id",[A])).length,0);await actor(A);
@@ -48,6 +56,11 @@ try{
  assert.equal(await deliver(proof,payload),"created");assert.equal(await deliver(proof,payload),"unchanged");await assert.rejects(deliver(proof,{...payload,series:"ngo"}));await assert.rejects(deliver("dlpub_"+"cd".repeat(32),payload));await assert.rejects(run("select public.dayline_issues('all','','','all',0)"));assert.equal(await deliver(proof,null,"no_issue"),"no_issue");
  await actor(A);assert.equal((await run("select x v from public.dayline_sync_status() x"))[0].v.result,"no_issue");await run("select public.dayline_publisher_key('us',null)");await actor();await db.exec("set role anon");await assert.rejects(deliver(proof,payload));
  await actor(C);assert.equal(await count(),0);await assert.rejects(run("select public.dayline_set_info('journals',true)"));
+ await actor();const firstRegular=preparePublication({...raw,series:"us",original:"Regular edition, not the trial."});
+ assert.equal(await ingest(firstRegular),"created");assert.equal(await ingest(firstRegular),"unchanged");assert.equal(await ingest(issues.find(x=>x.series==="us")),"unchanged");
+ assert.equal(Number(await value("select count(*) v from dayline_reading.editions where series='us' and published='2026-11-21'")),2);
+ assert.equal(await value("select id v from dayline_reading.editions where series='us' and is_trial"),oldTrial);
+ console.log("PASS same-date trial and first real edition retained separately; replays create zero extras.");
  console.log("PASS isolated PostgreSQL: editions="+all.length+" medical=4 stock=1; BRCA matches="+hits.length+"; unread 5 → 5 after list/search/save → 4 after read; dedup, revision, owner/grantee isolation, disabled account and scoped push tested.");
  console.log("Source links by series: "+issues.map(i=>i.series+":"+i.blocks.reduce((n,b)=>n+b.links.length,0)).join(", "));
 }finally{await db.close();}

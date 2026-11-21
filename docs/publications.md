@@ -20,6 +20,10 @@
 
 ## 驗證
 
+現有五個本機排程已另加交件，不改收刊對話或時間。Windows 私人中轉工具 `scripts/publisher-relay.ps1` 安裝到出刊帳戶的 LocalAppData（不放 OneDrive）。每系列各有只能投遞的憑證，以 Windows CurrentUser DPAPI 加密；只有公用驗證雜湊入庫。不持有 Panel 登入、資料庫密碼、或其他帳戶權限。出刊先將該份原稿加密排隊，收到伺服器收條後才移除待送本；失敗留待同一個排程重試，不另開發刊排程。不應更換電腦或 Windows 帳戶後直接複製加密憑證。憑證有效 180 日，可逐份撤銷或由擁有人續授權；到期不擴權或靜默繞過。
+
+以 `-Action Confirm -Series <系列> -Day YYYY-MM-DD` 核實指定日的收條；佇列清空不是成功證據。每系列首份真刊會自動將同一原文重送，只有伺服器回覆同一版本的 unchanged 才記錄首刊重送通過。正式出刊記錄需與原排程當日實際發表對照；不要將未輪到的系列標成已實測。2026-11-21 的美股正式刊與同日試刊各自有獨立 ID、原文及閱讀狀態。同日 regular 重試只會對上 regular，唔會覆寫 trial。
+
 - 單元測試：`node --experimental-strip-types --test --test-isolation=none tests/*.test.ts`。
 - `tests/publications-db.mjs`：隔離 PostgreSQL、真實 RLS／RPC、重試、修訂、搜索片段、獨立帳戶狀態、到期及撤銷授權。設定 `DAYLINE_PGLITE` 指向本機 PGlite dist/index.js；私有真刊可用 `--private-stdin`，只在記憶體傳入，毋須另外儲存郵件。
 - `--browser` 搭配 localhost 正式模式 build，跑手機＋桌面：從首頁進未讀、收藏不改已讀、網絡失敗不改已讀、成功開啟／段落定位、重開同帳戶取回收藏、其他帳戶直接進入都讀唔到。驗證用測試身份不等於用過真人登入。
