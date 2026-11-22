@@ -25,4 +25,4 @@ OpenAPI：`public/grok-personal-openapi.yaml`。該檔描述 HTTP 介面，不�
 
 先在隔離的 Supabase 環境驗證 migration（尤其是 active admin 身分、跨使用者邊界、失效 Code、重新登入、未確認不變更任何紀錄）。往正式環境推出時先套用 migration，再部署相符 Git commit；待 Derek 在正式站主動簽發，方可在他的私人 Grok 工具驗收。不要將 Preview 或測試用 Code 設到正式 Grok。
 
-回復時先停用新連接（使 Code 和未完成草稿失效），再按相應 deployment 回退應用程式。如果設定頁不可用，由資料庫管理員在對應環境驗證後使用 `supabase/rollback-20261121193738-grok-personal-approved-archive.sql`。留存已封存的原資料和 audit metadata，不刪 policy/audit tables，也不要回退舊的三日摘要／學校授權 migration。緊急時不要以停用所有 Supabase Auth 或清除舊授權代替，免影響其他使用者。
+回復時先停用新連接（使 Code 和未完成草稿失效），再按相應 deployment 回退應用程式。如果設定頁不可用，由資料庫管理員在對應環境驗證後使用 `supabase/rollback-20261122032557-grok-personal-approved-archive.sql`。留存已封存的原資料和 audit metadata，不刪 policy/audit tables，也不要回退舊的三日摘要／學校授權 migration。緊急時不要以停用所有 Supabase Auth 或清除舊授權代替，免影響其他使用者。

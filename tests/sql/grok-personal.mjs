@@ -123,7 +123,7 @@ try {
   await db.query("insert into public.task_steps values($1,$2,$3)", [thirdPartyStepTask,owner,other]);
   await db.query("insert into public.focus_sessions values($1,$2,'running')", [focusedTask,owner]);
   await db.query("insert into public.calendar_event_links values($1)", [providerCalendar]);
-  const migration = new URL("../../supabase/migrations/20261121193738_grok_personal_approved_archive.sql", import.meta.url);
+  const migration = new URL("../../supabase/migrations/20261122032557_grok_personal_approved_archive.sql", import.meta.url);
   await db.exec(await readFile(migration, "utf8"));
   assert.equal(await one("select count(*)::int v from grok_personal_internal.connections"), 0);
   await asRole("anon");
@@ -227,7 +227,7 @@ try {
   assert.equal((await connect("rotate", hash, session)).connected, true);
   const stopped = await queue("school", school);
   await raw();
-  await db.exec(await readFile(new URL("../../supabase/rollback-20261121193738-grok-personal-approved-archive.sql",import.meta.url),"utf8"));
+  await db.exec(await readFile(new URL("../../supabase/rollback-20261122032557-grok-personal-approved-archive.sql",import.meta.url),"utf8"));
   assert.equal(await one("select status v from grok_personal_internal.archive_requests where id=$1", [stopped.requestId]), "disabled");
   assert.equal(await one("select archived_at is not null v from public.transactions where id=$1", [cash]), true);
   assert.equal(await one("select archived_at is null v from public.operating_items where id=$1", [school]), true);
