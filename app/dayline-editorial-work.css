@@ -9,8 +9,23 @@
   gap: clamp(14px,2cqw,24px);
   align-items: start;
 }
-.dl-editorial-board .dl-focus { padding: clamp(18px,2.35cqw,31px); background: #f8edd5; border-color: #e8d9b8; color: #243139; }
+/* The Now card stays pale yellow in every theme. Pair its text and chips
+   with that surface rather than inheriting the dark shell's light text. */
+.dl-editorial-board .dl-focus {
+  --ink: #243139;
+  --soft: #5a4938;
+  --now-accent: #6b4b22;
+  --art-edge: #805d38;
+  --paper-art: #fff8e9;
+  --hero-rule: #e8d9b8;
+  padding: clamp(18px,2.35cqw,31px);
+  background: #f8edd5;
+  border-color: var(--hero-rule);
+  color: var(--ink);
+}
 .dl-editorial-board .dl-focus h2 { width: auto; max-width: none; color: #1d343d; }
+.dl-editorial-board .dl-focus :is(.dl-focus-chip,.dl-step-kicker) { color: var(--now-accent); }
+.dl-editorial-board .dl-focus .dl-focus-chip > span { background: currentColor; }
 .dl-editorial-board .dl-focus-tags { flex-wrap: wrap; }
 .dl-editorial-board .dl-first { margin-top: 1.05rem; }
 .dl-editorial-board .dl-first .dl-resume-note { margin-top: .4rem; color: #5a5751; font-size: .8rem; font-weight: 450; }

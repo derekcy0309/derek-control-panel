@@ -29,6 +29,18 @@ const appleEvent = { id:"fixture-apple",uid:"fixture-apple",title:"測試 iPhone
 const photoDir = process.env.DAYLINE_EDITORIAL_SCREENSHOTS;
 if (photoDir) await mkdir(photoDir,{recursive:true});
 
+function contrastRatio(foreground, background) {
+ const luminance = color => {
+  assert.match(color, /^rgb\(/, `Expected an opaque sRGB color, got ${color}`);
+  return color.match(/\d+(?:\.\d+)?/g).map(Number).map(value => {
+   const s = value / 255;
+   return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4;
+  }).reduce((sum, channel, i) => sum + channel * [.2126, .7152, .0722][i], 0);
+ };
+ const a = luminance(foreground), b = luminance(background);
+ return (Math.max(a,b) + .05) / (Math.min(a,b) + .05);
+}
+
 try {
  for (const width of [360,1280]) {
   const ctx = await browser.newContext({ viewport:{width,height:900}, serviceWorkers:"block", locale:"zh-HK", timezoneId:"Asia/Hong_Kong", reducedMotion:"reduce" });
@@ -87,6 +99,26 @@ try {
    const photo=(label)=>photoDir?p.screenshot({path:fileURLToPath(new URL(`./${label}-${width}.png`,pathToFileURL(photoDir+"/"))),fullPage:true,animations:"disabled",style:"nextjs-portal{display:none!important}"}):null;
    await p.goto(origin+"/");const start=p.getByRole("link",{name:"開始呢件事",exact:true});await start.waitFor();
    await p.getByText(tasks[0].next_action,{exact:true}).first().waitFor();
+   const nowCard=p.locator(".dl-editorial-board .dl-focus");
+   for (const theme of ["light","dark"]) {
+    await p.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
+    const samples=await nowCard.evaluate(card=>["h2",".dl-first p",".dl-step-kicker",".dl-focus-chip",".dl-focus-order",".dl-tag",".dl-primary",".dl-guide-caption"].map(selector=>{
+     const el=card.querySelector(selector);
+     if (!el) throw new Error(`Missing ${selector}`);
+     let surface=el;
+     while (getComputedStyle(surface).backgroundColor==="rgba(0, 0, 0, 0)" && surface.parentElement) surface=surface.parentElement;
+     return {selector,foreground:getComputedStyle(el).color,background:getComputedStyle(surface).backgroundColor};
+    }));
+    for (const {selector,foreground,background} of samples) {
+     const ratio=contrastRatio(foreground,background);
+     assert.ok(ratio>=4.5,`「而家做」 ${width}px ${theme} ${selector}: ${ratio.toFixed(2)}:1 (${foreground} on ${background})`);
+    }
+    await fit(`「而家做」 ${theme}`);
+    if (theme==="dark") await photo("today-dark");
+    console.log(`PASS 「而家做」 ${width}px ${theme}: all 8 text colors at least 4.5:1`);
+   }
+   await p.evaluate(()=>{document.documentElement.dataset.theme="light";});
+   if (process.env.DAYLINE_NOW_CONTRAST_ONLY === "1") { assert.deepEqual(errors,[]); continue; }
    await p.getByText(appleEvent.title,{exact:true}).first().waitFor({state:"attached"});
    assert.equal(await p.getByRole("link",{name:/期未讀/}).count(),0);
    assert.equal(await p.locator(".dl-traffic-mini,.dl-home-fares").count(),0);
