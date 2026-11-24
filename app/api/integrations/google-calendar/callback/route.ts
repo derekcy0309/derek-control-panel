@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   const suppliedState = request.nextUrl.searchParams.get("state") ?? "";
   const cookieState = request.cookies.get("dcp_google_oauth")?.value ?? "";
   const state = verifyGoogleOAuthState(suppliedState);
-  const redirect = new URL("/settings", context.origin);
+  const redirect = new URL("/settings#google-calendar", context.origin);
 
   if (!code || !state || suppliedState !== cookieState || state.userId !== context.user.id) {
     redirect.searchParams.set("calendar", "invalid_state");
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       account_email: accountEmail,
       calendar_id: selected.id,
       calendar_name: selected.summary,
+      ...(state.target === "work" ? { show_work_in_agenda: false } : {}),
       status: "connected",
       scopes: tokens.scope?.split(" ") ?? [],
       access_expires_at: new Date(Date.now() + tokens.expires_in * 1000).toISOString(),

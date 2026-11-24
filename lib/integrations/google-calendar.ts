@@ -37,6 +37,8 @@ export type GoogleCalendarListEntry = {
   accessRole: "reader" | "writer" | "owner" | "freeBusyReader";
 };
 
+export class GoogleCalendarAuthorizationError extends Error {}
+
 const oauthScopes = [
   "openid",
   "email",
@@ -182,20 +184,25 @@ export function decryptCalendarToken(value: string) {
 
 export async function getValidGoogleAccessToken(
   client: SupabaseClient,
-  connection: GoogleConnection
+  connection: GoogleConnection,
+  options?: { signal?: AbortSignal; persist?: boolean }
 ) {
-  const tokenResult = await client.rpc("read_google_calendar_tokens", {
+  const tokenQuery = client.rpc("read_google_calendar_tokens", {
     p_connection_id: connection.id
   });
+  const tokenResult = await (options?.signal ? tokenQuery.abortSignal(options.signal) : tokenQuery);
   if (tokenResult.error) throw new Error(tokenResult.error.message);
   const stored = Array.isArray(tokenResult.data) ? tokenResult.data[0] : tokenResult.data;
-  if (!stored?.access_token_ciphertext) throw new Error("Google Calendar 授權資料不存在。");
+  if (!stored?.access_token_ciphertext) throw new GoogleCalendarAuthorizationError("Google Calendar 授權資料不存在。");
   const accessToken = decryptCalendarToken(stored.access_token_ciphertext);
   const expiresAt = connection.access_expires_at ? new Date(connection.access_expires_at).getTime() : 0;
   if (expiresAt > Date.now() + 60_000) return accessToken;
-  if (!stored.refresh_token_ciphertext) throw new Error("Google Calendar 需要重新連接。");
+  if (!stored.refresh_token_ciphertext) throw new GoogleCalendarAuthorizationError("Google Calendar 需要重新連接。");
 
-  const refreshed = await refreshGoogleAccessToken(decryptCalendarToken(stored.refresh_token_ciphertext));
+  const refreshed = await refreshGoogleAccessToken(decryptCalendarToken(stored.refresh_token_ciphertext), options?.signal);
+  // A dashboard read must not race account replacement by writing an older
+  // OAuth grant into the shared outbound sync connection.
+  if (options?.persist === false) return refreshed.access_token;
   const saved = await client.rpc("store_google_calendar_tokens", {
     p_connection_id: connection.id,
     p_access_token_ciphertext: encryptCalendarToken(refreshed.access_token),
@@ -345,7 +352,7 @@ export async function revokeGoogleToken(token: string) {
   }).catch(() => undefined);
 }
 
-async function refreshGoogleAccessToken(refreshToken: string) {
+async function refreshGoogleAccessToken(refreshToken: string, signal?: AbortSignal) {
   const config = googleConfig();
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -356,9 +363,15 @@ async function refreshGoogleAccessToken(refreshToken: string) {
       refresh_token: refreshToken,
       grant_type: "refresh_token"
     }),
-    cache: "no-store"
+    cache: "no-store",
+    signal
   });
-  if (!response.ok) throw new Error("Google Calendar 授權已失效，請重新連接。");
+  if (!response.ok) {
+    if (response.status === 400 || response.status === 401 || response.status === 403) {
+      throw new GoogleCalendarAuthorizationError("Google Calendar 授權已失效，請重新連接。");
+    }
+    throw new Error("Google Calendar 暫時未能更新授權，請稍後再試。");
+  }
   return response.json() as Promise<GoogleTokenResponse>;
 }
 

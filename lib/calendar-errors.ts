@@ -21,7 +21,9 @@ const messages = {
  CALENDAR_CREDENTIAL:"Calendar 連接憑證未能讀取，請到 Settings → 私人 Calendar 重新連接。",
  CALENDAR_SELECTION:"已選 Calendar 與目前連接不符，請到 Settings → 私人 Calendar 重新選擇。",
  CALENDAR_DATABASE:"暫時未能儲存 Calendar 更新，請稍後重試。",
- APPLE_REFRESH_FAILED:"Apple Calendar 未能更新，請稍後重試或在 Settings 檢查連接。"
+ APPLE_REFRESH_FAILED:"Apple Calendar 未能更新，請稍後重試或在 Settings 檢查連接。",
+ GOOGLE_RECONNECT:"工作 Google Calendar 授權或日曆未能通過檢查，請到設定檢查工作 Calendar。",
+ GOOGLE_UNAVAILABLE:"暫時讀唔到工作 Google Calendar，請稍後再按更新。"
 } as const;
 export type CalendarErrorCode = keyof typeof messages;
 export function calendarErrorCode(error: unknown): CalendarErrorCode {

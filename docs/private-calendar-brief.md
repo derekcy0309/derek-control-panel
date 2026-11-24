@@ -23,7 +23,9 @@ Settings → 私人 Calendar 及 Grok 日報：
 3. 明確開放一個本人 Grok grant 的 Calendar 摘要／本人現有及日後 Task。此權限可由停用整個 Agent Code 撤銷；Notes 的逐項範圍不擴大。
 4. 將 Routine 指令送到本人的 Grok Bot 私人對話：每日 Asia/Hong_Kong 08:30，只讀 `/agent/brief` 一份文字並回報當日起三日。先試跑並核對儲存時間；Panel 不會把「複製指令」當作已建立排程。
 
-現有 Google 同步（Panel confirmed schedule → 選定 Google Calendar）不改動。此版本不會將 Google Calendar 外部事件再經 iCloud 重複匯入。iPhone Calendar 裏的 Google／Exchange 行程並非 iCloud 行程，不能聲稱 Apple 連接會讀到它們。新總覽現有來源是本人 Panel event 及本人選定 iCloud Calendar。
+現有 Google 同步（Panel confirmed schedule → 選定 Google Calendar）不改動。需要顯示 Google 原有行程，可到「設定 → Google Calendar → 工作 Calendar」，確認已連接帳戶及日曆，再開啟「喺『行程同限期』顯示」。只在本人首頁額外讀取所選工作日曆的三日行程，不加到月曆、開工提示或 Grok 摘要。此開關預設關閉，更換帳戶或日曆後要重開；要更改行程仍到 Google Calendar。iPhone 上的 Google／Exchange 行程不是 iCloud 行程，並不經 Apple 連接讀取。
+
+Google 讀取使用現有連接，對 events API 只作有時限的 GET；不儲存 Google 行程，亦不從讀取流程覆寫原有 OAuth 憑證。只讀取顯示及去重需要的欄位，私人／機密標題顯示「私人行程」，不讀備註、地點或出席者。Dayline 已送去 Google 的副本按同步標記去重，不用標題猜測。取得 Google 資料途中如關閉開關、更換連接或 Calendar，應丟棄舊結果。讀取失敗不阻止 Apple、Dayline 或 Deadline 顯示。
 
 ## 私隱與技術
 
@@ -47,6 +49,8 @@ Migration `20261114102407_private_calendar_daily_brief.sql` 只新增表、index
 
 沒有新增環境變數；沿用現有 Supabase server key 及 Calendar 加密 key。Grok 排程由其 cloud Routine 持有，不在 Panel 再建立重複 Cron／Email。
 
+工作 Google Calendar migration `*_google_work_calendar_agenda.sql` 只在已有 owner RLS 的連接表加入預設關閉偏好、Work 限制及更換來源時的 reset trigger。回復時先部署上一版本，再執行相應 `*.rollback.sql`；只移除新偏好，不刪除工作連接、Google 行程或 Dayline 資料。
+
 ## 驗證及安全修補
 
 - `tests/calendar-brief.test.ts`：HK 三日、跨月年、未完成 Deadline、優先序、全日／跨日、去重、stale／overflow、host／method／redirect 限制、recurrence cancellation，且不保留 ICS description。
@@ -56,6 +60,7 @@ Migration `20261114102407_private_calendar_daily_brief.sql` 只新增表、index
 - `tests/browser/simple-mode.mjs`：三個角色、360／1280px，各自 Dashboard／Deadline、原有 Task／Tags／quiet／草稿流程。
 - `tests/browser/grok-agent.mjs`：精簡摘要、不顯示新增按鈕；Settings 明確 consent、Calendar 不自動全選、密碼不保存草稿；原有 Agent flows。
 - `tests/browser/apple-calendar-month.mjs`：以隔離帳戶驗證手機／電腦、翻月、三日外行程、跨午夜／全日日期、失敗重試，以及首頁仍只讀三日。
+- `tests/google-work-agenda*.test.ts`、`tests/sql/google-work-agenda.mjs`、`tests/browser/work-google-agenda.mjs`：固定唯讀 API、日期、私隱及去重，關閉／更換來源時拒絕舊結果，RLS 帳戶隔離及 rollback，360／1280 px 開關、儲存失敗及首頁顯示。這些使用隔離資料／模擬 Google，不代表已讀取正式帳戶。
 
 在加入私人 credential 前一併做相容性安全修補：Next／eslint-config-next 15.5.29，zod 4.6.6，PostCSS 8.5.33，sharp 0.35.5，source-map-js 1.2.2，nanoid 3.3.18。npm production audit 為 0（當次掃描，不是永久無漏洞保證）。不升 Next／React 大版本。
 

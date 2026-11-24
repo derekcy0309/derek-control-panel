@@ -4,6 +4,7 @@ import { decryptCalendarToken } from "../integrations/google-calendar.ts";
 import { fetchAppleEvents, type AppleCalendar } from "../integrations/apple-calendar.ts";
 import { calendarErrorCode } from "../calendar-errors.ts";
 import { makeStopSnapshot } from "../work-stop.ts";
+import { readDashboardGoogleWorkAgenda } from "./google-work-agenda.ts";
 
 export function calendarService() {
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -62,15 +63,18 @@ export async function readWorkStop(owner:string,client:SupabaseClient,service=ca
  return makeStopSnapshot([...panelEvents(panel.data??[]),...apple.events],[apple.source],apple.truncated||(panel.data?.length??0)>200,now.toISOString());
 }
 // owner MUST originate from verified auth or agent_brief_owner; never HTTP input.
-export async function readCalendarBrief(owner:string,client:SupabaseClient,service=calendarService(),now=new Date(),humanDashboard=false) {
+export async function readCalendarBrief(owner:string,client:SupabaseClient,service=calendarService(),now=new Date(),humanDashboard=false,includeGoogleWork=false) {
  const w=briefWindow(now);
- const [tasks,panel,apple]=await Promise.all([
+ const [tasks,panel,apple,google]=await Promise.all([
   client.from("tasks").select("id,title,due_date,requested_priority,status").eq("owner_id",owner).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").gte("due_date",w.from).lt("due_date",w.until).order("due_date").order("requested_priority").limit(201),
   panelCalendarRows(client,owner,w,false,humanDashboard),
-  refreshApple(owner,false,service,now)
+  refreshApple(owner,false,service,now),
+  humanDashboard && includeGoogleWork ? readDashboardGoogleWorkAgenda(client,owner,w) : null
  ]);
  if(tasks.error||panel.error)throw new Error("CALENDAR_DATABASE");
  const deadlines:BriefDeadline[]=(tasks.data??[]).slice(0,200).map(t=>({id:t.id,title:t.title,due:t.due_date,priority:t.requested_priority??3,status:t.status}));
  const events=panelEvents(panel.data??[],humanDashboard);
- return makeCalendarBrief([...events,...apple.events],deadlines,[{label:"Panel",state:"fresh",lastSync:now.toISOString()},apple.source],now,apple.truncated||(tasks.data?.length??0)>200||(panel.data?.length??0)>200);
+ return makeCalendarBrief([...events,...apple.events,...(google?.events??[])],deadlines,
+  [{label:"Panel",state:"fresh",lastSync:now.toISOString()},apple.source,...(google?.source?[google.source]:[])],
+  now,apple.truncated||Boolean(google?.truncated)||(tasks.data?.length??0)>200||(panel.data?.length??0)>200);
 }

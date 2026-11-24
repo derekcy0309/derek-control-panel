@@ -1,6 +1,7 @@
 import { calendarErrorMessage, type CalendarErrorCode } from "./calendar-errors.ts";
 export const briefTimezone = "Asia/Hong_Kong";
-export type BriefEvent = { id: string; uid: string; title: string; start: string; end: string; allDay: boolean; source: "Apple" | "Panel"; tentative?: boolean; family?: boolean };
+export const GOOGLE_WORK_SOURCE = "工作 · Google";
+export type BriefEvent = { id: string; uid: string; title: string; start: string; end: string; allDay: boolean; source: "Apple" | "Panel" | typeof GOOGLE_WORK_SOURCE; tentative?: boolean; family?: boolean };
 export type BriefDeadline = { id: string; title: string; due: string; priority: number; status: string };
 export type FamilyDate = { id:string; title:string; date:string; kind:"family"|"school" };
 export type DashboardBrief = CalendarBrief & { familyDates?: FamilyDate[]; familyWarning?:string; nextSchoolDate?: FamilyDate|null; nextSchoolWarning?:boolean };

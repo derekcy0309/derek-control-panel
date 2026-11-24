@@ -14,7 +14,8 @@ export async function GET(request:NextRequest) {
  try {
   const now=new Date();
   if(guide)return privateJson(await readWorkStop(ctx.user.id,ctx.client,undefined,now));
-  const [brief,family,nextSchool]=await Promise.all([readCalendarBrief(ctx.user.id,ctx.client,undefined,now,true),readDashboardFamilyDates(ctx.client,ctx.user.id,now).catch(()=>null),
+  const includeGoogleWork=Boolean(request.cookies.get("dcp_access")?.value)&&!ctx.user.is_anonymous;
+  const [brief,family,nextSchool]=await Promise.all([readCalendarBrief(ctx.user.id,ctx.client,undefined,now,true,includeGoogleWork),readDashboardFamilyDates(ctx.client,ctx.user.id,now).catch(()=>null),
     readNextDashboardSchoolDate(ctx.client,ctx.user.id,now).then(date=>({date,failed:false})).catch(()=>({date:null,failed:true}))]);
   return privateJson({...brief,familyDates:family?.dates??[],nextSchoolDate:nextSchool.date,nextSchoolWarning:nextSchool.failed||undefined,familyWarning:family===null?"學校／家庭日期暫時未能讀取，請按更新再試。":family.truncated?"學校／家庭日期未全部列出，請打開原清單。":undefined});
  }
