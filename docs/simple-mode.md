@@ -53,6 +53,8 @@ Security Advisor：新增 Tags 表及 RPC 沒有 finding。原有專案仍有舊
 
 ## 部署及回復
 
+「分類轉 Tags」用 `20261124063352_dayline_task_classifications_as_tags.sql` 一次過補本人私人 Tag 同連結，不改已存在 Task。需要回復介面時可退回上一版 app，保留 Tags 同用戶之後嘅編輯；唔好重跑或刪除遷移 marker，以免復活已移除嘅分類。
+
 先在本機驗證 migration，再套用 additive schema，部署 Git feature branch Preview，通過驗收後才更新 main／Production。每個 Vercel build 的 commit SHA 保留在 Settings → Build Info。
 
 首選回復方式：將 Production 指回之前的 `42f2adac93f09f72a2292d7c216860d0595bc30b` 部署，保留新增 Tags 表及資料；舊 app 會忽略新表。只有需要停用新 RPC 時才在 app rollback 後執行 `supabase/rollback-20261113172120-personal-task-tags.sql`；不 DROP 表、清資料或改帳戶。重新啟用只需恢復同三個 RPC 的 authenticated EXECUTE。

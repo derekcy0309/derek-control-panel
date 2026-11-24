@@ -9,7 +9,7 @@ const accounts = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-82
 const ids = Array.from({ length: 11 }, (_, n) => `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa${n.toString(16)}`);
 const note = (dir, file) => readFile(new URL(`../../supabase/${dir}/${file}`, import.meta.url), "utf8");
 const baseline = await note("migrations", "20261113172120_personal_task_tags.sql");
-const migration = await note("migrations", "20261124061808_dayline_task_classifications_as_tags.sql");
+const migration = await note("migrations", "20261124063352_dayline_task_classifications_as_tags.sql");
 const role = async i => {
   await db.exec("reset role");
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [accounts[i]]);
