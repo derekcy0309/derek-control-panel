@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { TaskQueueRow } from "@/components/tasks/TaskQueueRow";
 import type { Task } from "@/lib/types";
@@ -12,6 +12,7 @@ export function TaskQueueSection({
   description,
   tasks,
   tagNames,
+  tagColors,
   tone = "neutral",
   defaultOpen = false,
   previewLimit,
@@ -29,6 +30,7 @@ export function TaskQueueSection({
   description: string;
   tasks: Task[];
   tagNames: ReadonlyMap<string, string>;
+  tagColors: ReadonlyMap<string, CSSProperties>;
   tone?: Tone;
   defaultOpen?: boolean;
   previewLimit?: number;
@@ -75,6 +77,7 @@ export function TaskQueueSection({
                   key={task.id}
                   task={task}
                   tagNames={tagNames}
+                  tagColors={tagColors}
                   tone={tone}
                   completed={completed}
                   inToday={todayTaskIds?.has(task.id)}

@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Printer } from "lucide-react";
+import { Check, Printer } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
 import { Button } from "@/components/ui/Button";
 import { TodoPrintSheet } from "@/components/tasks/TodoPrintSheet";
 import { useTodayData } from "@/hooks/useTodayData";
 import { hkDateIso } from "@/lib/planning";
+import { taskTagColors } from "@/lib/task-tag-colors";
+import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { customPrintableTasks, printableTaskPool, todayPrintableTasks } from "@/lib/todo-print";
 import type { TodayData } from "@/lib/types";
 
@@ -27,7 +29,7 @@ function TodoListContent({ data }: { data: TodayData }) {
   const today = hkDateIso();
   const [scope, setScope] = useState<"today" | "custom">("today");
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
-  const [category, setCategory] = useState("all");
+  const [tagFilter, setTagFilter] = useState<TaskTagFilter>(allTaskTags);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [printError, setPrintError] = useState("");
@@ -35,14 +37,18 @@ function TodoListContent({ data }: { data: TodayData }) {
   const todayTasks = useMemo(() => todayPrintableTasks(pool, data.planning, data.currentUser.id, today), [pool, data.planning, data.currentUser.id, today]);
   const candidates = scope === "today" ? todayTasks : customPrintableTasks(pool, todayTasks);
   const selected = candidates.filter(task => selectedIds === null || selectedIds.has(task.id));
-  const visible = candidates.filter(task => (category === "all" || task.personal_tag_ids?.includes(category))
+  const tags = data.taskTags ?? [];
+  const tagColors = taskTagColors(tags);
+  const activeTags = activeTaskTagFilter(tagFilter, tagColors.keys());
+  const showAllTags = activeTags !== "untagged" && activeTags.size === 0;
+  const visible = candidates.filter(task => matchesTaskTagFilter(task.personal_tag_ids, activeTags)
     && task.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const pages = Math.max(1, Math.ceil(visible.length / 20));
   const currentPage = Math.min(page, pages - 1);
   const displayed = visible.slice(currentPage * 20, currentPage * 20 + 20);
 
   function changeScope(value: "today" | "custom") {
-    setScope(value); setSelectedIds(value === "today" ? null : new Set()); setPage(0); setCategory("all"); setSearch("");
+    setScope(value); setSelectedIds(value === "today" ? null : new Set()); setPage(0); setTagFilter(allTaskTags); setSearch("");
   }
   function toggle(id: string) {
     setSelectedIds(current => {
@@ -70,12 +76,35 @@ function TodoListContent({ data }: { data: TodayData }) {
       </div></fieldset>
       <p className="muted mt-3 text-sm">已完成、等待中、受阻及封存項目不列入待辦清單。今日清單沿用你已確認的安排。</p>
       {candidates.length ? <>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label><span className="label">Tags</span><select aria-label="分類" className="field mt-1" value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}><option value="all">全部 Tags（跟隨已安排次序）</option>{(data.taskTags ?? []).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <div className="mt-4 grid gap-3">
+          <fieldset className="min-w-0 space-y-2">
+            <legend className="label">Tags 篩選</legend>
+            <p className="muted text-xs">可多選；符合其中一個 Tag 就會顯示。唔會改已揀嘅列印任務。</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" aria-pressed={showAllTags} className={`simple-tag-filter ${showAllTags ? "is-active" : ""}`} onClick={() => { setTagFilter(allTaskTags); setPage(0); }}>全部</button>
+              {tags.map(tag => {
+                const pressed = activeTags !== "untagged" && activeTags.has(tag.id);
+                return <button type="button" key={tag.id} data-tag-id={tag.id} aria-pressed={pressed} className="simple-tag-filter task-tag-color inline-flex min-w-0 max-w-full items-center gap-1.5" style={tagColors.get(tag.id)} onClick={() => { setTagFilter(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, tagColors.keys()), tag.id)); setPage(0); }}>
+                  {pressed ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}<span className="min-w-0 break-words">{tag.name}</span>
+                </button>;
+              })}
+            </div>
+          </fieldset>
           <label><span className="label">搜尋任務</span><input className="field mt-1" type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder="輸入任務名稱" /></label>
         </div>
         <div className="mt-3 flex items-center justify-between gap-3"><p className="text-sm font-semibold" role="status">已選 {selected.length} 項（包括其他分類及頁面）</p><Button variant="ghost" onClick={() => setSelectedIds(new Set())}>清除選取</Button></div>
-        <div className="mt-2 space-y-2" aria-label="揀選列印任務">{displayed.map(task => <label key={task.id} className="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3"><input className="mt-1 h-5 w-5 shrink-0 accent-indigo-600" type="checkbox" checked={selectedIds === null || selectedIds.has(task.id)} onChange={() => toggle(task.id)} /><span className="min-w-0 break-words"><span className="block font-semibold">{task.title}</span><span className="muted text-xs">{(data.taskTags ?? []).filter(tag => task.personal_tag_ids?.includes(tag.id)).map(tag => tag.name).join("／") || "未分類"} · 期限：{task.due_date ?? "未設定"}</span></span></label>)}</div>
+        <div className="mt-2 space-y-2" aria-label="揀選列印任務">{displayed.map(task => {
+          const assignedTags = tags.filter(tag => task.personal_tag_ids?.includes(tag.id));
+          return <label key={task.id} className="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-3">
+            <input className="mt-1 h-5 w-5 shrink-0 accent-indigo-600" type="checkbox" checked={selectedIds === null || selectedIds.has(task.id)} onChange={() => toggle(task.id)} />
+            <span className="min-w-0 break-words"><span className="block font-semibold">{task.title}</span>
+              <span className="muted mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                {assignedTags.length ? assignedTags.map(tag => <span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-2 py-0.5 font-semibold" style={tagColors.get(tag.id)}>{tag.name}</span>) : <span>未分類</span>}
+                <span>期限：{task.due_date ?? "未設定"}</span>
+              </span>
+            </span>
+          </label>;
+        })}</div>
         {!displayed.length ? <p className="muted mt-3">沒有符合篩選的任務；可清除搜尋或更改分類。</p> : null}
         {pages > 1 ? <nav className="mt-3 flex items-center justify-between gap-2" aria-label="列印任務分頁"><Button variant="secondary" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一頁</Button><span className="text-sm">{currentPage + 1}／{pages}</span><Button variant="secondary" disabled={currentPage + 1 === pages} onClick={() => setPage(currentPage + 1)}>下一頁</Button></nav> : null}
       </> : <div className="mt-4 rounded-xl bg-slate-50 p-4"><p>{scope === "today" ? "今日未有已安排的待辦工作。可按「自行揀選任務」製作清單，或先在行動中心安排今日工作。" : "目前沒有可列印的待辦工作。"}</p><Link className="mt-2 inline-flex min-h-11 items-center font-semibold text-indigo-700" href="/">返回行動中心</Link></div>}

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Check } from "lucide-react";
 import { controlAction, loadTaskTags } from "@/lib/control-api";
 import { taskTagNameError } from "@/lib/simple-mode";
+import { taskTagColors } from "@/lib/task-tag-colors";
 import type { PersonalTaskTag } from "@/lib/types";
 
 export function TaskTagPicker({ value, onChange, taskId, onLoadedValue, onCatalog, initialCatalog, disabled = false }: {
@@ -72,16 +74,31 @@ export function TaskTagPicker({ value, onChange, taskId, onLoadedValue, onCatalo
     finally { setBusy(false); }
   }
 
-  const selected = value.filter((id) => tags.some((tag) => tag.id === id));
-  const selectedNames = tags.filter(tag => selected.includes(tag.id)).map(tag => tag.name);
+  const colors = useMemo(() => taskTagColors(tags), [tags]);
+  const selected = value.filter((id) => colors.has(id));
+  const selectedSet = new Set(selected);
+  const selectedTags = tags.filter(tag => selectedSet.has(tag.id));
   return <details className="min-w-0 rounded-xl border border-slate-200 px-3" onToggle={event => { if (event.currentTarget.open) setOpened(true); }}>
-    <summary className="min-h-11 cursor-pointer py-2.5 font-semibold text-slate-700"><span className="text-indigo-700">＋Tag（可選）</span><span className="ml-2 break-words text-sm font-normal text-slate-600">{selectedNames.length ? selectedNames.slice(0, 3).join(" · ") : "無 Tag"}{selectedNames.length > 3 ? ` · ＋${selectedNames.length - 3}` : ""}</span></summary>
+    <summary className="min-h-11 cursor-pointer py-2.5 font-semibold text-slate-700">
+      <span className="text-indigo-700">＋Tag（可選）</span>
+      <span className="ml-2 inline-flex max-w-full flex-wrap items-center gap-1 align-middle text-sm font-normal text-slate-600">
+        {selectedTags.length ? selectedTags.slice(0, 3).map(tag => <span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-2 py-0.5 text-xs font-semibold" style={colors.get(tag.id)}>{tag.name}</span>) : "無 Tag"}
+        {selectedTags.length > 3 ? <span>＋{selectedTags.length - 3}</span> : null}
+      </span>
+    </summary>
     <fieldset className="min-w-0 pb-3" disabled={disabled || busy}>
     <legend className="sr-only">Tags 分類</legend>
+    {tags.length ? <p className="mt-2 text-xs text-slate-600">可以同時揀多個 Tag，撳多一次取消。</p> : null}
     {loading ? <p className="mt-2 text-sm text-slate-500" role="status">載入 Tags…</p> : <div className="mt-2 flex flex-wrap gap-2" aria-label="揀選 Tags">
-      {tags.map((tag) => <button key={tag.id} type="button" aria-pressed={selected.includes(tag.id)}
-        className={`min-h-11 break-words rounded-xl border px-4 py-2 text-sm font-bold ${selected.includes(tag.id) ? "border-indigo-500 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-500" : "border-slate-200 bg-white text-slate-600"}`}
-        onClick={() => onChange(selected.includes(tag.id) ? selected.filter((id) => id !== tag.id) : [...selected, tag.id].slice(0, 20))}>{tag.name}</button>)}
+      {tags.map((tag) => {
+        const pressed = selectedSet.has(tag.id);
+        return <button key={tag.id} data-tag-id={tag.id} type="button" aria-pressed={pressed}
+          className="task-tag-color inline-flex min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-bold"
+          style={colors.get(tag.id)}
+          onClick={() => onChange(pressed ? selected.filter((id) => id !== tag.id) : [...selected, tag.id].slice(0, 20))}>
+          {pressed ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}<span className="min-w-0 break-words">{tag.name}</span>
+        </button>;
+      })}
       {!tags.length && !error ? <p className="text-sm text-slate-600">未有 Tags；下面可以加一個。已刪除的 Tags 唔會自動加返。</p> : null}
       {selected.length ? <button type="button" className="min-h-11 px-2 text-sm font-semibold text-slate-600 underline" onClick={() => onChange([])}>清除全部 Tags</button> : null}
     </div>}
@@ -93,7 +110,7 @@ export function TaskTagPicker({ value, onChange, taskId, onLoadedValue, onCatalo
       <div className="mt-3 grid gap-2">{tags.map((tag) => <div key={tag.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-white p-2">
         {editing === tag.id ? <><input className="field min-w-0 flex-1" aria-label={`修改 ${tag.name}`} maxLength={40} value={editName} onChange={(e) => setEditName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void manage("rename", tag.id); } }} />
           <button type="button" className="min-h-11 px-3 font-bold text-indigo-700" onClick={() => void manage("rename", tag.id)}>儲存</button><button type="button" className="min-h-11 px-2 text-sm" onClick={() => setEditing(null)}>取消</button></>
-          : <><span className="min-w-0 flex-1 break-words text-sm font-bold">{tag.name}</span>
+          : <><span className="min-w-0 flex-1"><span data-tag-id={tag.id} className="task-tag-color inline-block max-w-full break-words rounded-full px-2.5 py-1 text-sm font-bold" style={colors.get(tag.id)}>{tag.name}</span></span>
             <button type="button" className="min-h-11 px-3 text-sm font-semibold text-indigo-700" onClick={() => { setEditing(tag.id); setEditName(tag.name); setDeleting(null); }}>改名</button>
             <button type="button" className="min-h-11 px-3 text-sm font-semibold text-slate-600" onClick={() => deleting === tag.id ? void manage("delete", tag.id) : setDeleting(tag.id)}>{deleting === tag.id ? "確認移除" : "移除"}</button>
             {deleting === tag.id ? <button type="button" className="min-h-11 px-2 text-sm" onClick={() => setDeleting(null)}>取消</button> : null}</>}

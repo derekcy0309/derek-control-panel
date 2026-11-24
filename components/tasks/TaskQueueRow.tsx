@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarClock, Check, ChevronDown, Leaf, ListPlus, Pencil } from "lucide-react";
 import { controlAction } from "@/lib/control-api";
@@ -13,6 +13,7 @@ type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent" | "semi" | "c
 export function TaskQueueRow({
   task,
   tagNames,
+  tagColors,
   tone = "neutral",
   completed = false,
   inToday = false,
@@ -26,6 +27,7 @@ export function TaskQueueRow({
 }: {
   task: Task;
   tagNames: ReadonlyMap<string, string>;
+  tagColors: ReadonlyMap<string, CSSProperties>;
   tone?: Tone;
   completed?: boolean;
   inToday?: boolean;
@@ -74,7 +76,10 @@ export function TaskQueueRow({
           <span className="min-w-0"><strong>{task.title}</strong>
             <span className="dl-queue-meta">
               {task.due_date ? <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />{formatDate(task.due_date)}</span> : null}
-              {(task.personal_tag_ids ?? []).map(id => { const label = tagNames.get(id); return label ? <span className="dl-queue-tag" key={id}>{label}</span> : null; })}
+              {(task.personal_tag_ids ?? []).map(id => {
+                const label = tagNames.get(id);
+                return label ? <span className="task-tag-color min-w-0 max-w-full break-words rounded-full px-2 py-0.5 font-semibold" data-tag-id={id} key={id} style={tagColors.get(id)}>{label}</span> : null;
+              })}
               {task.custom_status_label ? <span>{task.custom_status_label}</span> : null}
               {task.status === "in_progress" && !task.custom_status_label ? <span>進行中</span> : null}
               {task.parent_task_id ? <span>子任務</span> : null}

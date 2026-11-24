@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BellOff, CalendarDays, Check, CheckCircle2, Clock3, ListChecks, Plus, Play } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
@@ -24,6 +24,8 @@ import { HomeLinks } from "@/components/dayline/HomeLinks";
 import { PersonalInformation, useInfoChoices } from "@/components/dayline/InfoChoices";
 import { isMyTask, simplePriority, simpleToday, sortByPriority } from "@/lib/simple-mode";
 import { taskVisibleNextAction } from "@/lib/task-steps";
+import { taskTagColors } from "@/lib/task-tag-colors";
+import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { starterSteps } from "@/lib/work-guide";
 import { shiftIsoDate } from "@/lib/due-priority";
 import type { PersonalTaskTag, Task } from "@/lib/types";
@@ -37,7 +39,11 @@ function SimpleDashboard() {
   const [focusCapture, setFocusCapture] = useState(false);
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [activeTab, setActiveTab] = useState<ActionCenterTab>("focus");
-  const [selectedTag, setSelectedTag] = useState("");
+  const [selectedTags, setSelectedTags] = useState<TaskTagFilter>(allTaskTags);
+  const catalogue = data?.taskTags;
+  const tagColors = useMemo(() => taskTagColors(catalogue ?? []), [catalogue]);
+  const knownTagIds = useMemo(() => (catalogue ?? []).map(tag => tag.id), [catalogue]);
+  const tagFilter = useMemo(() => activeTaskTagFilter(selectedTags, knownTagIds), [selectedTags, knownTagIds]);
   const [summary, setSummary] = useState<"waiting" | "week" | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -80,8 +86,8 @@ function SimpleDashboard() {
   // The bounded Today read model includes dependency checks; the full queue is for browsing only.
   const plan = simpleToday({ tasks: current.tasks, planning: current.planning,
     dependencies: current.taskDependencies, assignments: current.assignments, userId: current.currentUser.id, today });
-  const activeTag = current.taskTags?.some((tag) => tag.id === selectedTag) ? selectedTag : "";
-  const matches = (activeTag ? plan.ordered.filter((task) => task.personal_tag_ids?.includes(activeTag)) : plan.top).slice(0,3);
+  const showingAllTags = tagFilter !== "untagged" && tagFilter.size === 0;
+  const matches = (showingAllTags ? plan.top : plan.ordered.filter(task => matchesTaskTagFilter(task.personal_tag_ids, tagFilter))).slice(0,3);
   const plannedIds = new Set(plan.planned.map((t) => t.id));
   const completed = plan.planned.filter((t) => t.status === "done").length;
   const progress = plan.planned.length ? Math.round(completed / plan.planned.length * 100) : 0;
@@ -137,8 +143,8 @@ function SimpleDashboard() {
     {actionError ? <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{actionError}</p> : null}
     {activeTab==="focus"?<div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus">
       <div className="dl-board dl-editorial-board">
-        <DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} tags={current.taskTags??[]} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
-        <DaylineNext tasks={plan.top.slice(1)} tags={current.taskTags??[]} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/>
+        <DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} tags={current.taskTags??[]} tagColors={tagColors} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
+        <DaylineNext tasks={plan.top.slice(1)} tags={current.taskTags??[]} tagColors={tagColors} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/>
         <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
         <figure className="dl-harbour-figure">
           <figcaption><span>維港晨光</span><em lang="en">Harbour Morning</em></figcaption>
@@ -158,10 +164,29 @@ function SimpleDashboard() {
       <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "waiting"} onClick={() => { setActiveTab("focus"); setSummary(summary === "waiting" ? null : "waiting"); }}><span className="simple-stat-label"><Clock3 className="h-4 w-4" />等回覆</span><span className="simple-stat-number">{waiting.length}</span><span className="simple-stat-foot break-words">{waiting[0] ? [waiting[0].waiting_for && `等 ${waiting[0].waiting_for}`,waiting[0].title].filter(Boolean).join(" · ") : "暫時冇等緊嘅工作"}</span></button>
       <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "week"} onClick={() => { setActiveTab("focus"); setSummary(summary === "week" ? null : "week"); }}><span className="simple-stat-label"><CalendarDays className="h-4 w-4" />Task 限期 · 7 日</span><span className="simple-stat-number">{upcoming.length}</span><span className="simple-stat-foot break-words">{upcoming[0] ? `${formatDate(upcoming[0].due_date)} · ${upcoming[0].title}` : "暫時冇即將到期嘅 Task"}</span></button>
     </section>
-      <div className="flex flex-wrap items-center gap-2"><div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1" aria-label="Dashboard Tags"><button type="button" aria-pressed={!activeTag} className={`simple-tag-filter shrink-0 ${!activeTag ? "is-active" : ""}`} onClick={() => setSelectedTag("")}>全部</button>{(current.taskTags ?? []).map((tag) => <button key={tag.id} type="button" aria-pressed={activeTag === tag.id} className={`simple-tag-filter shrink-0 ${activeTag === tag.id ? "is-active" : ""}`} onClick={() => setSelectedTag(tag.id)}>{tag.name}</button>)}</div><button type="button" className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold ${quiet ? "bg-indigo-100 text-indigo-900" : "bg-slate-100 text-slate-600"}`} disabled={busy} aria-pressed={quiet} onClick={() => void toggleQuiet()}><BellOff className="h-4 w-4" />{quiet ? "安靜中" : "安靜模式"}</button></div>
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1 basis-60">
+          <p className="dl-tools-muted">Tags 可多選，符合其中一個就會顯示。</p>
+          <div className="mt-1 flex min-w-0 gap-2 overflow-x-auto p-1" role="group" aria-label="Dashboard Tags">
+            <button type="button" aria-pressed={showingAllTags} className={`simple-tag-filter shrink-0 gap-1 ${showingAllTags ? "is-active" : ""}`} onClick={() => setSelectedTags(allTaskTags)}>
+              {showingAllTags ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}全部
+            </button>
+            {(current.taskTags ?? []).map(tag => {
+              const selected = tagFilter !== "untagged" && tagFilter.has(tag.id);
+              return <button key={tag.id} type="button" aria-pressed={selected} data-tag-id={tag.id} className="simple-tag-filter task-tag-color shrink-0 gap-1" style={tagColors.get(tag.id)} onClick={() => setSelectedTags(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, knownTagIds), tag.id))}>
+                <Check aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${selected ? "" : "invisible"}`} />{tag.name}
+              </button>;
+            })}
+            <button type="button" aria-pressed={tagFilter === "untagged"} className={`simple-tag-filter shrink-0 gap-1 ${tagFilter === "untagged" ? "is-active" : ""}`} onClick={() => setSelectedTags(previous => previous === "untagged" ? allTaskTags : "untagged")}>
+              {tagFilter === "untagged" ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}未分類
+            </button>
+          </div>
+        </div>
+        <button type="button" className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 text-sm font-semibold ${quiet ? "bg-indigo-100 text-indigo-900" : "bg-slate-100 text-slate-600"}`} disabled={busy} aria-pressed={quiet} onClick={() => void toggleQuiet()}><BellOff className="h-4 w-4" />{quiet ? "安靜中" : "安靜模式"}</button>
+      </div>
       {summary ? <section className="panel space-y-3 p-4" aria-label={summary === "waiting" ? "等回覆 Waiting" : "未來 7 日 Deadline"}><h2 className="font-extrabold">{summary === "waiting" ? "等回覆 Waiting" : "未來 7 日 Deadline"}</h2>{(summary === "waiting" ? waiting : upcoming).slice(0, 5).map((task) => <Link key={task.id} href={`/tasks/${task.id}`} className="flex min-h-12 items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold"><span className="min-w-0 break-words">{task.title}{summary === "waiting" && task.waiting_for ? <span className="mt-1 block text-xs font-normal text-slate-500">等 {task.waiting_for} · {task.waiting_on || "回覆"}</span> : null}</span><span className="shrink-0 text-xs text-slate-500">{formatDate(summary === "waiting" ? task.follow_up_date : task.due_date)}</span></Link>)}{!(summary === "waiting" ? waiting : upcoming).length ? <p className="text-sm text-slate-500">暫時冇相關工作。</p> : null}<button type="button" className="min-h-11 text-sm font-bold text-indigo-700" onClick={() => { setActiveTab("tasks"); setSummary(null); }}>打開完整清單 →</button></section> : null}
-      {matches.map((task,i)=><SimpleTaskCard key={task.id} task={task} tags={current.taskTags ?? []} index={i} inToday={plannedIds.has(task.id)} busy={busy} onStart={()=>void start(task)} onComplete={()=>void complete(task)}/>)}
-      {activeTag&&!matches.length?<p className="dl-tools-muted">呢個 Tag 暫時冇可開始嘅工作。</p>:null}
+      {matches.map((task,i)=><SimpleTaskCard key={task.id} task={task} tags={current.taskTags ?? []} tagColors={tagColors} index={i} inToday={plannedIds.has(task.id)} busy={busy} onStart={()=>void start(task)} onComplete={()=>void complete(task)}/>)}
+      {!showingAllTags&&!matches.length?<p className="dl-tools-muted">暫時冇符合所揀 Tags、可以開始嘅工作。</p>:null}
       <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-600">提醒及活動</summary><ReminderPanel reminders={current.reminders} participants={current.participants} currentUserId={current.currentUser.id} onChanged={reload} /></details>
     </div>:detailsSpare}</details>:null}
     {activeTab === "today" ? (detailsReady?<TodayAllTasks tasks={current.tasks} availableTasks={sortByPriority(current.taskQueueCatalog)} planning={current.planning} today={today} onChanged={reload} onStart={(task) => void start(task)} onComplete={complete} onBrowseTasks={() => setActiveTab("tasks")} />:detailsSpare) : null}
@@ -171,9 +196,9 @@ function SimpleDashboard() {
   </>;
 }
 
-function SimpleTaskCard({ task, tags, index, inToday, busy, onStart, onComplete }: { task: Task; tags: PersonalTaskTag[]; index: number; inToday: boolean; busy: boolean; onStart: () => void; onComplete: () => void }) {
+function SimpleTaskCard({ task, tags, tagColors, index, inToday, busy, onStart, onComplete }: { task: Task; tags: PersonalTaskTag[]; tagColors: ReturnType<typeof taskTagColors>; index: number; inToday: boolean; busy: boolean; onStart: () => void; onComplete: () => void }) {
   return <article className={`simple-focus-card ${index === 0 ? "is-now" : ""}`} aria-label={`${index === 0 ? "而家做" : "之後做"}：${task.title}`}>
-    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-extrabold uppercase tracking-wider text-indigo-600">{index === 0 ? "而家做 Now" : `之後做 Next ${index}`}</p><div className="flex min-w-0 flex-wrap gap-1">{tags.filter(tag=>task.personal_tag_ids?.includes(tag.id)).slice(0,2).map(tag=><span key={tag.id} className="max-w-full break-words rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">{tag.name}</span>)}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-extrabold uppercase tracking-wider text-indigo-600">{index === 0 ? "而家做 Now" : `之後做 Next ${index}`}</p><div className="flex min-w-0 flex-wrap gap-1">{tags.filter(tag=>task.personal_tag_ids?.includes(tag.id)).slice(0,2).map(tag=><span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-3 py-1 text-xs font-bold" style={tagColors.get(tag.id)}>{tag.name}</span>)}</div></div>
     <Link href={`/tasks/${task.id}`} className={`mt-3 block break-words font-extrabold text-slate-950 hover:text-indigo-700 ${index === 0 ? "text-2xl sm:text-3xl" : "text-lg"}`}>{task.title}</Link>
     <p className="mt-3 break-words text-sm leading-6 text-slate-600">{taskVisibleNextAction(task) || starterSteps(task.title)[0]}</p>
     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500"><span>Deadline：{task.due_date ? formatDate(task.due_date) : "未定"}</span><span>{task.custom_status_label || (task.status === "in_progress" ? "做緊" : "未開始")}</span>{!inToday ? <span>建議，未加入今日</span> : null}</div>

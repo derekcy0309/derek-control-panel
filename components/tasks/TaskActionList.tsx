@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { hkDateIso } from "@/lib/planning";
 import { sortByPriority } from "@/lib/simple-mode";
+import { taskTagColors } from "@/lib/task-tag-colors";
+import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { taskMatchesTagText } from "@/lib/task-tag-ui";
 import { taskQueueBuckets } from "@/lib/task-queue";
 import type { Task, TodayData } from "@/lib/types";
@@ -29,7 +31,7 @@ export function TaskActionList({
   restful?: boolean;
 }) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const [selectedTags, setSelectedTags] = useState<TaskTagFilter>(allTaskTags);
   const [query, setQuery] = useState("");
   const [bulkMode, setBulkMode] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -37,11 +39,13 @@ export function TaskActionList({
   const [todayMessage, setTodayMessage] = useState("");
   const [todayError, setTodayError] = useState("");
   const today = hkDateIso();
-  const tagFilter = selectedCategory === "untagged" || data.taskTags?.some((tag) => tag.id === selectedCategory) ? selectedCategory : "";
   const tagNames = useMemo(() => new Map((data.taskTags ?? []).map(tag => [tag.id, tag.name])), [data.taskTags]);
+  const tagColors = useMemo(() => taskTagColors(data.taskTags ?? []), [data.taskTags]);
+  const tagFilter = useMemo(() => activeTaskTagFilter(selectedTags, tagNames.keys()), [selectedTags, tagNames]);
+  const showingAllTags = tagFilter !== "untagged" && tagFilter.size === 0;
   const searchText = query.trim().toLocaleLowerCase();
   const tasksInCategory = useMemo(
-    () => sortByPriority(data.taskQueueCatalog.filter((task) => (!tagFilter || (tagFilter === "untagged" ? !task.personal_tag_ids?.length : task.personal_tag_ids?.includes(tagFilter)))
+    () => sortByPriority(data.taskQueueCatalog.filter((task) => matchesTaskTagFilter(task.personal_tag_ids, tagFilter)
       && taskMatchesTagText(task, searchText, tagNames))),
     [data.taskQueueCatalog, tagFilter, searchText, tagNames]
   );
@@ -55,7 +59,7 @@ export function TaskActionList({
     return counts;
   }, [data.taskQueueCatalog]);
 
-  const categoryLabel = tagFilter === "untagged" ? "未分類" : data.taskTags?.find((tag) => tag.id === tagFilter)?.name ?? "全部";
+  const categoryLabel = tagFilter === "untagged" ? "未分類" : showingAllTags ? "全部" : [...tagFilter].map(id => tagNames.get(id)).join("／");
   const ready = tasksInCategory.filter((task) => !["done", "cancelled", "waiting", "blocked"].includes(task.status) && task.current_step_status !== "waiting");
   const simpleGroups = [
     { title: "未完成", tasks: ready },
@@ -119,6 +123,7 @@ export function TaskActionList({
   const sectionProps = {
     onChanged,
     tagNames,
+    tagColors,
     onEdit: setEditingTask,
     todayTaskIds,
     bulkMode,
@@ -135,7 +140,7 @@ export function TaskActionList({
           <div>
             <h2 id="task-action-list-heading">任務總表</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {restful ? "需要時先打開清單；任務沒有被移動。" : "按 Tag 篩選，或輸入任務名稱／Tag。"}
+              {restful ? "需要時先打開清單；任務沒有被移動。" : "可多選 Tags；符合其中一個就會顯示。"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -168,27 +173,25 @@ export function TaskActionList({
         <section className="panel dl-queue-filters space-y-3 p-3 sm:p-4" aria-label="選擇任務 Tags">
           <input className="field" type="search" aria-label="搜尋 Task" placeholder="搵 Task 或 Tag…" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex flex-wrap gap-2">
-            {[{ value: "", label: "全部" }, ...(data.taskTags ?? []).map((tag) => ({ value: tag.id, label: tag.name })), { value: "untagged", label: "未分類" }].map((option) => {
-              const selected = tagFilter === option.value;
-              return (
-                <button
-                  type="button"
-                  key={option.value}
-                  className={`simple-tag-filter ${selected ? "is-active" : ""}`}
-                  onClick={() => setSelectedCategory(option.value)}
-                  aria-pressed={selected}
-                >
-                  <span className="block font-extrabold">{option.label}</span>
-                  {option.value && option.value !== "untagged" ? <span className="ml-1 opacity-60">{categoryCounts.get(option.value) ?? 0}</span> : null}
-                </button>
-              );
+            <button type="button" className={`simple-tag-filter gap-1 ${showingAllTags ? "is-active" : ""}`} aria-pressed={showingAllTags} onClick={() => setSelectedTags(allTaskTags)}>
+              {showingAllTags ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}全部
+            </button>
+            {(data.taskTags ?? []).map(tag => {
+              const selected = tagFilter !== "untagged" && tagFilter.has(tag.id);
+              return <button type="button" key={tag.id} data-tag-id={tag.id} className="simple-tag-filter task-tag-color gap-1" style={tagColors.get(tag.id)} aria-pressed={selected} onClick={() => setSelectedTags(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, tagNames.keys()), tag.id))}>
+                <Check aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${selected ? "" : "invisible"}`} />
+                <span className="min-w-0 break-words font-extrabold">{tag.name}</span><span className="ml-1">{categoryCounts.get(tag.id) ?? 0}</span>
+              </button>;
             })}
+            <button type="button" className={`simple-tag-filter gap-1 ${tagFilter === "untagged" ? "is-active" : ""}`} aria-pressed={tagFilter === "untagged"} onClick={() => setSelectedTags(previous => previous === "untagged" ? allTaskTags : "untagged")}>
+              {tagFilter === "untagged" ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}未分類
+            </button>
           </div>
         </section>
 
         <section className="grid gap-3" aria-label="按狀態顯示工作">
-          {simpleGroups.map((group) => <TaskQueueSection key={`${tagFilter}-${group.title}`} title={group.title} description="按需要打開；先顯示首 5 件" tasks={group.tasks} previewLimit={primaryPreviewLimit} {...sectionProps} />)}
-          <TaskQueueSection key={`${tagFilter}-completed`} title="已做完／已取消" description="歷史紀錄，預設收起" tasks={buckets.completed} completed {...sectionProps} />
+          {simpleGroups.map((group) => <TaskQueueSection key={group.title} title={group.title} description="按需要打開；先顯示首 5 件" tasks={group.tasks} previewLimit={primaryPreviewLimit} {...sectionProps} />)}
+          <TaskQueueSection title="已做完／已取消" description="歷史紀錄，預設收起" tasks={buckets.completed} completed {...sectionProps} />
         </section>
 
         <details className="panel p-4">

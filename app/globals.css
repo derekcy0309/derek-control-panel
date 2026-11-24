@@ -789,6 +789,24 @@ button.task-complete-button:hover { border-color: #10b981; background: #ecfdf5; 
 .simple-tag-filter.is-active { color: #5140a3; border-color: #b8abe8; background: #eeebfc; }
 :root[data-theme="dark"] .simple-focus-card.is-now { background: linear-gradient(125deg, #31284b, var(--surface) 80%); }
 :root[data-theme="dark"] .simple-tag-filter.is-active { color: #ddd6fe; background: #373058; }
+
+/* One palette for the editor, filters, task queue and Today. Keep the Tag
+   readable regardless of its hue or the surrounding Dayline palette. */
+.task-tag-color {
+  --task-tag-bg: hsl(var(--task-tag-hue, 215) 72% calc(88% + var(--task-tag-tint, 3) * .9%));
+  --task-tag-fg: hsl(var(--task-tag-hue, 215) 67% 18%);
+  --task-tag-border: hsl(var(--task-tag-hue, 215) 49% 50%);
+  background-color: var(--task-tag-bg) !important;
+  color: var(--task-tag-fg) !important;
+  border: 1px solid var(--task-tag-border) !important;
+}
+:root[data-theme="dark"] .task-tag-color {
+  --task-tag-bg: hsl(var(--task-tag-hue, 215) 54% calc(15% + var(--task-tag-tint, 3) * 1.1%));
+  --task-tag-fg: hsl(var(--task-tag-hue, 215) 74% 91%);
+  --task-tag-border: hsl(var(--task-tag-hue, 215) 54% 64%);
+}
+.task-tag-color[aria-pressed="true"] { box-shadow: inset 0 0 0 1px currentColor; }
+.task-tag-color:focus-visible { outline: 2px solid var(--task-tag-border); outline-offset: 2px; }
 @media (max-width: 420px) {
   .simple-stat-card { padding: .85rem .65rem; border-radius: 1rem; }
   .simple-stat-label { font-size: .7rem; gap: .25rem; }

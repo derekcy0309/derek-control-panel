@@ -3,15 +3,16 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
-const base = 'http://localhost:3139';
+const base = new URL(process.env.VERIFY_URL || 'http://localhost:3139').origin;
+assert.ok(['localhost', '127.0.0.1'].includes(new URL(base).hostname), 'Use only a local mock test server');
 const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Hong_Kong' }).format(new Date());
 let logs = '';
-const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--hostname', '127.0.0.1', '-p', '3139'], { env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'local-mock', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
-server.stdout.on('data', chunk => { logs += chunk; }); server.stderr.on('data', chunk => { logs += chunk; });
+const server = process.env.VERIFY_URL ? null : spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--hostname', '127.0.0.1', '-p', '3139'], { env: { ...process.env, NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co', NEXT_PUBLIC_SUPABASE_ANON_KEY: 'local-mock', NEXT_TELEMETRY_DISABLED: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+server?.stdout.on('data', chunk => { logs += chunk; }); server?.stderr.on('data', chunk => { logs += chunk; });
 let browser;
 try {
   for (let i = 0; i < 120; i++) {
-    if (server.exitCode !== null) throw new Error(logs.slice(-2000));
+    if (server && server.exitCode !== null) throw new Error(logs.slice(-2000));
     try { if ((await fetch(`${base}/api/auth`)).status === 401) break; } catch { /* starting */ }
     await new Promise(resolve => setTimeout(resolve, 500));
   }
@@ -56,7 +57,7 @@ try {
       '1. 待辦工作 4', '2. 待辦工作 1', '3. 待辦工作 5',
       '4. 整理本週文件，核對資料後再保存到正確的資料夾，以便下次可以直接繼續處理', '5. 待辦工作 3'
     ]);
-    const padding = await paper.evaluate(element => getComputedStyle(element.closest('.app-frame > div')).paddingLeft);
+    const padding = await paper.evaluate(element => getComputedStyle(element.closest('#main-content')).paddingLeft);
     assert.equal(padding, '0px', 'navigation padding must not shrink print output');
     if (role === 'Derek' && width === 1280 && process.env.PRINT_PDF) await page.pdf({ path: process.env.PRINT_PDF, format: 'A4', preferCSSPageSize: true, printBackground: false });
     await page.emulateMedia({ media: 'screen' });
@@ -68,10 +69,31 @@ try {
     await page.getByRole('button', { name: '下一頁', exact: true }).click();
     await page.getByRole('checkbox').first().check();
     assert.equal(await paper.locator('article').count(), 2);
-    await page.getByLabel('分類', { exact: true }).selectOption('family');
+    const tagFilters = page.getByRole('group', { name: 'Tags 篩選', exact: true });
+    const familyTag = tagFilters.getByRole('button', { name: 'My custom tag', exact: true });
+    const personalTag = tagFilters.getByRole('button', { name: '個人', exact: true });
+    await familyTag.click();
+    assert.equal(await page.getByRole('checkbox').count(), 2);
+    await personalTag.click();
+    assert.equal(await familyTag.getAttribute('aria-pressed'), 'true');
+    assert.equal(await personalTag.getAttribute('aria-pressed'), 'true');
+    assert.equal(await familyTag.locator('svg').count(), 1, 'selection includes a visible check');
+    assert.equal(await personalTag.locator('svg').count(), 1, 'selection includes a visible check');
+    assert.equal(await page.getByRole('checkbox').count(), 5, 'multi-select shows tasks with either tag');
+    const taskOptions = page.getByLabel('揀選列印任務');
+    const background = locator => locator.evaluate(element => getComputedStyle(element).backgroundColor);
+    assert.notEqual(await background(familyTag), await background(personalTag));
+    assert.equal(await background(taskOptions.locator('[data-tag-id="family"]').first()), await background(familyTag));
+    assert.equal(await background(taskOptions.locator('[data-tag-id="personal"]').first()), await background(personalTag));
     assert.equal(await paper.locator('article').count(), 2); // Selection survives filters.
     await page.locator('input[type="checkbox"]:not(:checked)').first().check();
     assert.equal(await paper.locator('article').count(), 3);
+    const selectionOrder = await paper.locator('article h4').allTextContents();
+    await tagFilters.getByRole('button', { name: '全部', exact: true }).click();
+    assert.equal(await familyTag.getAttribute('aria-pressed'), 'false');
+    assert.equal(await personalTag.getAttribute('aria-pressed'), 'false');
+    assert.equal(await page.getByRole('checkbox').count(), 20);
+    assert.deepEqual(await paper.locator('article h4').allTextContents(), selectionOrder, 'filter reset does not change print order or selection');
     await page.getByRole('button', { name: '清除選取', exact: true }).click();
     assert.equal(await paper.locator('article').count(), 0);
     empty = true;
@@ -86,8 +108,8 @@ try {
     await page.getByText('今日未有已安排的待辦工作。', { exact: false }).waitFor();
     assert.equal(writes, 0);
     assert.deepEqual(errors, []);
-    console.log(`PASS ${role} ${width}px: today, handwritten slots, next steps, selection/pagination, A4 media, empty/error/retry, zero mutations`);
+    console.log(`PASS ${role} ${width}px: today, multi-tag colour filters, print order, selection/pagination, A4 media, empty/error/retry, zero mutations`);
     await context.close();
   }
 } catch (error) { console.error(logs.slice(-2000)); throw error; }
-finally { await browser?.close(); server.kill(); }
+finally { await browser?.close(); server?.kill(); }
