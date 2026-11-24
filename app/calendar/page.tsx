@@ -4,17 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
-import { LoadingState } from "@/components/LoadingState";
 import { Modal } from "@/components/Modal";
 import { Button } from "@/components/ui/Button";
-import { controlAction } from "@/lib/control-api";
+import { controlAction, loadCalendarPanelData } from "@/lib/control-api";
 import { daylineDate } from "@/lib/dayline";
 import { addBriefDays, briefEventOnDate, briefTime } from "@/lib/calendar-brief";
 import { appleCalendarMonthWindow, type AppleCalendarMonth } from "@/lib/apple-calendar-month";
 import { calendarErrorMessage } from "@/lib/calendar-errors";
 import { calendarMonday, calendarMonth, makeMonthAgenda, validCalendarDate, type MonthAgendaRow } from "@/lib/dayline-agenda";
 import { useDaylineDate } from "@/hooks/useDaylineDate";
-import { useControlData } from "@/hooks/useControlData";
+import type { CalendarPanelData } from "@/lib/types";
 import "../dayline-editorial-work.css";
 
 export default function CalendarPage() { return <AuthGate><CalendarContent /></AuthGate>; }
@@ -23,16 +22,29 @@ const weekdays = ["一","二","三","四","五","六","日"];
 const kindLabel = { schedule:"行程", school:"學校", deadline:"Deadline", family:"家庭", item:"項目" };
 
 function CalendarContent() {
-  const { data, loading, error, reload } = useControlData();
   const today = useDaylineDate();
-  const [cursor,setCursor] = useState<string|null>(null);
+  const [cursor,setCursor] = useState<string|null>(()=>typeof window==="undefined"?null:validCalendarDate(new URLSearchParams(window.location.search).get("date")));
   const [adding,setAdding] = useState(false);
   const [source,setSource] = useState<{ owner:string; month:string; run:number; result:AppleCalendarMonth|null; timedOut?:boolean }|null>(null);
   const [run,setRun]=useState(0);
-  const owner=data?.currentUser.id;
+  const [panelRun,setPanelRun]=useState(0);
+  const [panel,setPanel]=useState<{month:string; run:number; data:CalendarPanelData|null; error?:string}|null>(null);
   const selected=cursor??today;
   const {month,dates}=calendarMonth(selected);
-  useEffect(()=>{setCursor(validCalendarDate(new URLSearchParams(window.location.search).get("date")));},[]);
+  const panelForMonth=panel?.month===month?panel:null;
+  const data=panelForMonth?.data??null;
+  const owner=data?.currentUser.id;
+  const panelLoading=panelForMonth?.run!==panelRun;
+  useEffect(()=>{
+    const abort=new AbortController();
+    void loadCalendarPanelData(month,abort.signal).then(value=>{
+      if(value.month!==month || !Array.isArray(value.tasks) || !Array.isArray(value.operatingItems))throw new Error("未能核對日序月份資料。");
+      if(!abort.signal.aborted)setPanel({month,run:panelRun,data:value});
+    }).catch((error:unknown)=>{
+      if(!abort.signal.aborted)setPanel({month,run:panelRun,data:null,error:error instanceof Error?error.message:"未能載入日序行程。"});
+    });
+    return ()=>abort.abort();
+  },[month,panelRun]);
   useEffect(()=>{
     if(!owner)return;
     const range=appleCalendarMonthWindow(month);
@@ -60,13 +72,14 @@ function CalendarContent() {
   const checking=!read || read.run!==run;
   const apple=read?.result;
   const agenda=useMemo(()=>data ? makeMonthAgenda(data.tasks,data.operatingItems,data.currentUser.id,null,apple??null):new Map<string,MonthAgendaRow[]>(),[data,apple]);
-  if (loading || error || !data) return <LoadingState error={error} />;
   const weekStarts=calendarMonday(selected);
   const monthEntries=dates.filter(date=>date.startsWith(month)&&agenda.has(date));
   const selectedRows=agenda.get(selected)??[];
   const appleFresh=apple?.source.state==="fresh";
   const anyICloudInMonth=appleFresh && apple?.events.some(event=>dates.some(date=>date.startsWith(month)&&briefEventOnDate(event,date)));
-  const selectedEmpty=checking ? "呢日暫時冇日序安排；iCloud 行程讀取中。"
+  const selectedEmpty=panelLoading ? "日序行程同 Deadline 讀取中。"
+    : panelForMonth?.error ? "未能讀取日序安排，請重試。"
+    : checking ? "呢日暫時冇日序安排；iCloud 行程讀取中。"
     : appleFresh&&!apple?.truncated ? "呢日冇已讀取嘅行程或安排。"
     : "呢日暫時冇已讀取嘅安排；iCloud 結果可能未齊。";
   function moveMonth(offset:number){
@@ -79,6 +92,7 @@ function CalendarContent() {
   }
   return <div className="dl-editorial-calendar">
     <header className="dl-intro dl-editorial-intro"><div><p className="dl-calendarline"><span className="dl-miniline"/>CALENDAR</p><h1>日曆</h1><p className="dl-editorial-welcome">一眼分清行程、學校安排同 Deadline。</p></div><button type="button" className="dl-add" onClick={()=>setAdding(true)}><Plus aria-hidden="true"/>新增日程</button></header>
+    {panelForMonth?.error ? <p className="dl-calendar-sources" role="alert">{panelForMonth.error} <button type="button" onClick={()=>setPanelRun(value=>value+1)}>重試載入日序</button></p> : null}
     <section className="dl-calendar-icloud" aria-label="iPhone 行程來源">
       <div>
         <strong>iPhone 行程 <span>· iCloud Calendar</span></strong>
@@ -116,7 +130,7 @@ function CalendarContent() {
     </section>
     <details className="dl-calendar-overview"><summary>睇全月安排</summary>{monthEntries.length?monthEntries.map(date=><section key={date} className="dl-calendar-overview-day"><h3>{daylineDate(date,true)}</h3><CalendarRows rows={agenda.get(date)??[]}/></section>):<p className="dl-calendar-empty">本月暫時冇已讀取嘅安排。</p>}</details>
     <p className="dl-calendar-sources">日序只顯示你有權睇嘅資料。iCloud 行程唯讀，要改返 iPhone；Google、Exchange 同只存在手機嘅行程唔會由 iCloud 讀取。</p>
-    {adding ? <EventModal initialDate={selected} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); void reload(); }} /> : null}
+    {adding ? <EventModal initialDate={selected} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); setPanelRun(value=>value+1); }} /> : null}
   </div>;
 }
 

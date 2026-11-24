@@ -18,7 +18,7 @@ try{
  for(const width of [360,1280]){
   const context=await browser.newContext({viewport:{width,height:920},serviceWorkers:"block",timezoneId:"Asia/Hong_Kong",locale:"zh-HK"});
   try{
-   const page=await context.newPage(), errors=[], months=[], writes=[];
+   const page=await context.newPage(), errors=[], months=[], panelMonths=[], reads=[], writes=[];
    let mode="fresh";
    page.on("pageerror",err=>errors.push(err.message));
    page.setDefaultTimeout(18000);
@@ -34,7 +34,10 @@ try{
     const source={label:"Apple Calendar",state:mode==="not_connected"?mode:"fresh",lastSync:mode==="not_connected"?null:now};
     if(p==="/api/auth")json={user:{id:user}};
     else if(p==="/api/control"){
-     json=u.searchParams.get("view")==="assignment_alerts"?{assignments:[],currentUserId:user}:{
+     const view=u.searchParams.get("view");reads.push(view);
+     if(view==="calendar")panelMonths.push(u.searchParams.get("month"));
+     json=view==="assignment_alerts"?{assignments:[],currentUserId:user}:{
+      ...(view==="calendar"?{month:u.searchParams.get("month")}:{}),
       currentUser:{id:user,displayName:"Calendar fixture"},profile:{user_id:user,active:true,workspace_role:"derek"},settings:{theme:"light"},
       tasks:[],operatingItems:[],taskTags:[],taskQueueCatalog:[],taskCatalog:[],taskFollowers:[],participants:[],assignments:[],shares:[],
       planning:[],taskNoticeRecipients:[],taskDependencies:[],reminders:[],capacityCommitments:[]
@@ -66,6 +69,8 @@ try{
    await selected.getByText(later.title,{exact:true}).waitFor();
    await selected.getByText(/iPhone.*唯讀/).first().waitFor();
    assert.ok(months.includes("2026-11"));
+   assert.deepEqual(panelMonths,["2026-11"],"Calendar loads the requested month rather than the default month first");
+   assert.ok(reads.includes("shell")&&!reads.includes("bootstrap"),"Calendar and the top bar never load all modules");
    await assertFit();
    await page.getByRole("button",{name:"下個月",exact:true}).click();
    await page.getByRole("heading",{name:"2026 年 12 月",exact:true}).waitFor();

@@ -88,7 +88,7 @@ test("dated priority upgrades automatically as the due date approaches", () => {
   assert.equal(operatingItemPriorityBand({ due_date: null, metadata: { manualUrgency: "medium" } }, today), "medium");
 });
 
-test("task UI previews five priority items, puts undated work above the bottom calendar and prints A4", () => {
+test("task UI filters by tags, previews five active items and keeps the calendar and A4 print", () => {
   const page = read("components/tasks/TaskActionList.tsx");
   const form = read("components/forms/TaskForm.tsx");
   const section = read("components/tasks/TaskQueueSection.tsx");
@@ -98,9 +98,9 @@ test("task UI previews five priority items, puts undated work above the bottom c
 
   assert.match(page, /const primaryPreviewLimit = 5/);
   assert.match(page, /previewLimit=\{primaryPreviewLimit\}/);
-  assert.match(page, /P1 高 High/);
-  assert.match(page, /P2 一般 Normal/);
-  assert.match(page, /P3 低 Low/);
+  assert.match(page, /title: "未完成"/);
+  assert.match(page, /taskMatchesTagText/);
+  assert.doesNotMatch(page, /P1 高 High|P2 一般 Normal|P3 低 Low/);
   assert.ok(page.indexOf("simpleGroups.map") < page.indexOf("<TaskDueCalendar"));
   assert.ok(page.indexOf("已做完／已取消") < page.indexOf("<TaskDueCalendar"));
   assert.doesNotMatch(page, / defaultOpen/);
@@ -108,9 +108,9 @@ test("task UI previews five priority items, puts undated work above the bottom c
   assert.match(calendar, /另有 \+\{dayTasks\.length - 3\} 項/);
   assert.match(form, /<DueDatePicker/);
   assert.match(duePicker, /到期日（可留空）/);
-  assert.match(form, /requestedPriority: Number\(form\.requested_priority\)/);
-  assert.match(form, /simplePriorities/);
-  assert.match(form, /Priority 優先次序/);
+  assert.match(form, /requestedPriority: priorityFromTaskTags\(selectedTags, catalog\)/);
+  assert.match(form, /taskTagPriorityChange/);
+  assert.doesNotMatch(form, /Priority 優先次序/);
   assert.match(styles, /@page \{ size: A4 portrait/);
   assert.match(styles, /animation: overdue-attention 1\.8s ease-out 3/);
   assert.match(styles, /task-category-family/);

@@ -27,7 +27,7 @@ function WorkGuide(){
     {error?<p role="alert" className="panel p-4">未能確認今日次序。<button className="min-h-11 underline" onClick={()=>void reload()}>重新載入</button></p>:null}
     {notice?<p role="status" className="rounded-xl bg-emerald-50 p-3 text-emerald-900">{notice}</p>:null}
     {!error && !data?<p role="status">讀取你嘅今日安排…</p>:null}
-    {!error && data && plan && (task?<OneTask key={data.currentUser.id+task.id} userId={data.currentUser.id} task={task} reason={plan.isSuggestion?"今日未手排，按 Priority 建議；同級先睇 Deadline。":"照你今日排嘅次序：而家先做呢件。"} onCloseTask={changed=>{saveTaskLocally(changed);setNotice(changed.recurrence_rule_id?"今次已做完，恆常工作會按原設定繼續。":"已確認成件 Task 完成。");if(changed.recurrence_rule_id)void reload();}} refreshPlan={reload}/>:
+    {!error && data && plan && (task?<OneTask key={data.currentUser.id+task.id} userId={data.currentUser.id} task={task} reason={plan.isSuggestion?"今日未手排，以下係建議次序；同級先睇 Deadline。":"照你今日排嘅次序：而家先做呢件。"} onCloseTask={changed=>{saveTaskLocally(changed);setNotice(changed.recurrence_rule_id?"今次已做完，恆常工作會按原設定繼續。":"已確認成件 Task 完成。");if(changed.recurrence_rule_id)void reload();}} refreshPlan={reload}/>:
       <section className="panel space-y-3 p-5"><h2 className="section-title">{plan.planned.length?"今日已排嘅工作暫時冇下一件可以開始。":"暫時冇可以開始嘅工作。"}</h2><p>等回覆、未到工作日或被阻住嘅 Task 唔會自動補入嚟。</p><Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/#today-order">自己排今日 →</Link></section>)}
   </div>;
 }

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ArrowRight, CalendarClock, Check, ChevronDown, Leaf, ListPlus, Pencil } from "lucide-react";
 import { controlAction } from "@/lib/control-api";
 import { formatDate } from "@/lib/date";
-import { simplePriorities, simplePriority } from "@/lib/simple-mode";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import type { Task } from "@/lib/types";
 
@@ -13,6 +12,7 @@ type Tone = "overdue" | "soon" | "upcoming" | "neutral" | "urgent" | "semi" | "c
 
 export function TaskQueueRow({
   task,
+  tagNames,
   tone = "neutral",
   completed = false,
   inToday = false,
@@ -25,6 +25,7 @@ export function TaskQueueRow({
   onAddToday
 }: {
   task: Task;
+  tagNames: ReadonlyMap<string, string>;
   tone?: Tone;
   completed?: boolean;
   inToday?: boolean;
@@ -39,7 +40,6 @@ export function TaskQueueRow({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [justCompleted, setJustCompleted] = useState(false);
-  const priority = simplePriority(task.requested_priority);
   const nextAction = taskVisibleNextAction(task);
   const canAddToday = !completed && !["waiting", "blocked", "done", "cancelled"].includes(task.status) && task.current_step_status !== "waiting" && !task.blocked_reason?.trim();
 
@@ -74,7 +74,7 @@ export function TaskQueueRow({
           <span className="min-w-0"><strong>{task.title}</strong>
             <span className="dl-queue-meta">
               {task.due_date ? <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />{formatDate(task.due_date)}</span> : null}
-              <span className="dl-queue-priority" data-priority={priority}>{simplePriorities.find((p) => p.value === priority)?.label}</span>
+              {(task.personal_tag_ids ?? []).map(id => { const label = tagNames.get(id); return label ? <span className="dl-queue-tag" key={id}>{label}</span> : null; })}
               {task.custom_status_label ? <span>{task.custom_status_label}</span> : null}
               {task.status === "in_progress" && !task.custom_status_label ? <span>進行中</span> : null}
               {task.parent_task_id ? <span>子任務</span> : null}

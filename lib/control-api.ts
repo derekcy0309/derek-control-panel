@@ -1,9 +1,12 @@
 "use client";
 
+import { checkClientSession, clearClientSessionCheck } from "@/lib/client-session";
 import type {
   BodyDoubleData,
   AdminAccountUser,
+  CalendarPanelData,
   ControlData,
+  ControlShellData,
   FocusSession,
   PersonalTaskTag,
   InboxCaptureFile,
@@ -19,11 +22,16 @@ import type {
   WeeklyReviewSummary
 } from "@/lib/types";
 
-let refreshInFlight: Promise<void> | null = null;
-let lastRefreshAt = 0;
-
 export async function loadControlData(): Promise<ControlData> {
   return controlRequest<ControlData>("/api/control?view=bootstrap", { method: "GET" });
+}
+
+export async function loadControlShellData(signal?: AbortSignal): Promise<ControlShellData> {
+  return controlRequest<ControlShellData>("/api/control?view=shell", { method: "GET", signal });
+}
+
+export function loadCalendarPanelData(month: string, signal?: AbortSignal) {
+  return controlRequest<CalendarPanelData>(`/api/control?view=calendar&month=${encodeURIComponent(month)}`, { method: "GET", signal });
 }
 
 export async function loadAdminAccountUsers(): Promise<{ users: AdminAccountUser[]; truncated: boolean; currentUserId: string }> {
@@ -46,8 +54,8 @@ export async function deleteAdminAccount(targetUserId: string, confirmEmail: str
   });
 }
 
-export async function loadTodayData(): Promise<TodayData> {
-  return controlRequest<TodayData>("/api/control?view=today", { method: "GET" });
+export async function loadTodayData(focusOnly = false, signal?: AbortSignal): Promise<TodayData> {
+  return controlRequest<TodayData>(`/api/control?view=${focusOnly ? "today_focus" : "today"}`, { method: "GET", signal });
 }
 
 export async function loadTaskTags(taskId?: string) {
@@ -191,33 +199,18 @@ export async function invitePortalUser(payload: { email: string; displayName: st
 }
 
 async function controlRequest<T>(url: string, init: RequestInit): Promise<T> {
-  await ensureFreshSession();
+  if (!await checkClientSession()) throw new Error("登入已失效，請重新登入。");
+  init.signal?.throwIfAborted();
   const response = await fetch(url, {
     ...init,
     cache: "no-store",
     credentials: "same-origin",
     headers: { ...init.headers }
   });
+  if (response.status === 401) clearClientSessionCheck();
   const result = await response.json().catch(() => ({})) as { error?: string } & T;
   if (!response.ok) throw new Error(result.error || "操作失敗，請稍後再試。");
   return result;
-}
-
-async function ensureFreshSession() {
-  if (Date.now() - lastRefreshAt < 30_000) return;
-  if (!refreshInFlight) {
-    refreshInFlight = fetch("/api/auth", {
-      method: "GET",
-      cache: "no-store",
-      credentials: "same-origin"
-    }).then((response) => {
-      if (!response.ok) throw new Error("登入已失效，請重新登入。");
-      lastRefreshAt = Date.now();
-    }).finally(() => {
-      refreshInFlight = null;
-    });
-  }
-  await refreshInFlight;
 }
 
 export type CoachMessage = { role: "user" | "assistant"; content: string };

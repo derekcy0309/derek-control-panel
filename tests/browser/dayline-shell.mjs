@@ -145,7 +145,7 @@ try {
       await check("/calendar", "日曆", "日曆");
       await nav.getByRole("link", { name: "我的任務", exact: true }).click();
       await check("/", "我的任務", "我的任務");
-      const group = page.getByRole("button", { name: /P1 高 High/ });
+      const group = page.getByRole("button", { name: /^未完成/ });
       await group.click();
       await page.locator(".task-queue-row").filter({ hasText: task.title }).locator("summary").click();
       await page.getByRole("link", { name: task.title, exact: true }).click();

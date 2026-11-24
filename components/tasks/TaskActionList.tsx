@@ -10,7 +10,8 @@ import { TaskQueueSection } from "@/components/tasks/TaskQueueSection";
 import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { hkDateIso } from "@/lib/planning";
-import { simplePriority, sortByPriority } from "@/lib/simple-mode";
+import { sortByPriority } from "@/lib/simple-mode";
+import { taskMatchesTagText } from "@/lib/task-tag-ui";
 import { taskQueueBuckets } from "@/lib/task-queue";
 import type { Task, TodayData } from "@/lib/types";
 
@@ -37,10 +38,12 @@ export function TaskActionList({
   const [todayError, setTodayError] = useState("");
   const today = hkDateIso();
   const tagFilter = selectedCategory === "untagged" || data.taskTags?.some((tag) => tag.id === selectedCategory) ? selectedCategory : "";
+  const tagNames = useMemo(() => new Map((data.taskTags ?? []).map(tag => [tag.id, tag.name])), [data.taskTags]);
+  const searchText = query.trim().toLocaleLowerCase();
   const tasksInCategory = useMemo(
     () => sortByPriority(data.taskQueueCatalog.filter((task) => (!tagFilter || (tagFilter === "untagged" ? !task.personal_tag_ids?.length : task.personal_tag_ids?.includes(tagFilter)))
-      && (!query.trim() || task.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))),
-    [data.taskQueueCatalog, tagFilter, query]
+      && taskMatchesTagText(task, searchText, tagNames))),
+    [data.taskQueueCatalog, tagFilter, searchText, tagNames]
   );
   const buckets = useMemo(() => taskQueueBuckets(tasksInCategory, today), [tasksInCategory, today]);
   const categoryCounts = useMemo(() => {
@@ -55,9 +58,7 @@ export function TaskActionList({
   const categoryLabel = tagFilter === "untagged" ? "未分類" : data.taskTags?.find((tag) => tag.id === tagFilter)?.name ?? "全部";
   const ready = tasksInCategory.filter((task) => !["done", "cancelled", "waiting", "blocked"].includes(task.status) && task.current_step_status !== "waiting");
   const simpleGroups = [
-    { title: "P1 高 High", tasks: ready.filter((task) => simplePriority(task.requested_priority) === 1) },
-    { title: "P2 一般 Normal", tasks: ready.filter((task) => simplePriority(task.requested_priority) === 3) },
-    { title: "P3 低 Low", tasks: ready.filter((task) => simplePriority(task.requested_priority) === 5) },
+    { title: "未完成", tasks: ready },
     { title: "等回覆 Waiting", tasks: buckets.waiting },
     { title: "等解除阻塞", tasks: buckets.blocked }
   ];
@@ -117,6 +118,7 @@ export function TaskActionList({
 
   const sectionProps = {
     onChanged,
+    tagNames,
     onEdit: setEditingTask,
     todayTaskIds,
     bulkMode,
@@ -133,7 +135,7 @@ export function TaskActionList({
           <div>
             <h2 id="task-action-list-heading">任務總表</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {restful ? "需要時先打開清單；任務沒有被移動。" : "按 Priority 分組。揀一件先睇細節。"}
+              {restful ? "需要時先打開清單；任務沒有被移動。" : "按 Tag 篩選，或輸入任務名稱／Tag。"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -164,7 +166,7 @@ export function TaskActionList({
         {todayError ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-semibold text-rose-800" role="alert">{todayError}</p> : null}
 
         <section className="panel dl-queue-filters space-y-3 p-3 sm:p-4" aria-label="選擇任務 Tags">
-          <input className="field" type="search" aria-label="搜尋 Task" placeholder="搵 Task…" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input className="field" type="search" aria-label="搜尋 Task" placeholder="搵 Task 或 Tag…" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex flex-wrap gap-2">
             {[{ value: "", label: "全部" }, ...(data.taskTags ?? []).map((tag) => ({ value: tag.id, label: tag.name })), { value: "untagged", label: "未分類" }].map((option) => {
               const selected = tagFilter === option.value;
@@ -184,7 +186,7 @@ export function TaskActionList({
           </div>
         </section>
 
-        <section className="grid gap-3" aria-label="按 Priority 排列的工作">
+        <section className="grid gap-3" aria-label="按狀態顯示工作">
           {simpleGroups.map((group) => <TaskQueueSection key={`${tagFilter}-${group.title}`} title={group.title} description="按需要打開；先顯示首 5 件" tasks={group.tasks} previewLimit={primaryPreviewLimit} {...sectionProps} />)}
           <TaskQueueSection key={`${tagFilter}-completed`} title="已做完／已取消" description="歷史紀錄，預設收起" tasks={buckets.completed} completed {...sectionProps} />
         </section>
@@ -209,6 +211,7 @@ export function TaskActionList({
               initialTask={editingTask}
               initialNoticeUserIds={data.taskNoticeRecipients.filter((recipient) => recipient.task_id === editingTask.id).map((recipient) => recipient.recipient_id)}
               initialFollowerUserIds={data.taskFollowers.filter((follower) => follower.task_id === editingTask.id).map((follower) => follower.follower_id)}
+              knownTags={data.taskTags}
               statusSuggestions={statusSuggestions}
               onSaved={(result) => finish(result, onTaskSaved, onChanged, () => setEditingTask(null))}
               onCancel={() => setEditingTask(null)}

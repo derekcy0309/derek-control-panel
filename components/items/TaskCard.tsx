@@ -13,7 +13,6 @@ import { StatusBadge } from "@/components/ui/Badge";
 import { formatDate, addDaysIso } from "@/lib/date";
 import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
-import { simplePriorities, simplePriority } from "@/lib/simple-mode";
 import { hkDateIso } from "@/lib/planning";
 import type { Assignment, HandoffNote, OperatingItem, PersonalTaskTag, Task, TaskDependency, TaskFollower, TaskRecurrenceRule, TaskStep } from "@/lib/types";
 
@@ -119,10 +118,8 @@ export function TaskCard({
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap gap-2">
             {taskTags.filter((tag) => task.personal_tag_ids?.includes(tag.id)).map((tag) => <span key={tag.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{tag.name}</span>)}
-            {task.task_type_label ? <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">{task.task_type_label}</span> : null}
             <StatusBadge status={task.status} />
             {task.custom_status_label ? <span className="rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-bold text-fuchsia-800">{task.custom_status_label}</span> : null}
-            <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{simplePriorities.find((p) => p.value === simplePriority(task.requested_priority))?.label}</span>
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}
           </span>
           <span className="mt-3 block text-xl font-bold text-ink">{task.title}</span>

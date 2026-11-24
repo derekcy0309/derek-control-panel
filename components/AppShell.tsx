@@ -11,7 +11,8 @@ import {
   Plus, Settings, Share2, ShieldCheck, Sparkles, UsersRound, Pill, Printer, Compass, Newspaper, Route, SlidersHorizontal
 } from "lucide-react";
 import clsx from "clsx";
-import { controlAction, loadControlData } from "@/lib/control-api";
+import { controlAction, loadControlShellData } from "@/lib/control-api";
+import { prepareClientSignOut, resumeClientSessionChecks } from "@/lib/client-session";
 import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 import { AssignmentAlerts } from "@/components/AssignmentAlerts";
@@ -108,11 +109,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     async function loadIdentity() {
       try {
-        const data = await loadControlData();
-        if (!active) return;
+        const data = await loadControlShellData(controller.signal);
+        if (controller.signal.aborted) return;
         setDisplayName(data.currentUser.displayName);
         setCurrentUserId(data.currentUser.id);
         setMustChangePassword(Boolean(data.profile.must_change_password));
@@ -120,20 +121,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setShowEncouragement(Boolean(data.showEncouragement));
         setPinnedPages(readPinnedPages(data.settings?.pinned_pages));
         if (data.settings) {
-        applyAppearance(data.settings.theme, data.settings.visual_intensity);
-        document.documentElement.dataset.accent = data.settings.accent_colour || "indigo";
-        document.documentElement.dataset.density = data.settings.dashboard_density || "comfortable";
+          applyAppearance(data.settings.theme, data.settings.visual_intensity);
+          document.documentElement.dataset.accent = data.settings.accent_colour || "indigo";
+          document.documentElement.dataset.density = data.settings.dashboard_density || "comfortable";
         }
       } catch {
         // Page-level error handling explains missing migrations without leaking details here.
       }
     }
     void loadIdentity();
-    return () => { active = false; };
+    return () => controller.abort();
   }, []);
 
   async function signOut() {
-    const response = await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" });
+    prepareClientSignOut();
+    let response: Response;
+    try { response = await fetch("/api/auth", { method: "DELETE", credentials: "same-origin" }); }
+    catch { resumeClientSessionChecks(); return; }
     if(response.ok){try{localStorage.removeItem("dl:device-subscription:markets");localStorage.removeItem("dl:device-subscription:care");}catch{}}
     if (response.ok && currentUserId) {
       await clearOfflineWrites(currentUserId).catch(() => undefined);

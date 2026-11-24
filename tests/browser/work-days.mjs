@@ -83,9 +83,11 @@ try {
     await page.getByRole('button', { name: '加 Task', exact: true }).first().click();
     const dialog = page.getByRole('form', { name: '新增 Task' });
     await dialog.getByLabel('任務名稱', { exact: true }).fill('驗證用今日新任務');
-    await dialog.getByRole('button',{name:/更改設定/}).click();
+    await dialog.getByText('＋Tag（可選）',{exact:true}).click();
     const category = dialog.getByRole('button',{name:'個人',exact:true});
-    assert.equal(await category.getAttribute('aria-pressed'),'true');
+    assert.equal(await category.getAttribute('aria-pressed'),'false');
+    await category.click();
+    await dialog.getByRole('button',{name:/更改設定/}).click();
     await dialog.getByRole('checkbox', { name: /加入今日 Today/ }).check();
     await dialog.getByText('日期／邊個跟',{exact:false}).click();
     await dialog.getByText('更多設定',{exact:false}).click();
@@ -133,7 +135,7 @@ try {
     assert.equal(createdPayload.dueDate, null);
     assert.equal(createdPayload.workStartDate, today);
     await page.getByRole('tab', { name: /任務總表/ }).click();
-    await page.locator('#task-action-list').getByRole('button', { name: /^P2 一般 Normal/ }).click();
+    await page.locator('#task-action-list').getByRole('button', { name: /^未完成/ }).click();
     const taskRow=page.locator('.task-queue-row').filter({hasText:'驗證用今日新任務'});
     await taskRow.locator('summary').click();
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();

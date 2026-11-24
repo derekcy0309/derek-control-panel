@@ -7,23 +7,19 @@ import { Button } from "@/components/ui/Button";
 import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
 import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWeekdays, type RoutineIntervalUnit } from "@/lib/routine-interval";
-import { taskCategoryFor, type TaskCategory } from "@/lib/task-categories";
 import { TaskTagPicker } from "@/components/tasks/TaskTagPicker";
-import { simplePriorities } from "@/lib/simple-mode";
+import { priorityFromTaskTags, taskTagPriorityChange } from "@/lib/task-tag-ui";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import type { PersonalTaskTag, Task } from "@/lib/types";
-import { defaultCaptureTag } from "@/lib/work-guide";
 
 export type TaskSaveResult = { task: Task; refreshRelated: boolean };
 
 type TaskFormState = {
   scope: string;
   area: string;
-  task_category: TaskCategory | "";
   tag_ids: string[];
   client_request_id: string;
   source_type: string;
-  task_type_label: string;
   title: string;
   add_to_today: boolean;
   owner: string;
@@ -36,7 +32,6 @@ type TaskFormState = {
   status: string;
   custom_status_label: string;
   risk: string;
-  requested_priority: string;
   next_action: string;
   notes: string;
   estimated_minutes: string;
@@ -64,11 +59,9 @@ type TaskFormState = {
 const defaultState: TaskFormState = {
   scope: "home",
   area: "personal",
-  task_category: "",
   tag_ids: [],
   client_request_id: "",
   source_type: "follow_up",
-  task_type_label: "",
   title: "",
   add_to_today: false,
   owner: "",
@@ -81,7 +74,6 @@ const defaultState: TaskFormState = {
   status: "not_started",
   custom_status_label: "",
   risk: "low",
-  requested_priority: "3",
   next_action: "",
   notes: "",
   estimated_minutes: "",
@@ -138,11 +130,9 @@ export function TaskForm({
       ? {
           scope: initialTask.scope,
           area: initialTask.area ?? (initialTask.scope === "company" ? "work" : "family"),
-          task_category: taskCategoryFor(initialTask),
           tag_ids: initialTask.personal_tag_ids ?? [],
           client_request_id: initialTask.client_request_id ?? "",
           source_type: initialTask.source_type,
-          task_type_label: initialTask.task_type_label ?? "",
           title: initialTask.title,
           add_to_today: false,
           owner: initialTask.owner ?? "",
@@ -155,7 +145,6 @@ export function TaskForm({
           status: initialTask.status,
           custom_status_label: initialTask.custom_status_label ?? "",
           risk: initialTask.risk,
-          requested_priority: urgencyPriorityValue(initialTask.requested_priority),
           next_action: initialTask.next_action ?? "",
           notes: initialTask.notes ?? "",
           estimated_minutes: String(initialTask.estimated_minutes ?? ""),
@@ -179,7 +168,7 @@ export function TaskForm({
           notice_user_ids: initialNoticeUserIds,
           follower_user_ids: initialFollowerUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, task_category: preset?.task_category ?? "", client_request_id: crypto.randomUUID() }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, client_request_id: crypto.randomUUID() }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -188,16 +177,11 @@ export function TaskForm({
   const [draftReady, setDraftReady] = useState(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftError, setDraftError] = useState("");
-  const [tagsReady, setTagsReady] = useState(false);
-  const [catalog,setCatalog] = useState<PersonalTaskTag[]>([]);
-  const [preferred,setPreferred] = useState("");
+  const [catalog,setCatalog] = useState<PersonalTaskTag[]>(knownTags ?? []);
+  const [catalogRead, setCatalogRead] = useState(Boolean(knownTags?.length));
+  const [baselineTags, setBaselineTags] = useState(initialTask?.personal_tag_ids ?? []);
+  const [tagsTouched, setTagsTouched] = useState(false);
   const [optionsOpen,setOptionsOpen] = useState(Boolean(initialTask || preset?.status === "waiting"));
-  const prefKey = `dcp:capture-default-tag:v1:${userId}`;
-  useEffect(()=>{try {setPreferred(localStorage.getItem(prefKey) || "");} catch {setPreferred("");}},[prefKey]);
-  const defaultTag = defaultCaptureTag(catalog,preferred);
-  const activeTags = form.tag_ids.filter(id=>catalog.some(tag=>tag.id===id));
-  const selectedTags = activeTags.length || initialTask || !defaultTag ? activeTags : [defaultTag.id];
-  const tagLabel = catalog.filter(tag=>selectedTags.includes(tag.id)).map(tag=>tag.name).join("、");
   const customStatusListId = useId();
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
   const nextRoutineDueDate = form.due_date
@@ -302,10 +286,6 @@ export function TaskForm({
     if (saving || createdTaskId) return;
     setError("");
     if (!form.title.trim()) { setError("寫低個 Task 名就得。"); return; }
-    if (!tagsReady) {
-      setOptionsOpen(true); setError("分類未載入，請重試；你輸入嘅名稱仍然保留。");
-      return;
-    }
     const workSchedule = validateTaskWorkSchedule({
       startDate: form.work_start_date || form.work_dates[0] || null,
       dueDate: form.due_date || null,
@@ -341,13 +321,16 @@ export function TaskForm({
     const completedAt =
       form.status === "done" ? initialTask?.completed_at ?? new Date().toISOString() : null;
 
+    // A restored draft can refer to a Tag since removed elsewhere. Only trim it
+    // after confirming the current catalogue; an unavailable catalogue is not empty.
+    const selectedTags = catalogRead ? form.tag_ids.filter(id => catalog.some(tag => tag.id === id)) : form.tag_ids;
+    const changedPriority = initialTask && tagsTouched ? taskTagPriorityChange(baselineTags, selectedTags, catalog) : undefined;
     const payload = {
       area: form.area,
-      // No active tags means the user removed them all. Do not resurrect a preset.
-      tagIds: selectedTags.length || initialTask ? selectedTags : undefined,
+      // Unedited tags are not rewritten; [] on edit explicitly removes all tags.
+      tagIds: initialTask ? (tagsTouched ? selectedTags : undefined) : (selectedTags.length ? selectedTags : undefined),
       clientRequestId: form.client_request_id || crypto.randomUUID(),
       sourceType: form.source_type,
-      taskType: form.task_type_label.trim() || null,
       title: form.title.trim(),
       addToToday: form.add_to_today,
       dueDate: form.due_date || null,
@@ -359,7 +342,7 @@ export function TaskForm({
       status: form.status,
       customStatusLabel: form.custom_status_label.trim() || null,
       nextAction: form.next_action.trim() || null,
-      requestedPriority: Number(form.requested_priority),
+      requestedPriority: priorityFromTaskTags(selectedTags, catalog) ?? 3,
       notes: form.notes.trim() || null,
       owner: form.owner.trim() || null,
       completedAt,
@@ -377,10 +360,9 @@ export function TaskForm({
           status: payload.status, custom_status_label: payload.customStatusLabel,
           next_action: payload.nextAction,
           notes: payload.notes, completed_at: payload.completedAt,
-          requested_priority: payload.requestedPriority,
-          task_type_label: payload.taskType
+          ...(changedPriority === undefined ? {} : { requested_priority: changedPriority })
         } });
-        savedTask = updated.task;
+        savedTask = { ...updated.task, personal_tag_ids: updated.task.personal_tag_ids ?? selectedTags };
         if (form.recurrence_enabled && !initialTask.recurrence_rule_id) {
           try {
             await controlAction("save_task_recurrence", recurrencePayload(initialTask.id));
@@ -415,7 +397,7 @@ export function TaskForm({
     if (!initialTask) {
       try { sessionStorage.removeItem(draftKey); } catch { /* Saving succeeded outside browser storage. */ }
       setForm({ ...defaultState, ...preset, client_request_id: crypto.randomUUID() });
-      setOptionsOpen(false); setDraftRestored(false);
+      setOptionsOpen(false); setDraftRestored(false); setTagsTouched(false);
     }
     if (savedTask) {
       onSaved({
@@ -447,13 +429,13 @@ export function TaskForm({
         <span className="label">任務名稱</span>
         <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="寫低要做嘅事，或者用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
       </label>
-      {inline ? <Button type="submit" className="simple-add-task shrink-0 whitespace-nowrap" disabled={saving || !tagsReady || Boolean(createdTaskId)}>{saving ? "儲存中…" : "儲存任務"}</Button> : null}</div>
-      {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{tagsReady ? tagLabel || "無 Tag" : "讀取分類…"} · {form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {simplePriorities.find(p=>String(p.value)===form.requested_priority)?.label || "P2 一般"} · {form.due_date || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
+      {inline ? <Button type="submit" className="simple-add-task shrink-0 whitespace-nowrap" disabled={saving || Boolean(createdTaskId)}>{saving ? "儲存中…" : "儲存任務"}</Button> : null}</div>
+      <TaskTagPicker key={initialTask?.id ?? form.client_request_id} value={form.tag_ids} taskId={initialTask?.id} initialCatalog={knownTags} disabled={saving}
+        onCatalog={(tags) => { setCatalog(tags); setCatalogRead(true); }}
+        onLoadedValue={(tag_ids) => { setBaselineTags(tag_ids); setForm(current => ({ ...current, tag_ids })); }}
+        onChange={(tag_ids) => { setTagsTouched(true); setForm(current => ({ ...current, tag_ids })); }} />
+      {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {form.due_date || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
       <div hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
-      <TaskTagPicker value={selectedTags} taskId={initialTask?.id} initialCatalog={knownTags} disabled={saving} onReady={setTagsReady} onCatalog={setCatalog} onLoadError={()=>setOptionsOpen(true)} onChange={(tag_ids) => setForm((current) => ({ ...current, tag_ids }))} />
-      {!initialTask && catalog.length ? <label className="text-sm font-semibold">新增 Task 預設 Tag（呢部裝置）
-        <select className="field mt-1" value={defaultTag?.id ?? ""} onChange={e=>{const id=e.target.value;setPreferred(id);setForm(current=>({...current,tag_ids:[id]}));try{localStorage.setItem(prefKey,id);}catch{setError("預設 Tag 只適用於今次，瀏覽器未能記住設定。");}}}>{catalog.map(t=><option value={t.id} key={t.id}>{t.name}</option>)}</select></label> : null}
-      <UrgencyPicker value={form.requested_priority} onChange={(value) => update("requested_priority", value)} />
       {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
         <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
         加入今日 Today
@@ -652,15 +634,9 @@ export function TaskForm({
         <details className="rounded-2xl border border-slate-200 bg-white p-4">
           <summary className="cursor-pointer font-extrabold text-slate-900">
             更多選項
-            <span className="ml-2 text-xs font-medium text-slate-500">類型、備註及通知</span>
+            <span className="ml-2 text-xs font-medium text-slate-500">備註及通知</span>
           </summary>
           <div className="mt-4 grid gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label>
-              <span className="label">任務類型（可留空）</span>
-              <input className="field mt-2" value={form.task_type_label} onChange={(event) => update("task_type_label", event.target.value)} placeholder="例如：行政、報告、家務" maxLength={120} />
-            </label>
-          </div>
           <label>
             <span className="label">備註</span>
             <textarea className="field mt-2 min-h-28" value={form.notes} onChange={(event) => update("notes", event.target.value)} />
@@ -687,7 +663,7 @@ export function TaskForm({
       </div></div>
       {error ? <p className="rounded-lg bg-amber-50 p-3 text-base font-semibold text-amber-900" role="alert">{error}</p> : null}
       {!inline ? <div className="sticky bottom-0 z-10 flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
-        <Button type="submit" disabled={saving || !tagsReady || Boolean(createdTaskId)}>
+        <Button type="submit" disabled={saving || Boolean(createdTaskId)}>
           {saving ? "儲存中..." : initialTask ? "儲存修改" : "加 Task"}
         </Button>
         {onCancel ? (
@@ -698,30 +674,4 @@ export function TaskForm({
       </div> : null}
     </form>
   );
-}
-
-function UrgencyPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const options = simplePriorities;
-  return (
-    <fieldset>
-      <legend className="label">Priority 優先次序</legend>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        {options.map((option) => {
-          const selected = Number(value) === option.value;
-          return (
-            <label key={option.value} className={`cursor-pointer rounded-xl border p-3 text-sm focus-within:ring-2 focus-within:ring-indigo-500 ${selected ? "border-indigo-500 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-500" : "border-slate-200 bg-white text-slate-600"}`}>
-              <input className="sr-only" type="radio" name="task-priority" value={option.value} checked={selected} onChange={() => onChange(String(option.value))} />
-              <span className="block font-bold">{option.label}</span>
-            </label>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
-function urgencyPriorityValue(value: number | undefined) {
-  if ((value ?? 3) <= 2) return "1";
-  if ((value ?? 3) <= 4) return "3";
-  return "5";
 }

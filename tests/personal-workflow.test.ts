@@ -61,20 +61,20 @@ test("tasks filter by viewer-private editable tags without changing privacy", ()
   assert.match(tasksPage, /未分類/);
 });
 
-test("task categories use the existing area and scope fields without a database migration", () => {
+test("personal tags do not replace the task area and scope fields used by existing workflows", () => {
   const categories = read("lib/task-categories.ts");
   const form = read("components/forms/TaskForm.tsx");
   const api = read("app/api/control/route.ts");
   assert.match(categories, /"personal" \| "family" \| "sec" \| "wecare"/);
   assert.match(categories, /case "sec": return \{ area: "work", scope: "home" \}/);
   assert.match(categories, /case "wecare": return \{ area: "work", scope: "company" \}/);
-  assert.match(form, /tagIds: selectedTags.length/);
+  assert.match(form, /tagsTouched \? selectedTags : undefined/);
   assert.doesNotMatch(form, /taskCategory: form\.task_category/);
   assert.match(api, /taskCategoryValue\(body\.taskCategory\)/);
   assert.doesNotMatch(categories, /supabase|migration/i);
 });
 
-test("capture shows the resolved category after the name without requiring another decision", () => {
+test("capture puts optional tags below the name without forcing a default", () => {
   const form = read("components/forms/TaskForm.tsx");
   const name = form.indexOf('<span className="label">任務名稱</span>');
   const category = form.indexOf('<TaskTagPicker');
@@ -82,10 +82,9 @@ test("capture shows the resolved category after the name without requiring anoth
   assert.ok(name >= 0 && category > name && category < today);
   const picker = read("components/tasks/TaskTagPicker.tsx");
   assert.match(picker, /Tags 分類/);
-  assert.match(form, /defaultCaptureTag\(catalog,preferred\)/);
-  assert.match(form, /task_category: ""/);
-  assert.match(form, /task_category: taskCategoryFor\(initialTask\)/);
-  assert.match(form, /tagLabel \|\| "無 Tag"/);
+  assert.match(picker, /＋Tag（可選）/);
+  assert.match(picker, /清除全部 Tags/);
+  assert.doesNotMatch(form, /defaultCaptureTag|tagsReady|UrgencyPicker/);
   assert.doesNotMatch(form.slice(form.indexOf('更多選項')), /<span className="label">分類/);
 });
 
@@ -114,12 +113,12 @@ test("task form starts with a clear task name and keeps follow-up simple", () =>
   assert.match(form, /sessionStorage/);
 });
 
-test("task type is free text and collaborators are separate from single-person handoff", () => {
+test("task type is not a separate field in task capture; collaborators remain separate from handoff", () => {
   const form = read("components/forms/TaskForm.tsx");
   const voice = read("components/VoiceHandoffForm.tsx");
   const api = read("app/api/control/route.ts");
   const migration = read("supabase/migrations/20260902090000_task_free_type_and_collaborators.sql");
-  assert.match(form, /任務類型（可留空）/);
+  assert.doesNotMatch(form, /任務類型（可留空）|task_type_label:/);
   assert.match(voice, /任務類型（可留空）/);
   assert.match(form, /followerUserIds/);
   assert.match(api, /set_task_followers/);

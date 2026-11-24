@@ -18,7 +18,7 @@ export function ActionCenterTabs({
 }: {
   active: ActionCenterTab;
   todayCount: number;
-  taskCount: number;
+  taskCount: number | null;
   onChange: (tab: ActionCenterTab) => void;
 }) {
   return (

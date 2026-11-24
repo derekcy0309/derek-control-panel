@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AppShell } from "@/components/AppShell";
+import { checkClientSession, clearClientSessionCheck, clientSessionIdentity, markClientSessionChecked } from "@/lib/client-session";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 import { googleLoginError, safeLoginDestination } from "@/lib/google-login";
 import { DaylineMark } from "@/components/dayline/DaylineMark";
@@ -26,6 +27,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const accountId = useRef<string | null>(null);
 
   useEffect(() => {
     const currentUrl = new URL(window.location.href);
@@ -37,7 +39,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
     let active = true;
     let refreshInFlight = false;
-    async function renewSession({ initial = false, adoptBrowserSession = false }: { initial?: boolean; adoptBrowserSession?: boolean } = {}) {
+    async function renewSession({ initial = false, adoptBrowserSession = false, returning = false }: { initial?: boolean; adoptBrowserSession?: boolean; returning?: boolean } = {}) {
       if (refreshInFlight) return;
       refreshInFlight = true;
       try {
@@ -58,12 +60,19 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           }
           if (window.location.hash || window.location.search.includes("code=")) window.history.replaceState({}, "", currentDestination());
         }
-        const response = await fetch("/api/auth", { cache: "no-store", credentials: "same-origin" });
-        if (response.ok && active) setAuthenticated(true);
-        // A temporary network error must not throw the user back to the login
-        // screen.  A missing/revoked refresh token is handled on the next full
-        // sign-in check, without silently clearing any local work.
-        if (!response.ok && initial && active) setAuthenticated(false);
+        // Focus and visibility events often arrive together; coalesce them.
+        // A return after another tab has switched users must discard this tab's
+        // old private screen before loading data under the new cookie.
+        const authenticated = await checkClientSession(returning ? 1_000 : undefined);
+        if (!active) return;
+        const verifiedId = clientSessionIdentity();
+        if (authenticated && verifiedId && accountId.current && verifiedId !== accountId.current) {
+          setAuthenticated(false);
+          window.location.reload();
+          return;
+        }
+        accountId.current = authenticated ? verifiedId : null;
+        setAuthenticated(authenticated);
       } catch {
         // Keep an existing authenticated screen in place while offline.
       } finally {
@@ -74,7 +83,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     void renewSession({ initial: true, adoptBrowserSession: true });
     const keepAlive = window.setInterval(() => { void renewSession(); }, 20 * 60 * 1000);
     const renewWhenReturning = () => {
-      if (document.visibilityState === "visible") void renewSession();
+      if (document.visibilityState === "visible") void renewSession({ returning: true });
     };
     window.addEventListener("focus", renewWhenReturning);
     document.addEventListener("visibilitychange", renewWhenReturning);
@@ -155,9 +164,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
       body: JSON.stringify({ action: "password", email, password })
     });
-    const result = await response.json().catch(() => ({})) as { error?: string };
+    const result = await response.json().catch(() => ({})) as { error?: string; user?: { id?: string } };
     setSubmitting(false);
     if (!response.ok) { setMessage(result.error || "登入失敗，請再試一次。"); return; }
+    clearClientSessionCheck();
+    accountId.current = result.user?.id ?? null;
+    markClientSessionChecked(accountId.current);
     setPassword("");
     setAuthenticated(true);
   }

@@ -12,8 +12,8 @@
 
 - 私人三日總覽：首頁合併顯示本人 Panel 行程、選定 Apple Calendar 的唯讀快取及今日起三日未完成 Deadline。Apple 行程仍在 iPhone 修改，不進入共享 Task。Grok 可另授權讀本人日後新增 Task，並以 `/agent/brief` 一份精簡文字執行 08:30 Routine；Apple 授權及 Grok Routine 均需完成一次設定，未連接／未排程不會假稱啟用。見 [`docs/private-calendar-brief.md`](docs/private-calendar-brief.md)。
 
-- 簡易首頁及[開工導航](docs/work-guide.md)：Dashboard 打個任務名、按 Enter 就可以加 Task。標籤、P2、本人及無 Deadline 有預設，毋須逐項設定。首頁用淺色分開工作、等回覆同限期，另有本人未來三日學校／家庭日期及已揀選嘅 iCloud 行程。「帶我開工」一次只顯示一件事、一個起步動作；已手排嘅次序優先，完成一步唔等於結案。自訂 Tags、Routine、工作日及共同跟進保留，見 [簡易模式](docs/simple-mode.md)。
-- 私人 Tags：全部可以新增、改名、移除。Derek 首次保留原有四個分類；其他用戶首次只設「個人、Wecare」。刪除後不會重建預設，不改 Task、scope、area 或分享權限。
+- 簡易首頁及[開工導航](docs/work-guide.md)：Dashboard 打個任務名、按 Enter 就可以加 Task。可在名稱下面直接選填多個 Tags；本人及無 Deadline 有預設。「帶我開工」一次只顯示一件事、一個起步動作；已手排嘅次序優先，完成一步唔等於結案。
+- 私人 Tags：全部可以新增、改名、移除。Derek 的四個主要分類是「個人、家庭、SEC（恩海居）、WECARE」，亦可選填 P1／P2／P3。既有的分類、優先次序及任務內容保留；移除 Tag 唔會刪 Task 或改分享權限。全域搜尋可用標題或本人 Tags。
 - 「幾點要收手」：Dashboard 同開工導航用本人下一個固定行程扣返準備時間（預設 20 分鐘，可以改）。只提示，唔會改 Task 次序、推播或者寫入 iPhone；日曆未齊唔會估。
 
 - 交辦確認：已修正「確認收到」被舊資料庫 guard 誤擋；收件人可先確認再接受，派出者可收到去重回覆。真實 RLS／trigger 測試、migration 及回復見 [`docs/assignment-acknowledgement-fix.md`](docs/assignment-acknowledgement-fix.md)。
@@ -27,7 +27,7 @@
 - Inbox Processing Mode：每次只處理一項、8 個清晰選擇、防重複提交、保留原始來源及最近一次 Undo
 - 真正通知系統：使用者明確授權瀏覽器／PWA 通知、個別靜音時段及 night-shift、Today／deadline／Waiting／handover／Focus／shutdown 提醒、私隱安全發送紀錄
 - 任務依賴：明確的 blocked-by／blocks 關係、防循環檢查，以及不會自動完成或改派的下一步提示；舊有 Project 資料保留但不再新增。
-- Task Action Queue：用自己的 Tags 篩選，按 P1／P2／P3、Waiting、受阻、已完成分組，全部預設收起；保留多選加入今日、日曆及 A4 列印。
+- 任務總表：由自己選 Tag 篩選；等回覆、受阻、已完成等是進度狀態，不是分類。保留多選加入今日、日曆及 A4 列印。
 - 單一步驟 Today：首頁先突出一項「現在只做這一件」，可直接開始 5 分鐘或要求系統拆細；其餘工作延後顯示，降低同時選擇造成的啟動阻力
 - 多巴胺友善外觀：Today／家庭／個人／工作／財務／健康各有文字、icon 及身份色，另有 Sunrise、Ocean、Aurora、Night Shift 四套主題與安靜／平衡／鮮明三段視覺強度
 - Routine 工作：只需設定「每隔 N 日／月／年」及無限期或結束日期；完成當前任務後才建立下一項，並永遠按原定到期日延續，不會因遲完成而令 schedule 漂移

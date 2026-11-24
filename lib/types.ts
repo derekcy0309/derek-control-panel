@@ -809,6 +809,20 @@ export type NotificationDelivery = {
   created_at: string;
 };
 
+export type ControlShellData = {
+  currentUser: Pick<CurrentUser, "id" | "displayName">;
+  profile: Pick<UserProfile, "active" | "is_admin" | "must_change_password">;
+  settings: Pick<UserSettings, "theme" | "visual_intensity" | "accent_colour" | "dashboard_density" | "pinned_pages">;
+  showEncouragement: boolean;
+};
+
+export type CalendarPanelData = {
+  month: string;
+  currentUser: Pick<CurrentUser, "id">;
+  tasks: Array<Pick<Task, "id" | "due_date" | "title">>;
+  operatingItems: Array<Pick<OperatingItem, "id" | "due_date" | "title" | "item_type" | "area" | "metadata" | "owner_id" | "schedule_start_at" | "schedule_end_at" | "schedule_status">>;
+};
+
 export type ControlData = AppData & {
   currentUser: CurrentUser;
   profile: UserProfile;

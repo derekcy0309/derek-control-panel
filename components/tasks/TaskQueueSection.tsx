@@ -11,6 +11,7 @@ export function TaskQueueSection({
   title,
   description,
   tasks,
+  tagNames,
   tone = "neutral",
   defaultOpen = false,
   previewLimit,
@@ -27,6 +28,7 @@ export function TaskQueueSection({
   title: string;
   description: string;
   tasks: Task[];
+  tagNames: ReadonlyMap<string, string>;
   tone?: Tone;
   defaultOpen?: boolean;
   previewLimit?: number;
@@ -72,6 +74,7 @@ export function TaskQueueSection({
                 <TaskQueueRow
                   key={task.id}
                   task={task}
+                  tagNames={tagNames}
                   tone={tone}
                   completed={completed}
                   inToday={todayTaskIds?.has(task.id)}

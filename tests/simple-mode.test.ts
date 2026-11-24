@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { priorityFromTaskTags, taskMatchesTagText, taskTagPriorityChange } from "../lib/task-tag-ui.ts";
 import { actionableTask, isMyTask, simplePriority, simpleToday, sortByPriority, taskTagNameError } from "../lib/simple-mode.ts";
 import type { Assignment, PlanningMetadata, Task, TaskDependency } from "../lib/types.ts";
 
@@ -46,8 +47,34 @@ test("tags are bounded, viewer private and cannot replace legacy scope/privacy",
   assert.match(migration,/security invoker set search_path = ''/); assert.doesNotMatch(migration,/security definer|update public\.tasks|delete from public\.tasks/i);
   assert.match(migration,/if initialized is null then return/); assert.match(migration,/user_id = \(select auth.uid\(\)\)/);
   const form=readFileSync("components/forms/TaskForm.tsx","utf8");
-  assert.match(form,/tagIds: selectedTags.length/); assert.doesNotMatch(form,/taskCategory: payload|<span className="label">能量|estimated_minutes: payload|energy_level: payload/);
+  assert.match(form,/tagsTouched \? selectedTags : undefined/); assert.doesNotMatch(form,/taskCategory: payload|<span className="label">能量|estimated_minutes: payload|energy_level: payload/);
   assert.match(form,/clientRequestId:/); assert.match(form,/Tags 分類|TaskTagPicker/);
   const api=readFileSync("app/api/control/route.ts","utf8");
   assert.doesNotMatch(api,/priorityValueForDueDate|datedPriority/);
+});
+
+test("priority tags affect rank only after an explicit change, including removal of the last priority tag", () => {
+  const catalog = [
+    { id: "owner-p1", name: "今日優先", legacy_key: "priority_p1" },
+    { id: "owner-p2", name: "P2", legacy_key: "priority_p2" },
+    { id: "owner-p3", name: "p3", legacy_key: null },
+    { id: "owner-wecare", name: "WECARE", legacy_key: "wecare" },
+  ];
+  assert.equal(priorityFromTaskTags([], catalog), null);
+  assert.equal(priorityFromTaskTags(["owner-p3", "owner-p1"], catalog), 1);
+  assert.equal(priorityFromTaskTags(["owner-p3"], catalog), 5);
+  assert.equal(taskTagPriorityChange(["owner-p1"], ["owner-p1", "owner-wecare"], catalog), undefined);
+  assert.equal(taskTagPriorityChange(["owner-p1"], [], catalog), 3);
+  assert.equal(taskTagPriorityChange(["owner-p3"], ["owner-p2"], catalog), 3);
+  assert.equal(taskTagPriorityChange([], ["owner-wecare"], catalog), undefined);
+});
+
+test("the task list can search the viewer's real tag names, with SEC and 恩海居 treated as one label", () => {
+  const tagNames = new Map([["one", "SEC"], ["two", "WECARE"]]);
+  const task = { title: "遞交報表", personal_tag_ids: ["one", "other-user-s-tag"] };
+  assert.ok(taskMatchesTagText(task, "報表", tagNames));
+  assert.ok(taskMatchesTagText(task, "sec", tagNames));
+  assert.ok(taskMatchesTagText(task, "恩海居", tagNames));
+  assert.equal(taskMatchesTagText(task, "wecare", tagNames), false);
+  assert.equal(taskMatchesTagText(task, "other-user-s-tag", tagNames), false);
 });

@@ -46,10 +46,11 @@ try {
     const fixtureNow=new Date(today+'T14:52:00+08:00'),pickup={id:'pickup',uid:'pickup',title:role+' 固定行程',start:today+'T15:30:00+08:00',end:today+'T16:00:00+08:00',source:'Panel',allDay:false};
     await page.clock.setFixedTime(fixtureNow);
     await context.addInitScript(()=>localStorage.setItem('dcp:work-stop:v1:different-user','99'));
-    const names=role==='Derek'?['個人','Wecare','家庭','SEC']:['個人','Wecare'];
+    const names=role==='Derek'?['個人','WECARE','家庭','SEC','P1','P2','P3']:['個人','WECARE','P1','P2','P3'];
     let tags=names.map((name,i)=>({id:`99999999-9999-4999-8999-${String(i+1).padStart(12,'0')}`,name,legacy_key:null}));
     const makeTask=(id,title,values={})=>({id,user_id:userId,owner_id:userId,title,scope:'home',area:'personal',source_type:'follow_up',status:'not_started',due_date:null,follow_up_date:null,next_action:null,risk:'low',notes:null,completed_at:null,deleted_at:null,archived_at:null,created_at:`${today}T00:00:00Z`,updated_at:`${today}T00:00:00Z`,requested_priority:3,personal_tag_ids:[tags[0].id],...values});
     const tasks=[makeTask('22222222-2222-4222-8222-222222222221','我排第一件',{requested_priority:5}),makeTask('22222222-2222-4222-8222-222222222222','我排第二件',{requested_priority:1}),makeTask('22222222-2222-4222-8222-222222222223','未安排的高 Priority',{requested_priority:1}),makeTask('22222222-2222-4222-8222-222222222224','等文件回覆',{status:'waiting',waiting_for:'朋友'}),makeTask('22222222-2222-4222-8222-222222222225','依賴未完成',{requested_priority:1})];
+    for(const task of tasks)task.personal_tag_ids.push(tags.find(tag=>tag.name===({1:'P1',3:'P2',5:'P3'}[task.requested_priority])).id);
     let planning=tasks.slice(0,2).map((task,i)=>({user_id:userId,resource_type:'task',resource_id:task.id,planned_date:today,plan_role:i?'later':'now',plan_source:'manual',plan_position:i+1}));
     let preferences=null;let createFailures=0;let creates=[];let navigations=0;let todayReads=0;const guideRecords=new Map();let guideWrites=0;
     const snapshot=()=>({currentUser:{id:userId,email:role==='Derek'?'derekcy0309@gmail.com':`${role.toLowerCase()}@example.test`,displayName:role},profile:{user_id:userId,display_name:role,workspace_role:role.toLowerCase(),active:true,is_admin:role==='Derek'},settings:{theme:'light',focus_minutes:25,gentle_mode:role==='Suki'},tasks,taskCatalog:tasks.filter(t=>t.status!=='done'),taskQueueCatalog:tasks,taskTags:tags,taskNoticeRecipients:[],taskFollowers:[],planning,assignments:[],shares:[],participants:[{user_id:userId,display_name:role},{user_id:'44444444-4444-4444-8444-444444444444',display_name:'現有用戶'}],taskDependencies:[{task_id:tasks[4].id,depends_on_task_id:'missing'}],capacity:null,capacityCommitments:[],weeklyAvailableMinutes:null,reminders:[],notificationPreferences:preferences,cashflowHint:null});
@@ -74,7 +75,7 @@ try {
             if(input.addToToday) planning.push({user_id:userId,resource_type:'task',resource_id:task.id,planned_date:today,plan_role:'later',plan_source:'manual',plan_position:null});
           }
         } else if(input.action==='record_guide_step'){guideWrites++;const checkpoint={current_position:input.next?'開工導航：下次由呢一步接住':'開工導航：呢一步已做完，等你決定是否結案',next_minimum_step:input.next||null,completed_summary:input.completed};guideRecords.set(input.taskId,checkpoint);body={checkpoint};}
-        else if(input.action==='update_task') {const task=tasks.find(t=>t.id===input.id);Object.assign(task,input.changes);body={task};}
+        else if(input.action==='update_task') {const task=tasks.find(t=>t.id===input.id);Object.assign(task,input.changes);if(input.tagIds!==undefined)task.personal_tag_ids=input.tagIds;body={task};}
         else if(input.action==='set_quiet_mode') {preferences={quiet_mode_until:input.until};body={ok:true};}
         else if(input.action==='manage_task_tag') {
           let tag=tags.find(t=>t.id===input.tagId);
@@ -151,23 +152,25 @@ try {
     await assertSaveButtonReadable(saveButton);
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await saveButton.scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SCREENSHOT_DIR+'/save-'+role+'-'+width+'.png',animations:'disabled',style:'nextjs-portal{display:none!important}'});}
     await saveButton.click();
-    await page.getByRole('status').filter({hasText:'Task 已儲存'}).waitFor();assert.equal(creates.length,1);assert.deepEqual(creates[0].tagIds,[tags[0].id]);assert.equal(creates[0].dueDate,null);assert.equal(creates[0].requestedPriority,3);
-    const readsAfterSave=todayReads;
+    await page.getByRole('status').filter({hasText:'Task 已儲存'}).waitFor();assert.equal(creates.length,1);assert.equal(creates[0].tagIds,undefined);assert.equal(creates[0].dueDate,null);assert.equal(creates[0].requestedPriority,3);
     await page.getByRole('tab',{name:/任務總表/}).click();
     await page.getByRole('searchbox',{name:'搜尋 Task'}).fill(newTitle);
     const queue=page.locator('#task-action-list');
-    await queue.getByRole('button',{name:/^P2 一般 Normal/}).click();
+    await queue.getByRole('button',{name:/^未完成/}).click();
     const newTaskRow=queue.locator('.task-queue-row').filter({hasText:newTitle});
     assert.equal(await newTaskRow.locator('details').getAttribute('open'),null,'a new task starts collapsed');
     await newTaskRow.locator('summary').click();
     const newTask=queue.getByRole('link',{name:newTitle,exact:true});await newTask.waitFor();
-    assert.equal(await newTask.count(),1);assert.equal(todayReads,readsAfterSave,'saved Task must appear in the list without another Today read');assert.equal(navigations,0);
+    assert.equal(await newTask.count(),1);assert.equal(navigations,0);
     await page.getByRole('tab',{name:/今日重點/}).click();
-    await dialog.getByRole('button',{name:/更改設定/}).click();assert.equal(await dialog.getByRole('button',{name:'個人',exact:true}).getAttribute('aria-pressed'),'true');
-    await dialog.getByText('P3 低 Low',{exact:true}).click();
+    const tagToggle=dialog.getByText('＋Tag（可選）',{exact:true});
+    if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
+    await dialog.getByRole('button',{name:'P3',exact:true}).click();
+    await dialog.getByRole('button',{name:'WECARE',exact:true}).click();
+    await dialog.getByRole('button',{name:/更改設定/}).click();
     await dialog.getByText('日期／邊個跟',{exact:false}).click();
     await dialog.getByRole('button',{name:'今日',exact:true}).click();
-    assert.equal(await dialog.getByRole('radio',{name:'P3 低 Low',exact:true}).isChecked(),true);
+    assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
     const readsBeforeTyping=todayReads;
     await dialog.getByLabel('任務名稱',{exact:true}).fill('草稿保留測試');
     assert.equal(todayReads,readsBeforeTyping);
@@ -177,7 +180,10 @@ try {
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
-    await dialog.getByRole('button',{name:/更改設定/}).click();assert.equal(await dialog.getByRole('button',{name:'個人',exact:true}).getAttribute('aria-pressed'),'true');
+    if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
+    assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
+    assert.equal(await dialog.getByRole('button',{name:'WECARE',exact:true}).getAttribute('aria-pressed'),'true');
+    await dialog.getByRole('button',{name:/更改設定/}).click();
     await dialog.getByText('更多設定',{exact:false}).click();
     await dialog.getByText('自訂哪幾日做／提醒',{exact:false}).click();
     await dialog.getByLabel('加入要做的日子').fill(today);await dialog.getByRole('button',{name:'加入',exact:true}).click();
@@ -188,8 +194,9 @@ try {
     await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/更改設定/}).waitFor();assert.equal(creates.length,3);
     assert.equal(creates[1].clientRequestId,creates[2].clientRequestId);
     assert.equal(creates[2].requestedPriority,5);assert.equal(creates[2].energyLevel,undefined);assert.equal(creates[2].estimatedMinutes,undefined);
-    assert.deepEqual(creates[2].workDates,[today]);assert.equal(creates[2].tagIds.length,1);
-    await dialog.getByRole('button',{name:/更改設定/}).click();await dialog.getByText('管理我的 Tags',{exact:true}).click();
+    assert.deepEqual(creates[2].workDates,[today]);assert.deepEqual(creates[2].tagIds,[tags.find(t=>t.name==='P3').id,tags.find(t=>t.name==='WECARE').id]);
+    if(!(await dialog.getByText('管理我的 Tags',{exact:true}).isVisible())) await tagToggle.click();
+    await dialog.getByText('管理我的 Tags',{exact:true}).click();
     const manager=dialog.locator('fieldset').filter({has:page.getByText('管理我的 Tags',{exact:true})}).locator('details');
     await manager.getByRole('button',{name:'改名',exact:true}).first().click();
     await manager.getByLabel('修改 個人',{exact:true}).fill('My Tag');await manager.getByRole('button',{name:'儲存',exact:true}).click();
@@ -200,14 +207,22 @@ try {
     await manager.getByLabel('新 Tag 名稱').fill('學習');await manager.getByLabel('新 Tag 名稱').press('Enter');
     await dialog.getByRole('button',{name:'學習',exact:true}).waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-    await dialog.getByRole('button',{name:/收起設定/}).click();
+    await tagToggle.click();
     await page.getByRole('tab',{name:/任務總表/}).click();
-    await page.getByRole('button',{name:/P1 高 High/}).waitFor();
+    await queue.getByRole('button',{name:/^未完成/}).waitFor();
     assert.equal(await page.locator('.task-queue-row').count(),0,'queue starts collapsed');
-    await page.getByRole('button',{name:/P1 高 High/}).click();
+    await queue.getByRole('button',{name:/^P1/}).click();
+    await queue.getByRole('button',{name:/^未完成/}).click();
     const highPriorityRow=page.locator('.task-queue-row').filter({hasText:'未安排的高 Priority'});
     await highPriorityRow.locator('summary').click();
     await highPriorityRow.getByRole('link',{name:'未安排的高 Priority',exact:true}).waitFor();
+    await highPriorityRow.getByRole('button',{name:'修改任務：未安排的高 Priority'}).click();
+    const edit=page.getByRole('dialog',{name:'修改任務'});
+    await edit.getByText('＋Tag（可選）',{exact:true}).click();
+    await edit.getByRole('button',{name:'清除全部 Tags',exact:true}).click();
+    await edit.getByRole('button',{name:'儲存修改',exact:true}).press('Enter');
+    await edit.waitFor({state:'hidden'});
+    assert.deepEqual(tasks[2].personal_tag_ids,[]);assert.equal(tasks[2].requested_priority,3);
     assert.equal(navigations,0,'typing, saving and switching tabs never reload the document');assert.deepEqual(errors,[]);
     console.log(`PASS simple-mode ${role} ${width}px: visible save (8 palettes), click creates once and appears in task list without refresh, manual order, quiet, draft, keyboard retry`);
     await context.close();

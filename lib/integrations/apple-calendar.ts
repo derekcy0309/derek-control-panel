@@ -96,13 +96,43 @@ export async function fetchAppleEvents(email:string,password:string,calendars:Ap
  return fetchAppleWindowEvents(email,password,calendars,briefWindow(now));
 }
 export async function fetchAppleWindowEvents(email:string,password:string,calendars:AppleCalendar[],window:CalendarReadWindow,eventLimit=200) {
- const dav=await client(email,password);let events:BriefEvent[]=[];
- for(const calendar of calendars){
+ const dav=await client(email,password);
+ const timeRange={start:new Date(window.start).toISOString(),end:new Date(window.end).toISOString()};
+ return readSelectedAppleCalendars(calendars,window,calendar=>dav.fetchCalendarObjects({
+  calendar:{url:calendar.url} as DAVCalendar,timeRange,expand:true,useMultiGet:false,urlFilter:()=>true
+ }),eventLimit);
+}
+
+// Separate CalDAV collections are independent. Keep a single account/transport
+// budget, limit concurrent REPORTs, and merge in the same order as serial reads.
+const APPLE_CALENDAR_BATCH_SIZE=3;
+export async function readSelectedAppleCalendars(
+ calendars:readonly AppleCalendar[],window:CalendarReadWindow,
+ readObjects:(calendar:AppleCalendar)=>Promise<readonly {data?:unknown}[]>,eventLimit=200
+) {
+ const events:BriefEvent[]=[];
+ async function readCalendar(calendar:AppleCalendar){
   allowedAppleUrl(calendar.url);
-  const objects=await dav.fetchCalendarObjects({calendar:{url:calendar.url} as DAVCalendar,timeRange:{start:new Date(window.start).toISOString(),end:new Date(window.end).toISOString()},expand:true,useMultiGet:false,urlFilter:()=>true}).catch(error=>{const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"?"APPLE_RESPONSE_INVALID":code);});
+  let objects:readonly {data?:unknown}[];
+  try{objects=await readObjects(calendar);}
+  catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"?"APPLE_RESPONSE_INVALID":code);}
   if(objects.length>1000)throw new Error("APPLE_RESPONSE_LIMIT");
-  for(const object of objects)if(object.data){try{events.push(...parseAppleEventsForWindow(String(object.data),window));}catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"||code==="APPLE_NETWORK"?"APPLE_PARSE_FAILED":code);}}
+  const rows:BriefEvent[]=[];
+  for(const object of objects)if(object.data){
+   try{for(const row of parseAppleEventsForWindow(String(object.data),window))rows.push(row);}
+   catch(error){const code=calendarErrorCode(error);throw new Error(code==="APPLE_REFRESH_FAILED"||code==="APPLE_NETWORK"?"APPLE_PARSE_FAILED":code);}
+  }
+  return rows;
  }
- events=[...new Map(events.map(e=>[e.uid+":"+e.start,e])).values()].sort((a,b)=>a.start.localeCompare(b.start));
- return {events:events.slice(0,eventLimit),truncated:events.length>eventLimit};
+ for(let i=0;i<calendars.length;i+=APPLE_CALENDAR_BATCH_SIZE){
+  // No further calendar is requested if any report in this batch fails. Use
+  // selection order for errors as well as rows, regardless of completion order.
+  const batch=await Promise.allSettled(calendars.slice(i,i+APPLE_CALENDAR_BATCH_SIZE).map(readCalendar));
+  for(const result of batch){
+   if(result.status==="rejected")throw result.reason;
+   for(const row of result.value)events.push(row);
+  }
+ }
+ const unique=[...new Map(events.map(e=>[e.uid+":"+e.start,e])).values()].sort((a,b)=>a.start.localeCompare(b.start));
+ return {events:unique.slice(0,eventLimit),truncated:unique.length>eventLimit};
 }

@@ -78,8 +78,7 @@
 .dl-editorial-queue .dl-queue-task summary .dl-queue-arrow { color: var(--accent,#195b64); }
 .dl-editorial-queue .dl-queue-task details[open] .dl-queue-arrow { transform: rotate(180deg); }
 .dl-editorial-queue .dl-queue-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .6rem; margin-top: .25rem; font-size: .77rem; color: var(--soft,#475f69); }
-.dl-editorial-queue .dl-queue-priority { border-radius: 1rem; padding: .1rem .5rem; background: #e9f0f1; color: #405f68; }
-.dl-editorial-queue .dl-queue-priority[data-priority="1"] { background: #f8eadb; color: #6e4826; }
+.dl-editorial-queue .dl-queue-tag { min-width: 0; border-radius: 1rem; padding: .1rem .5rem; background: var(--band,#e9f0f1); color: var(--ink,#405f68); overflow-wrap: anywhere; }
 .dl-editorial-queue .dl-queue-detail { margin: 0 0 .6rem; padding: .65rem; background: var(--page,#f5f8f8); border-radius: .55rem; }
 .dl-editorial-queue .dl-queue-moves { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .3rem; }
 

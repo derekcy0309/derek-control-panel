@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
-import { NextRequest } from "next/server";
+import { after, NextRequest } from "next/server";
 import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
@@ -10,7 +10,9 @@ import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import { noteMetadata, validateNoteInput } from "@/lib/notes";
 import { validatePinnedPages } from "@/lib/dayline-pinned-pages";
-import type { BodyDoubleTaskOption } from "@/lib/types";
+import { findControlResources } from "@/lib/server/task-search";
+import { appleCalendarMonthWindow } from "@/lib/apple-calendar-month";
+import type { BodyDoubleTaskOption, CalendarPanelData, ControlShellData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +23,11 @@ export async function GET(request: NextRequest) {
   if (context instanceof Response) return context;
 
   const view = request.nextUrl.searchParams.get("view") ?? "bootstrap";
+  if (view === "shell") {
+    if (request.nextUrl.searchParams.size !== 1) return jsonError("頂欄資料不接受其他參數。", 400);
+    return shellData(context);
+  }
+  if (view === "calendar") return calendarPanel(context, request.nextUrl.searchParams);
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "work_guide") return workGuide(context, request.nextUrl.searchParams.get("taskId") ?? "");
@@ -32,7 +39,7 @@ export async function GET(request: NextRequest) {
   if (view === "assignment_alerts") return assignmentAlerts(context);
   if (view === "archived_transactions") return archivedTransactions(context, request.nextUrl.searchParams);
   if (view === "inbox_processing") return inboxProcessing(context, request.nextUrl.searchParams);
-  if (view === "today") return todayDashboard(context);
+  if (view === "today" || view === "today_focus") return todayDashboard(context, view === "today_focus");
   if (view === "task_tags") {
     const taskId = request.nextUrl.searchParams.get("taskId");
     if (taskId && !uuidValue(taskId)) return jsonError("任務識別碼不正確。", 400);
@@ -94,20 +101,12 @@ export async function GET(request: NextRequest) {
   const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
 
   if (!profile.data) {
-    const created = await client.from("user_profiles").insert({ user_id: user.id, display_name: displayName }).select("*").single();
+    const created = await insertMissingOwnRow(client, "user_profiles", user.id, { display_name: displayName });
     if (created.error) return databaseError(created.error);
     profile.data = created.data;
   }
   if (!settings.data) {
-    const supportProfile = defaultSupportProfile(user, displayName);
-    const gentle = supportProfile === "depression";
-    const created = await client.from("user_settings").insert({
-      user_id: user.id,
-      email: user.email ?? null,
-      gentle_mode: gentle,
-      dashboard_density: gentle ? "calm" : "comfortable",
-      support_profile: supportProfile
-    }).select("*").single();
+    const created = await insertMissingOwnRow(client, "user_settings", user.id, initialSettings(user, displayName));
     if (created.error) return databaseError(created.error);
     settings.data = created.data;
   }
@@ -141,6 +140,75 @@ export async function GET(request: NextRequest) {
     taskFollowers: taskFollowers.data ?? [],
     showEncouragement: encouragementVisibleFor(user)
   }, { headers: privateHeaders() });
+}
+
+const shellProfileColumns = "display_name,active,is_admin,must_change_password";
+const shellSettingsColumns = "theme,visual_intensity,accent_colour,dashboard_density,pinned_pages";
+
+async function shellData({ client, user }: RequestContext) {
+  const displayName = inferDisplayName(user);
+  const [profile, settings] = await Promise.all([
+    client.from("user_profiles").select(shellProfileColumns).eq("user_id", user.id).maybeSingle(),
+    client.from("user_settings").select(shellSettingsColumns).eq("user_id", user.id).maybeSingle()
+  ]);
+  const readError = profile.error ?? settings.error;
+  if (readError) return databaseError(readError);
+
+  // The login trigger normally provisions these rows. The same owner-only
+  // fallback as Bootstrap preserves first-login behavior if a row is missing.
+  const [readyProfile, readySettings] = await Promise.all([
+    profile.data ? Promise.resolve(profile) : insertMissingOwnRow(client, "user_profiles", user.id, { display_name: displayName }, shellProfileColumns),
+    settings.data ? Promise.resolve(settings) : insertMissingOwnRow(client, "user_settings", user.id, initialSettings(user, displayName), shellSettingsColumns)
+  ]);
+  const provisionError = readyProfile.error ?? readySettings.error;
+  if (provisionError) return databaseError(provisionError);
+  const p = readyProfile.data;
+  const s = readySettings.data;
+  if (!p || !s) return jsonError("未能讀取頂欄設定，請重新載入。", 503);
+  const payload: ControlShellData = {
+    currentUser: { id: user.id, displayName: p.display_name },
+    profile: { active: p.active, is_admin: p.is_admin, must_change_password: p.must_change_password },
+    settings: {
+      theme: s.theme, visual_intensity: s.visual_intensity, accent_colour: s.accent_colour,
+      dashboard_density: s.dashboard_density, pinned_pages: s.pinned_pages
+    },
+    showEncouragement: encouragementVisibleFor(user)
+  };
+  return Response.json(payload, { headers: privateHeaders() });
+}
+
+async function calendarPanel({ client, user }: RequestContext, params: URLSearchParams) {
+  const month = params.get("month") ?? "";
+  const range = appleCalendarMonthWindow(month);
+  if (!range || params.size !== 2) return jsonError("日曆月份不正確。", 400);
+  // Keep the same user/RLS scope as the workspace. Only the selected month
+  // grid (including adjacent cells) and fields used by the day agenda are read.
+  const [tasks, items] = await Promise.all([
+    client.from("tasks").select("id,title,due_date").is("deleted_at", null).is("archived_at", null)
+      .gte("due_date", range.from).lt("due_date", range.until).order("due_date"),
+    client.from("operating_items").select("id,title,due_date,item_type,area,owner_id,schedule_start_at,schedule_end_at,schedule_status,calendar_privacy:metadata->>calendarPrivacy")
+      .is("archived_at", null).gte("due_date", range.from).lt("due_date", range.until).order("due_date")
+  ]);
+  const failure = tasks.error ?? items.error;
+  if (failure) return databaseError(failure);
+  const payload: CalendarPanelData = {
+    month, currentUser: { id: user.id }, tasks: (tasks.data ?? []) as CalendarPanelData["tasks"],
+    operatingItems: (items.data ?? []).map(({ calendar_privacy, ...item }) => ({
+      ...item,
+      title: calendar_privacy === "busy" && item.owner_id !== user.id ? "忙碌" : item.title,
+      metadata: calendar_privacy === "busy" ? { calendarPrivacy: "busy" } : {}
+    })) as CalendarPanelData["operatingItems"]
+  };
+  return Response.json(payload, { headers: privateHeaders() });
+}
+
+async function insertMissingOwnRow<Columns extends string = "*">(client: SupabaseClient, table: "user_profiles" | "user_settings", userId: string, values: Record<string, unknown>, columns: Columns = "*" as Columns) {
+  const inserted = await client.from(table).insert({ ...values, user_id: userId }).select(columns).single();
+  if (inserted.error?.code !== "23505") return inserted;
+  // Another page request may have provisioned the row after our read. Do not
+  // overwrite its preferences; re-read only the authenticated owner's row.
+  const existing = await client.from(table).select(columns).eq("user_id", userId).maybeSingle();
+  return existing.data || existing.error ? existing : inserted;
 }
 
 function encouragementVisibleFor(user: User) {
@@ -279,13 +347,16 @@ async function assignmentAlerts({ client, user }: RequestContext) {
   return Response.json({ assignments, currentUserId: user.id, quietModeUntil: preference.data?.quiet_mode_until ?? null }, { headers: privateHeaders() });
 }
 
-async function todayDashboard({ client, user }: RequestContext) {
+async function todayDashboard({ client, user }: RequestContext, focusOnly = false) {
   const displayName = inferDisplayName(user);
   const today = hkDateString();
-  const weekStart = weekStartForDate(today);
+  const weekStart = focusOnly ? null : weekStartForDate(today);
   const weekEnd = weekStart ? addCalendarDays(weekStart, 6) : null;
   const capacityReviewWeek = weekStart ? addCalendarDays(weekStart, -7) : null;
-  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients, notificationPreferences] =
+  const empty = () => Promise.resolve({ data: [], error: null });
+  const orderedTasks = () => client.from("tasks").select("*").is("deleted_at", null).is("archived_at", null)
+    .order("requested_priority", { ascending: true }).order("created_at", { ascending: true });
+  const [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients, notificationPreferences, activeTasks, taskQueueCatalog, taskNoticeRecipients, taskFollowers, catalogSteps] =
     await Promise.all([
       client.from("user_profiles").select("*").eq("user_id", user.id).maybeSingle(),
       client.from("user_settings").select("*").eq("user_id", user.id).maybeSingle(),
@@ -300,13 +371,13 @@ async function todayDashboard({ client, user }: RequestContext) {
         .eq("resource_type", "task")
         .eq("planned_date", today)
         .limit(100),
-      client.from("daily_capacity_checkins")
+      focusOnly ? Promise.resolve({ data: null, error: null }) : client.from("daily_capacity_checkins")
         .select("*")
         .eq("user_id", user.id)
         .eq("checkin_date", today)
         .maybeSingle(),
       client.rpc("participant_profiles"),
-      client.from("share_records")
+      focusOnly ? empty() : client.from("share_records")
         .select("*")
         .is("revoked_at", null)
         .order("created_at", { ascending: false })
@@ -328,75 +399,40 @@ async function todayDashboard({ client, user }: RequestContext) {
             .eq("week_start", capacityReviewWeek)
             .maybeSingle()
         : Promise.resolve({ data: null as Record<string, unknown> | null, error: null }),
-      client.from("reminders")
+      focusOnly ? empty() : client.from("reminders")
         .select("*")
         .gte("starts_at", new Date(Date.now() - 86_400_000).toISOString())
         .order("starts_at", { ascending: true })
         .limit(100),
-      client.from("reminder_recipients").select("*"),
+      focusOnly ? empty() : client.from("reminder_recipients").select("*"),
       client.from("notification_preferences")
         .select("*")
         .eq("user_id", user.id)
-        .maybeSingle()
+        .maybeSingle(),
+      orderedTasks().not("status", "in", "(done,cancelled,blocked,waiting)").limit(200),
+      focusOnly ? empty() : orderedTasks().limit(1000),
+      focusOnly ? empty() : client.from("task_notice_recipients").select("*").limit(1000),
+      focusOnly ? empty() : client.from("task_followers").select("*").limit(1000),
+      focusOnly ? empty() : client.from("task_current_steps").select("task_id,title,status,follow_up_date").limit(1000)
     ]);
 
-  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients, notificationPreferences]
+  const firstError = [profile, settings, assignments, plannedToday, capacity, participants, shares, capacityCommitments, weeklyReview, reminders, reminderRecipients, notificationPreferences, activeTasks, taskQueueCatalog, taskNoticeRecipients, taskFollowers, catalogSteps]
     .find((result) => result.error)?.error;
   if (firstError) return databaseError(firstError);
 
-  if (!profile.data) {
-    const created = await client.from("user_profiles")
-      .insert({ user_id: user.id, display_name: displayName })
-      .select("*")
-      .single();
-    if (created.error) return databaseError(created.error);
-    profile.data = created.data;
-  }
-  if (!settings.data) {
-    const supportProfile = defaultSupportProfile(user, displayName);
-    const gentle = supportProfile === "depression";
-    const created = await client.from("user_settings").insert({
-      user_id: user.id,
-      email: user.email ?? null,
-      gentle_mode: gentle,
-      dashboard_density: gentle ? "calm" : "comfortable",
-      support_profile: supportProfile
-    }).select("*").single();
-    if (created.error) return databaseError(created.error);
-    settings.data = created.data;
-  }
-
-  const activeTasks = await client.from("tasks")
-    .select("*")
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .not("status", "in", "(done,cancelled,blocked,waiting)")
-    .order("requested_priority", { ascending: true })
-    .order("created_at", { ascending: true })
-    .limit(200);
-  if (activeTasks.error) return databaseError(activeTasks.error);
-  const [taskQueueCatalog, taskNoticeRecipients, taskFollowers, currentSteps] = await Promise.all([
-    client.from("tasks")
-      .select("*")
-      .is("deleted_at", null)
-      .is("archived_at", null)
-      .order("requested_priority", { ascending: true })
-      .order("created_at", { ascending: true })
-      .limit(1000),
-    client.from("task_notice_recipients").select("*").limit(1000),
-    client.from("task_followers").select("*").limit(1000),
-    client.from("task_current_steps").select("task_id,title,status,follow_up_date").limit(1000)
-  ]);
-  const taskQueueError = [taskQueueCatalog, taskNoticeRecipients, taskFollowers, currentSteps]
-    .find((result) => result.error)?.error;
-  if (taskQueueError) return databaseError(taskQueueError);
-  const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
-
+  const plannedIds = (plannedToday.data ?? []).map((item) => item.resource_id);
+  const activeIds = (activeTasks.data ?? []).map((task) => task.id);
+  const relevantIds = [...new Set([...activeIds, ...plannedIds])];
   const monthStart = `${today.slice(0, 7)}-01`;
   const nextMonthStart = nextMonthIso(monthStart);
-  const profileIdentity = `${profile.data.workspace_role ?? ""} ${profile.data.display_name ?? ""} ${user.email ?? ""}`.toLowerCase();
-  const showCashflowHint = profileIdentity.includes("derek") || profileIdentity.includes("derekcy0309") || profileIdentity.includes("kwok_cy");
-  const [monthTransactions, monthBalance] = await Promise.all([
+  const profileIdentity = `${profile.data?.workspace_role ?? ""} ${profile.data?.display_name ?? displayName} ${user.email ?? ""}`.toLowerCase();
+  const showCashflowHint = !focusOnly && (profileIdentity.includes("derek") || profileIdentity.includes("derekcy0309") || profileIdentity.includes("kwok_cy"));
+  const [readyProfile, readySettings, plannedTasks, activePlanning, taskDependencies, monthTransactions, monthBalance] = await Promise.all([
+    profile.data ? Promise.resolve(profile) : insertMissingOwnRow(client, "user_profiles", user.id, { display_name: displayName }),
+    settings.data ? Promise.resolve(settings) : insertMissingOwnRow(client, "user_settings", user.id, initialSettings(user, displayName)),
+    plannedIds.length ? client.from("tasks").select("*").in("id", plannedIds).is("deleted_at", null).is("archived_at", null).limit(100) : empty(),
+    activeIds.length ? client.from("user_planning_metadata").select("*").eq("user_id", user.id).eq("resource_type", "task").in("resource_id", activeIds).limit(200) : empty(),
+    relevantIds.length ? client.from("task_dependencies").select("*").in("task_id", relevantIds).limit(400) : empty(),
     showCashflowHint ? client.from("transactions")
       .select("type,amount,status")
       .eq("user_id", user.id)
@@ -411,8 +447,9 @@ async function todayDashboard({ client, user }: RequestContext) {
       .is("archived_at", null)
       .maybeSingle() : Promise.resolve({ data: null as { opening_balance: number } | null, error: null })
   ]);
-  const financeError = monthTransactions.error ?? monthBalance.error;
-  if (financeError) return databaseError(financeError);
+  const relatedError = [readyProfile, readySettings, plannedTasks, activePlanning, taskDependencies, monthTransactions, monthBalance].find((result) => result.error)?.error;
+  if (relatedError) return databaseError(relatedError);
+  if (!readyProfile.data || !readySettings.data) return jsonError("未能讀取今日設定，請重新載入。", 503);
   const financeRows = monthTransactions.data ?? [];
   const receivedIncome = financeRows
     .filter((row) => row.type === "income" && row.status === "received")
@@ -427,38 +464,12 @@ async function todayDashboard({ client, user }: RequestContext) {
     .filter((row) => row.type === "expense" && !["cancelled", "skipped"].includes(String(row.status)))
     .reduce((total, row) => total + Number(row.amount ?? 0), 0);
 
-  const plannedIds = (plannedToday.data ?? []).map((item) => item.resource_id);
-  const plannedTasks = plannedIds.length
-    ? await client.from("tasks")
-        .select("*")
-        .in("id", plannedIds)
-        .is("deleted_at", null)
-        .is("archived_at", null)
-        .limit(100)
-    : { data: [] as Array<Record<string, unknown>>, error: null };
-  if (plannedTasks.error) return databaseError(plannedTasks.error);
-
-  const activeIds = (activeTasks.data ?? []).map((task) => task.id);
-  const activePlanning = activeIds.length
-    ? await client.from("user_planning_metadata")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("resource_type", "task")
-        .in("resource_id", activeIds)
-        .limit(200)
-    : { data: [] as Array<Record<string, unknown>>, error: null };
-  if (activePlanning.error) return databaseError(activePlanning.error);
-
   const taskMap = new Map<string, Record<string, unknown>>();
   for (const task of [...(activeTasks.data ?? []), ...(plannedTasks.data ?? [])]) {
     taskMap.set(String(task.id), task);
   }
-  const visibleTaskIds = [...taskMap.keys()];
-  const dependencies = visibleTaskIds.length
-    ? await client.from("task_dependencies").select("*").in("task_id", visibleTaskIds).limit(400)
-    : { data: [] as Array<Record<string, unknown>>, error: null };
-  if (dependencies.error) return databaseError(dependencies.error);
-  const prerequisiteIds = [...new Set((dependencies.data ?? []).map((dependency) => String(dependency.depends_on_task_id)))];
+  const dependencies = (taskDependencies.data ?? []).filter((dependency) => taskMap.has(String(dependency.task_id)));
+  const prerequisiteIds = [...new Set(dependencies.map((dependency) => String(dependency.depends_on_task_id)))];
   const prerequisiteTasks = prerequisiteIds.length
     ? await client.from("tasks").select("*").in("id", prerequisiteIds).is("deleted_at", null).is("archived_at", null).limit(400)
     : { data: [] as Array<Record<string, unknown>>, error: null };
@@ -471,8 +482,13 @@ async function todayDashboard({ client, user }: RequestContext) {
     planningMap.set(String(item.resource_id), item);
   }
 
-  const tagData = await readMyTaskTags(client, user, [...new Set([...taskMap.keys(), ...(taskQueueCatalog.data ?? []).map((task) => String(task.id))])]);
-  if (tagData.error) return databaseError(tagData.error);
+  const [tagData, currentSteps] = await Promise.all([
+    readMyTaskTags(client, user, [...new Set([...taskMap.keys(), ...(taskQueueCatalog.data ?? []).map((task) => String(task.id))])]),
+    focusOnly && taskMap.size ? client.from("task_current_steps").select("task_id,title,status,follow_up_date").in("task_id", [...taskMap.keys()]).limit(1000) : Promise.resolve(catalogSteps)
+  ]);
+  const detailsError = tagData.error ?? currentSteps.error;
+  if (detailsError) return databaseError(detailsError);
+  const currentStepByTaskId = new Map((currentSteps.data ?? []).map((step) => [step.task_id, step]));
   const decorateTask = (task: Record<string, unknown>) => ({
     ...task,
     personal_tag_ids: tagData.byTask.get(String(task.id)) ?? [],
@@ -485,10 +501,10 @@ async function todayDashboard({ client, user }: RequestContext) {
     currentUser: {
       id: user.id,
       email: user.email ?? "",
-      displayName: profile.data.display_name
+      displayName: readyProfile.data.display_name
     },
-    profile: profile.data,
-    settings: settings.data,
+    profile: readyProfile.data,
+    settings: readySettings.data,
     tasks: [...taskMap.values()].map(decorateTask),
     taskCatalog: (taskQueueCatalog.data ?? []).filter((task) => !["done", "cancelled"].includes(String(task.status))).map(decorateTask),
     taskQueueCatalog: (taskQueueCatalog.data ?? []).map(decorateTask),
@@ -500,7 +516,7 @@ async function todayDashboard({ client, user }: RequestContext) {
     planning: [...planningMap.values()],
     capacity: capacity.data ?? null,
     participants: participants.data ?? [],
-    taskDependencies: dependencies.data ?? [],
+    taskDependencies: dependencies,
     capacityCommitments: capacityCommitments.data ?? [],
     weeklyAvailableMinutes: weeklyReview.data?.next_week_available_minutes ?? null,
     notificationPreferences: notificationPreferences.data ?? null,
@@ -962,13 +978,11 @@ async function authenticate(request: NextRequest): Promise<RequestContext | Resp
   });
   const { data, error } = await client.auth.getUser(token);
   if (error || !data.user) return jsonError("登入已失效，請重新登入。", 401);
-  // Last-use tracking is throttled in the database and never blocks a valid
-  // task request when an older deployment has not applied the migration yet.
-  try {
-    await client.rpc("touch_current_user_last_seen");
-  } catch {
-    // Best-effort only; a failed activity write must not prevent app use.
-  }
+  // Keep activity tracking but don't hold up every response on its own RPC.
+  after(async () => {
+    try { await client.rpc("touch_current_user_last_seen"); }
+    catch { /* Best-effort; activity does not control data access. */ }
+  });
   return { client, user: data.user, origin: request.nextUrl.origin };
 }
 
@@ -1131,8 +1145,8 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const title = requiredText(body.title, "請輸入任務標題。");
   if (title instanceof Response) return title;
   const tagIds = body.tagIds === undefined ? undefined : parseTaskTagIds(body.tagIds);
-  if (tagIds === null || (tagIds && !tagIds.length)) return jsonError("請揀最少一個 Tag。", 422);
-  if (tagIds) {
+  if (tagIds === null) return jsonError("Tags 格式不正確。", 422);
+  if (tagIds?.length) {
     const tagError = await validateMyTaskTags(client, user.id, tagIds);
     if (tagError) return jsonError(tagError, 422);
   }
@@ -1281,7 +1295,7 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     await client.from("tasks").delete().eq("id", result.data.id);
     return followerError;
   }
-  if (tagIds) {
+  if (tagIds?.length) {
     const tagsSaved = await client.rpc("set_my_task_tags", { p_task_id: result.data.id, p_tag_ids: tagIds });
     if (tagsSaved.error) {
       await client.from("tasks").delete().eq("id", result.data.id);
@@ -2740,20 +2754,9 @@ async function adminResetPassword({ client, origin }: RequestContext, body: Reco
   return Response.json({ ok: true }, { headers: privateHeaders() });
 }
 
-async function search({ client }: RequestContext, query: string) {
-  const q = query.trim().slice(0, 100);
-  if (q.length < 2) return Response.json({ results: [] }, { headers: privateHeaders() });
-  const pattern = `%${q.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
-  const [tasks, items] = await Promise.all([
-    client.from("tasks").select("id,title,area,status,due_date,visibility,owner_id").ilike("title", pattern).limit(20),
-    client.from("operating_items").select("id,title,item_type,area,status,due_date,visibility,owner_id").neq("item_type", "client").ilike("title", pattern).limit(20)
-  ]);
-  if (tasks.error) return databaseError(tasks.error);
-  if (items.error) return databaseError(items.error);
-  const results = [
-    ...(tasks.data ?? []).map((item) => ({ ...item, resourceType: "task", itemType: "task" })),
-    ...(items.data ?? []).map((item) => ({ ...item, resourceType: "operating_item", itemType: item.item_type }))
-  ].slice(0, 30);
+async function search({ client, user }: RequestContext, query: string) {
+  const { results, error } = await findControlResources(client, user.id, query);
+  if (error) return databaseError(error);
   return Response.json({ results }, { headers: privateHeaders() });
 }
 
@@ -3205,6 +3208,17 @@ function defaultSupportProfile(user: User, displayName: string) {
     )
   ) return "depression";
   return "balanced";
+}
+
+function initialSettings(user: User, displayName: string) {
+  const supportProfile = defaultSupportProfile(user, displayName);
+  const gentle = supportProfile === "depression";
+  return {
+    email: user.email ?? null,
+    gentle_mode: gentle,
+    dashboard_density: gentle ? "calm" : "comfortable",
+    support_profile: supportProfile
+  };
 }
 
 function hkDateString() {
