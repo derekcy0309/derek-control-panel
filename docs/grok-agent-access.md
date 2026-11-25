@@ -39,7 +39,7 @@ Grok 官方說明：同一 Grok 帳戶下的 Bots 共用 cookies／登入，並�
 
 ## Schema / migration
 
-`20261125083037_standard_agent_code_lifetime_365.sql` 保留原有 RLS 同授權範圍，只提高一般 Code 新簽發嘅期限上限。學校專用同私人 API 保持原有期限。回復時先回退 app，再用 `supabase/rollback-standard-agent-code-lifetime-365.sql` 停止新簽發超過 90 日；已簽發嘅長期 Code 保持原到期日，仍可即時停用。舊版本瀏覽器登入可能按原有 90 日上限要求重新輸入未過期 Code。
+`20261125084033_standard_agent_code_lifetime_365.sql` 保留原有 RLS 同授權範圍，只提高一般 Code 新簽發嘅期限上限。學校專用同私人 API 保持原有期限。回復時先回退 app，再用 `supabase/rollback-standard-agent-code-lifetime-365.sql` 停止新簽發超過 90 日；已簽發嘅長期 Code 保持原到期日，仍可即時停用。舊版本瀏覽器登入可能按原有 90 日上限要求重新輸入未過期 Code。
 
 `20261114071824_grok_agent_access.sql` 新增四表：`agent_access_grants`、`agent_access_resources`、`agent_access_events`、`agent_write_requests`，全部開 RLS。本人 admin 只能建立／查看自己的授權及不可逆停用，不能讀 hash 或操作其他人的授權。
 
