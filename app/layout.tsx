@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { LiveClock } from "@/components/LiveClock";
 import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
 import "./dayline.css";
@@ -17,7 +18,7 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-Hant-HK" suppressHydrationWarning>
-      <body><PwaRegister />{children}</body>
+      <body><PwaRegister /><LiveClock />{children}</body>
     </html>
   );
 }

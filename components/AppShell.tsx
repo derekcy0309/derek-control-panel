@@ -17,7 +17,6 @@ import { clearOfflineWrites } from "@/lib/offline-write-queue";
 import { OfflineWriteQueueStatus } from "@/components/OfflineWriteQueueStatus";
 import { AssignmentAlerts } from "@/components/AssignmentAlerts";
 import { EncouragementFooter } from "@/components/EncouragementFooter";
-import { LiveClock } from "@/components/LiveClock";
 import { applyAppearance, sectionIdentityForPath } from "@/lib/appearance";
 import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { daylineWeek } from "@/lib/dayline";
@@ -230,7 +229,7 @@ function DaylineFrame({pathname,name,userId,system,onSignOut,pins,onSavePins,gat
           {editingPins?<PinnedPageEditor pins={pins} onSave={saveAndClosePins} onCancel={closePinEditor}/>:null}
           <div className="dl-toolrow">{landing?null:<Link href="/?newTask=1" prefetch={false}><Plus aria-hidden="true"/>加 Task</Link>}<Link href="/capture">快速收集</Link><Link href="/search">搜尋</Link><Link href={TASKS_PIN} onClick={()=>changeHome("tasks")}>我的任務</Link></div>
           {[...navGroups,system].map(group=><NavGroup key={group.label} group={group} pathname={pathname} onOverview={()=>changeHome("overview")}/>)}
-          <LiveClock/><button type="button" className="min-h-11 underline" onClick={()=>void onSignOut()}>登出</button>
+          <button type="button" className="min-h-11 underline" onClick={()=>void onSignOut()}>登出</button>
         </div></details>
     </div></header>
     <main className={clsx("dl-page",!isEditorialPage&&"dl-inner-page")} id="main-content"><OfflineWriteQueueStatus userId={userId}/>{children}</main>

@@ -73,6 +73,21 @@ async function prepare(page, {admin = false, signedIn = true} = {}) {
   return { requests, writes, errors };
 }
 
+async function checkClock(page, pathname) {
+  const rail = page.locator(".site-clock-bar");
+  const clock = rail.locator(".live-clock");
+  const time = clock.locator("time.live-clock-time").filter({ hasText: /^09:00:00$/ });
+  await time.waitFor({ state: "visible" });
+  assert.equal(await page.locator(".live-clock").count(), 1, "single site clock on " + pathname);
+  assert.equal(await clock.locator(".live-clock-zone").filter({ hasText: /^香港時間$/ }).isVisible(), true);
+  assert.equal(await time.getAttribute("datetime"), new Date(now).toISOString());
+  assert.equal(await clock.locator(".live-clock-date").filter({ hasText: "23/11/26" }).isVisible(), true);
+  const rect = await clock.boundingBox();
+  const viewport = page.viewportSize();
+  assert.ok(rect && viewport && rect.x >= 0 && rect.x + rect.width <= viewport.width + 1 && rect.y >= -1 && rect.y + rect.height <= viewport.height, "clock fits within viewport on " + pathname);
+  assert.ok(await time.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize) >= 18), "time is easy to spot on " + pathname);
+}
+
 try {
   for (const width of [360, 1280]) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: "block", locale: "zh-HK", timezoneId: "Asia/Hong_Kong", reducedMotion: "reduce" });
@@ -86,6 +101,7 @@ try {
       async function check(pathname, heading, activeLink) {
         await page.waitForURL(url => url.pathname === pathname);
         await page.getByRole("heading", { name: heading }).first().waitFor();
+        await checkClock(page, pathname);
         assert.equal(await page.locator(".dl-shell").count(), 1, `Missing Dayline shell on ${pathname}: ${errors.join("; ") || (await page.locator("body").innerText()).slice(0, 160)}`);
         assert.equal(await page.locator(".dl-mast").count(), 1);
         assert.equal(await page.locator(".sidebar, .app-sidebar, .mobile-nav, .topbar-task-add").count(), 0);
@@ -129,6 +145,12 @@ try {
 
       await pick("系統設定", "設定");
       await check("/settings", /嘅設定/);
+      await page.evaluate(() => window.scrollTo({ top: 200, behavior: "instant" }));
+      await page.waitForFunction(() => scrollY >= 100);
+      const stickyBounds = await page.locator(".site-clock-bar").boundingBox();
+      assert.ok(stickyBounds && Math.abs(stickyBounds.y) <= 1, "clock stays at the top when scrolling at " + width);
+      await checkClock(page, "/settings (scrolled)");
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
       await menu.waitFor({ state: "hidden" });
       await menuToggle.click();
       const system = menu.getByRole("button", { name: "系統設定", exact: true });
@@ -159,6 +181,7 @@ try {
       await check("/todo-list", "列印 To-do List");
       await page.emulateMedia({ media: "print" });
       await page.locator(".dl-mast").waitFor({ state: "hidden" });
+      await page.locator(".site-clock-bar").waitFor({ state: "hidden" });
       await page.locator(".todo-print-root").waitFor({ state: "visible" });
       await page.emulateMedia({ media: "screen" });
       await nav.getByRole("link", { name: "交通", exact: true }).click();
@@ -175,24 +198,31 @@ try {
       }
       assert.deepEqual(writes, []);
       assert.deepEqual(errors, []);
-      console.log(`PASS ${width}px signed in (${admin ? "admin" : "member"}): shared shell appearance and navigation; task detail, calendar, school, cashflow, print, traffic and admin state preserved.`);
+      console.log(`PASS ${width}px signed in (${admin ? "admin" : "member"}): sticky Hong Kong clock, shared navigation and print without the clock; task, calendar, school, cashflow, traffic and admin views preserved.`);
     } finally {
       await context.close();
     }
   }
 
-  const context = await browser.newContext({ serviceWorkers: "block" });
+  const context = await browser.newContext({ viewport: { width: 360, height: 900 }, serviceWorkers: "block", timezoneId: "UTC" });
   try {
     const page = await context.newPage(), { requests, writes, errors } = await prepare(page, { signedIn: false });
     await page.goto(origin + "/admin/accounts");
     await page.getByRole("button", { name: "使用 Google 登入", exact: true }).waitFor();
+    await checkClock(page, "/admin/accounts (signed out)");
     assert.equal(await page.locator(".dl-mast").count(), 0);
     assert.ok(requests.includes("/api/auth"));
     assert.equal(requests.includes("/api/admin/users"), false);
     assert.equal(requests.includes("/api/control"), false);
+    await page.goto(origin + "/agent");
+    await page.getByRole("heading", { name: "AI Bot 登入", exact: true }).waitFor();
+    await checkClock(page, "/agent");
+    await page.goto(origin + "/offline");
+    await page.getByRole("heading", { name: "目前離線", exact: true }).waitFor();
+    await checkClock(page, "/offline");
     assert.deepEqual(writes, []);
     assert.deepEqual(errors, []);
-    console.log("PASS signed out: protected deep link shows login only and requests no private APIs.");
+    console.log("PASS signed out: Hong Kong clock remains visible in a UTC browser on the user login, Bot login and offline route; no private account data requested.");
   } finally {
     await context.close();
   }

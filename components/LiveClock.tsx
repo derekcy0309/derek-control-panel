@@ -17,10 +17,10 @@ export function LiveClock() {
   const clock = now ? formatHongKongClock(now) : null;
 
   return (
-    <div className="live-clock" aria-label={clock ? `${clock.timeLabel}，${clock.dateLabel}` : "正在讀取時間"}>
-      <Clock3 className="live-clock-icon" aria-hidden="true" />
-      <div className="live-clock-values min-w-0">
-        <time className="live-clock-time" dateTime={clock?.iso} suppressHydrationWarning>
+    <div className="site-clock-bar no-print">
+      <div className="live-clock">
+        <span className="live-clock-zone"><Clock3 className="live-clock-icon" aria-hidden="true" />香港時間</span>
+        <time className="live-clock-time" dateTime={clock?.iso}>
           {clock?.timeLabel ?? "--:--:--"}
         </time>
         <span className="live-clock-date">{clock?.dateLabel ?? "正在同步"}</span>

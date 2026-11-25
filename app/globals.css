@@ -181,29 +181,37 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .topbar-capture { border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
 .topbar-capture:hover { background: var(--surface-subtle); color: var(--ink); }
 .topbar-task-add:focus-visible, .topbar-capture:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, white); outline-offset: 2px; }
+@media screen { html { scroll-padding-top: calc(3rem + env(safe-area-inset-top)); } }
+.site-clock-bar {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+  padding-block-start: env(safe-area-inset-top);
+  padding-inline: max(.875rem, env(safe-area-inset-left)) max(.875rem, env(safe-area-inset-right));
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
 .live-clock {
   display: flex;
-  min-height: 44px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
-  gap: .55rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border));
-  border-radius: .85rem;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 76%, var(--surface)), var(--surface));
-  padding: .35rem .7rem;
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 8%, transparent);
+  gap: .2rem clamp(.55rem, 2vw, .85rem);
+  max-width: 1184px;
+  min-height: 2.75rem;
+  margin-inline: auto;
+  padding-block: .375rem;
 }
-.live-clock-icon { width: 1.05rem; height: 1.05rem; flex: 0 0 auto; color: var(--accent); }
-.live-clock-values { display: grid; gap: .18rem; }
+.live-clock-zone { display: inline-flex; align-items: center; gap: .35rem; color: var(--ink); font-size: .8125rem; font-weight: 700; white-space: nowrap; }
+.live-clock-icon { width: .95rem; height: .95rem; flex: 0 0 auto; }
 .live-clock-time {
-  display: block;
   color: var(--ink);
-  font-size: .9rem;
+  font-size: clamp(1.25rem, 4.5vw, 1.5rem);
   font-variant-numeric: tabular-nums;
-  font-weight: 850;
-  letter-spacing: .035em;
-  line-height: 1;
+  font-weight: 800;
+  line-height: 1.15;
 }
-.live-clock-date { color: var(--muted); font-size: .72rem; font-weight: 750; white-space: nowrap; }
+.live-clock-date { min-width: 12ch; color: var(--muted); font-size: .8125rem; font-weight: 650; white-space: nowrap; }
 .mobile-nav {
   position: fixed; inset: auto 0 0; z-index: 45; display: grid; grid-template-columns: repeat(5, 1fr);
   min-height: calc(64px + env(safe-area-inset-bottom)); padding: .35rem .35rem env(safe-area-inset-bottom);
@@ -516,11 +524,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (max-width: 640px) {
   .topbar { flex-wrap: wrap; gap: .35rem; padding: .45rem .75rem; }
   .topbar-actions { width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
-  .topbar-actions .live-clock { margin-right: auto; }
   .topbar-task-add, .topbar-capture { padding-inline: .55rem; font-size: .75rem; }
-  .live-clock { gap: .4rem; padding-inline: .55rem; }
-  .live-clock-time { font-size: .82rem; }
-  .live-clock-date { font-size: .62rem; }
   .encouragement-footer { gap: .4rem; padding: 1rem; }
   .encouragement-art { width: 6.5rem; margin-right: -1.5rem; opacity: .86; }
   .encouragement-quote-en { font-size: .8rem; }
@@ -528,8 +532,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 @media (max-width: 380px) {
-  .topbar-actions .live-clock { padding-inline: .4rem; }
-  .topbar-actions .live-clock-icon, .topbar-actions .live-clock-date { display: none; }
   .topbar-task-add, .topbar-capture { padding-inline: .45rem; }
 }
 
