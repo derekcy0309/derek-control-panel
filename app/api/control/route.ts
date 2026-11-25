@@ -4,6 +4,7 @@ import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { taskTagNameError } from "@/lib/simple-mode";
+import { resumeCheckpointId } from "@/lib/resume-link";
 import { guideContinue, guidePausePosition, guideReview } from "@/lib/work-guide";
 import { pickLaunchResource } from "@/lib/launch-resource";
 import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/server/task-tags";
@@ -604,6 +605,7 @@ async function weeklyReview(
   const upcomingItems = weeklyReviewItems(upcoming.data ?? []);
   const knownEstimatedMinutes = upcomingItems.reduce((total, task) => total + (task.estimated_minutes ?? 0), 0);
   return Response.json({
+    owner_id: user.id,
     week_start: weekStart,
     week_end: weekEnd,
     next_week_start: nextWeekStart,
@@ -700,6 +702,15 @@ async function saveWeeklyReview(
   { client, user }: RequestContext,
   body: Record<string, unknown>
 ) {
+  if (body.expectedOwnerId !== user.id) return jsonError("無法確認登入帳戶。請保留已輸入的內容，並重新載入檢視。", 409);
+  // PostgreSQL timestamps may carry microseconds; do not truncate to JS milliseconds.
+  const revision = body.expectedUpdatedAt;
+  if (revision !== null && (typeof revision !== "string" || revision.length > 40 || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?(?:Z|[+-]\d\d:\d\d)$/.test(revision) || !Number.isFinite(Date.parse(revision)))) {
+    return jsonError("未能確認草稿版本。請保留已輸入的內容，並重新載入檢視。", 409);
+  }
+  if (!["nextWeekOutcomes","nextWeekAvailableMinutes","rebalancingNote","nextMinimumAction","reflection"].every(key=>Object.hasOwn(body,key))) {
+    return jsonError("檢視資料不完整，未有更改原有草稿。請保留已輸入的內容，並重新載入檢視。", 422);
+  }
   const requestedDate = dateValue(body.weekStart);
   const weekStart = requestedDate ? weekStartForDate(requestedDate) : null;
   if (!weekStart) return jsonError("週檢視日期不正確。", 422);
@@ -725,9 +736,7 @@ async function saveWeeklyReview(
 
   const snapshot = await weeklyReviewSnapshot(client, user.id, weekStart);
   if (snapshot instanceof Response) return snapshot;
-  const result = await client.from("weekly_reviews").upsert({
-    user_id: user.id,
-    week_start: weekStart,
+  const patch = {
     status: complete ? "completed" : "draft",
     next_week_outcomes: nextWeekOutcomes,
     next_week_available_minutes: nextWeekAvailableMinutes,
@@ -736,8 +745,23 @@ async function saveWeeklyReview(
     reflection,
     review_snapshot: snapshot,
     completed_at: complete ? new Date().toISOString() : null
-  }, { onConflict: "user_id,week_start" }).select("*").single();
-  if (result.error) return databaseError(result.error);
+  };
+  const result = typeof revision === "string"
+    ? await client.from("weekly_reviews").update(patch).eq("user_id", user.id).eq("week_start", weekStart).eq("status","draft").eq("updated_at",revision).select("*").maybeSingle()
+    : await client.from("weekly_reviews").insert({ ...patch, user_id:user.id, week_start:weekStart }).select("*").single();
+  if (result.error && result.error.code !== "23505") return databaseError(result.error);
+  if (!result.data) {
+    // A lost response can safely be acknowledged only if the intended content already matches exactly.
+    const current = await client.from("weekly_reviews").select("*").eq("user_id",user.id).eq("week_start",weekStart).maybeSingle();
+    if (current.error) return databaseError(current.error);
+    const row=current.data;
+    if (row && row.status===patch.status && JSON.stringify(row.next_week_outcomes)===JSON.stringify(patch.next_week_outcomes) &&
+        row.next_week_available_minutes===patch.next_week_available_minutes && row.rebalancing_note===patch.rebalancing_note &&
+        row.next_minimum_action===patch.next_minimum_action && row.reflection===patch.reflection) {
+      return Response.json({review:row},{headers:privateHeaders()});
+    }
+    return jsonError("另一個畫面已儲存較新版本。本頁的輸入仍然保留，沒有覆蓋已儲存的內容。", 409);
+  }
   if (complete) {
     await recordActivity(client, user.id, "weekly_review", result.data.id, "weekly_review_completed", "已完成低壓力週檢視");
   }
@@ -2797,12 +2821,12 @@ async function search({ client, user }: RequestContext, query: string) {
 async function workGuide({client,user}:RequestContext, requested:string, withLaunch:boolean) {
   const id=uuidValue(requested);
   if(!id)return jsonError("任務識別碼不正確。",400);
-  const task=await client.from("tasks").select("id").eq("id",id).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").maybeSingle();
+  const task=await client.from("tasks").select("id,user_id,owner_id,assignee_id,status").eq("id",id).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").maybeSingle();
   if(task.error)return databaseError(task.error);
   if(!task.data)return jsonError("任務已結束或你沒有查看權限。請重新載入今日安排。",404);
   const [steps,latest,children,resources]=await Promise.all([
     client.from("task_steps").select("id,title,status,sort_order,updated_at").eq("task_id",id).order("sort_order").limit(50),
-    client.from("task_checkpoints").select("id,author_id,current_position,completed_summary,next_minimum_step").eq("task_id",id).eq("state","saved").order("last_worked_at",{ascending:false}).order("created_at",{ascending:false}).limit(1).maybeSingle(),
+    client.from("task_checkpoints").select("id,author_id,current_position,completed_summary,next_minimum_step,last_worked_at").eq("task_id",id).eq("state","saved").order("last_worked_at",{ascending:false}).order("created_at",{ascending:false}).limit(1).maybeSingle(),
     client.from("tasks").select("id").eq("parent_task_id",id).is("archived_at",null).is("deleted_at",null).not("status","in","(done,cancelled)").limit(1),
     withLaunch ? client.from("task_resources").select("id,label,resource_type,url,linked_item_id,item:operating_items(id,item_type,area,status,owner_id,archived_at)")
       .eq("task_id",id).in("resource_type",["url","document","storage_file","note","sop"]).order("updated_at",{ascending:false}).order("id").limit(50)
@@ -2814,7 +2838,7 @@ async function workGuide({client,user}:RequestContext, requested:string, withLau
     ? await client.from("task_checkpoint_resources").select("label,url").eq("task_id",id).eq("author_id",user.id).eq("checkpoint_id",checkpoint.id).order("position").limit(10)
     : {data:[],error:null};
   const launch=withLaunch?pickLaunchResource(resources.data??[],(links.data??[]).map(row=>({...row,resource_type:"url"})),user.id):null;
-  return Response.json({checkpoint:checkpoint?{current_position:checkpoint.current_position,completed_summary:checkpoint.completed_summary,next_minimum_step:checkpoint.next_minimum_step}:null,steps:steps.data??[],openChildren:Boolean(children.data?.length),...(withLaunch?{launch,launchUnavailable:!!(links.error||resources.error)}:{})},{headers:privateHeaders()});
+  return Response.json({checkpoint:checkpoint?{current_position:checkpoint.current_position,completed_summary:checkpoint.completed_summary,next_minimum_step:checkpoint.next_minimum_step}:null,steps:steps.data??[],openChildren:Boolean(children.data?.length),...(withLaunch?{launch,launchUnavailable:!!(links.error||resources.error),resumeCheckpointId:resumeCheckpointId(user.id,task.data,checkpoint)}:{})},{headers:privateHeaders()});
 }
 
 // Append to the existing checkpoint history; never consume a pending Focus draft or its private links.

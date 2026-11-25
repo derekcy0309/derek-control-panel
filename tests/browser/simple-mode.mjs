@@ -182,7 +182,7 @@ try {
     await page.getByText('任務工具、提醒及篩選',{exact:true}).click();
     await page.getByRole('button',{name:'安靜模式',exact:true}).click();await page.getByRole('button',{name:'安靜中',exact:true}).waitFor();
     assert.ok(preferences.quiet_mode_until); // Per-account API; no other profile changes.
-    await page.getByRole('button',{name:'加 Task',exact:true}).click();
+    await page.getByRole('button',{name:'新增任務',exact:true}).click();
     const dialog=page.getByRole('form',{name:'新增任務',exact:true});
     assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),1);
     assert.equal(await dialog.locator('input:visible:required,select:visible:required,textarea:visible:required').count(),1);
@@ -232,7 +232,7 @@ try {
     assert.equal(draftAfterClose?.priority_deadline_mode,'manual');
     assert.equal(draftAfterClose?.priority_grade,1);
     await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();await guide.getByRole('link',{name:/返回今日總覽/}).click();
-    await page.getByRole('button',{name:'加 Task',exact:true}).click();
+    await page.getByRole('button',{name:'新增任務',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
     await dialog.getByRole('button',{name:/新增詳情/}).click();

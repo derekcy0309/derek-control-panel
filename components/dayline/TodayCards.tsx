@@ -8,7 +8,7 @@ import { guideDisplayCopy } from "@/lib/guide-display-copy";
 import { TaskWorkingDraft } from "@/components/dayline/TaskWorkingDraft";
 import { daylineDate } from "@/lib/dayline";
 import { taskVisibleNextAction } from "@/lib/task-steps";
-import { guideInstruction, starterSteps, type GuideDetail } from "@/lib/work-guide";
+import { guideInstruction, pauseForCurrentStep, readGuidePause, starterSteps, type GuideDetail } from "@/lib/work-guide";
 import type { Task } from "@/lib/types";
 import type { TaskPriorityProjection } from "@/lib/upcoming-task-priority";
 
@@ -21,12 +21,13 @@ export function DaylineNow({userId,task,priority,tagColors,suggestion,completed,
   if(!task)return <section id="dayline-start" tabIndex={-1} className="dl-focus scroll-mt-24"><div className="dl-focus-top"><span className="dl-focus-chip"><span/>現在處理</span></div><h2>{completed?"今天已編排的任務均已完成":"暫無需要立即開始的任務"}</h2><p className="dl-tools-muted">等待回覆、未到工作日或受阻的任務不會自動加入。</p><div className="dl-focus-actions"><button className="dl-primary" type="button" onClick={onOrder}>編排今日任務</button></div></section>;
   const taskTags=priority.labels(task).slice(0,2),instruction=detail?guideInstruction(task,detail):null;
   const canStart=instruction?.kind!=="review" && instruction?.kind!=="waiting";
+  const resumable=detail?.resumeCheckpointId && instruction && ((instruction.kind==="resume" && !readGuidePause(detail.checkpoint)) || pauseForCurrentStep(detail,instruction)) ? detail.resumeCheckpointId : null;
   const firstStep=instruction?(instruction.kind==="starter"||instruction.kind==="review"?guideDisplayCopy(instruction.text):instruction.text):taskVisibleNextAction(task)??guideDisplayCopy(starterSteps(task.title)[0]);
   return <article id="dayline-start" tabIndex={-1} className="dl-focus scroll-mt-24" aria-label={"現在處理："+task.title}>
     <div className="dl-focus-top"><span className="dl-focus-chip"><span/>現在處理</span><span className="dl-focus-order">{suggestion?"系統建議":"手動編排第 1 項"}</span></div>
     <h2><Link className="dl-hero-title" href={"/tasks/"+task.id}>{task.title}</Link></h2>
     <div className="dl-focus-tags">{taskTags.map(tag=><span className="task-tag-color inline-flex min-w-0 max-w-full items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold" data-tag-id={tag.id} key={tag.id} style={tagColors.get(tag.id)}><Tag className="h-3.5 w-3.5 shrink-0" aria-hidden="true"/><span className="min-w-0 break-words">{tag.name}</span></span>)}{task.due_date?<span className="dl-tag">限期：{daylineDate(task.due_date)}</span>:null}</div>
-    <div className="dl-first" id="dayline-first-step" aria-live="polite"><span className="dl-step-kicker">{smaller?"拆細步驟":instruction?.kind==="resume"?"從上次進度繼續":instruction?.kind==="review"?"下一步":"第一步"}</span><p>{smaller?guideDisplayCopy(instruction?.smaller||starterSteps(task.title)[2]):firstStep}</p></div>
+    <div className="dl-first" id="dayline-first-step" aria-live="polite">{resumable?<span className="dl-step-kicker relative pr-20">{smaller?"拆細步驟":"接續上次進度"}<Link className="absolute right-0 top-1/2 inline-flex min-h-8 -translate-y-1/2 items-center px-1.5 underline underline-offset-2" href={`/tasks/${task.id}#task-progress-${resumable}`} aria-label="查看進度：接續上次進度">查看進度</Link></span>:<span className="dl-step-kicker">{smaller?"拆細步驟":instruction?.kind==="resume"?"從上次進度繼續":instruction?.kind==="review"?"下一步":"第一步"}</span>}<p>{smaller?guideDisplayCopy(instruction?.smaller||starterSteps(task.title)[2]):firstStep}</p></div>
     {failed || detail?.launchUnavailable?<p className="dl-resume-note" role="status">{failed?"未能讀取上次進度及相關資源。":"部分資源暫時未能讀取。"} <button type="button" className="min-h-11 underline" onClick={()=>setRetry(n=>n+1)}>重試</button></p>:null}
     <div className="dl-focus-actions">
       {detail?.launch ? <LaunchAction target={detail.launch}/> : canStart ? <button type="button" className="dl-primary" aria-controls="dayline-first-step" aria-pressed={smaller} onClick={()=>setSmaller(value=>!value)}><Play aria-hidden="true"/>{smaller?"返回原步驟":"再拆細一步"}</button> : null}

@@ -25,7 +25,7 @@ function task(n, title, due, priority = 3, extra = {}) {
   };
 }
 
-const waiting = task(11, "過期限期｜等回覆", "2026-11-20", 3, { status: "waiting" });
+const waiting = task(11, "過期限期｜等候回覆", "2026-11-20", 3, { status: "waiting" });
 const blocked = task(12, "過期限期｜受阻", "2026-11-21", 3, { status: "blocked" });
 const older = task(13, "過期限期｜未完成", "2026-11-23", 3);
 const yesterday = task(14, "昨日到期｜已接手", "2026-11-24", 3, { owner_id: colleague, user_id: colleague });
@@ -108,7 +108,7 @@ try {
       assert.equal(await banner.getByText(older.title, { exact: true }).count(), 1);
       assert.equal(await banner.getByText(yesterday.title, { exact: true }).count(), 0);
       assert.equal(await banner.getByText("過期 5 日", { exact: true }).count(), 1);
-      assert.equal(await banner.getByText("等回覆", { exact: true }).count(), 1);
+      assert.equal(await banner.getByText("等候回覆", { exact: true }).count(), 1);
       assert.equal(await banner.getByText("等解除阻塞", { exact: true }).count(), 1);
       const bannerOrder = await banner.evaluate(el => Boolean(el.compareDocumentPosition(document.querySelector(".dl-board")) & Node.DOCUMENT_POSITION_FOLLOWING));
       assert.equal(bannerOrder, true, "Overdue summary must render before the main dashboard board.");
@@ -127,7 +127,7 @@ try {
       assert.ok(reads.has("today_focus") && reads.has("today"), "Uses the dashboard's existing scoped data reads.");
 
       const startUrl = page.url();
-      await banner.getByRole("button", { name: "睇晒已過期" }).click();
+      await banner.getByRole("button", { name: "查看所有已過期任務" }).click();
       const overdueList = page.locator("#task-overdue");
       await overdueList.getByText(yesterday.title, { exact: true }).waitFor();
       await page.waitForFunction(() => document.activeElement?.id === "task-overdue");

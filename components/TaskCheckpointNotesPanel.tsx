@@ -1,29 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, FilePenLine, LoaderCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { loadTaskCheckpoints } from "@/lib/control-api";
+import { resumeTarget } from "@/lib/resume-link";
 import type { TaskCheckpoint, TaskCheckpointBundle } from "@/lib/types";
 
 type Props = {
   taskId: string;
+  currentUserId: string;
   participants: Array<{ user_id: string; display_name: string }>;
 };
 
 // Checkpoints are fetched only after the user opens this panel. Rendering a
 // long task list must not create one network request per card.
-export function TaskCheckpointNotesPanel({ taskId, participants }: Props) {
+export function TaskCheckpointNotesPanel({ taskId, currentUserId, participants }: Props) {
   const [open, setOpen] = useState(false);
   const [bundle, setBundle] = useState<TaskCheckpointBundle | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [target, setTarget] = useState<string | null>(null);
+  const visitedTarget = useRef<string | null>(null);
+  const section = useRef<HTMLElement>(null);
 
   function authorName(authorId: string) {
     return participants.find((participant) => participant.user_id === authorId)?.display_name ?? "任務參與者";
   }
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -33,7 +38,29 @@ export function TaskCheckpointNotesPanel({ taskId, participants }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [taskId]);
+
+  useEffect(() => {
+    function followLink() {
+      const record = resumeTarget(window.location.hash);
+      if (window.location.pathname !== "/tasks/"+taskId || !record || visitedTarget.current === record) return;
+      visitedTarget.current = record;
+      setTarget(record);
+      setOpen(true);
+      void load();
+    }
+    followLink();
+    window.addEventListener("hashchange", followLink);
+    return () => window.removeEventListener("hashchange", followLink);
+  }, [taskId, load]);
+
+  const matches = Boolean(target && bundle?.latest?.id === target && bundle.latest.author_id === currentUserId);
+  useEffect(() => {
+    if (!target || (!bundle && !error)) return;
+    const destination = (matches ? document.getElementById("task-progress-"+target) : null) ?? section.current;
+    destination?.focus({ preventScroll: true });
+    destination?.scrollIntoView({ block: "start" });
+  }, [bundle, target, matches, error]);
 
   function toggle() {
     const nextOpen = !open;
@@ -42,10 +69,10 @@ export function TaskCheckpointNotesPanel({ taskId, participants }: Props) {
   }
 
   return (
-    <section className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3" aria-label="專注進度與 notes">
+    <section ref={section} tabIndex={-1} className="mt-4 scroll-mt-24 rounded-xl border border-indigo-200 bg-indigo-50/70 p-3" aria-label="工作進度及備註">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h4 className="flex items-center gap-2 text-sm font-extrabold text-slate-900"><FilePenLine className="h-4 w-4 text-indigo-700" />專注進度／notes</h4>
+          <h4 className="flex items-center gap-2 text-sm font-extrabold text-slate-900"><FilePenLine className="h-4 w-4 text-indigo-700" />工作進度及備註</h4>
           <p className="mt-1 text-xs leading-5 text-slate-600">專注模式記下的工作位置會在這裡保留，不會覆蓋一般「備註」。</p>
         </div>
         <Button type="button" variant="secondary" onClick={toggle} disabled={loading} aria-expanded={open}>
@@ -56,25 +83,27 @@ export function TaskCheckpointNotesPanel({ taskId, participants }: Props) {
 
       {open && error ? (
         <div className="mt-3 rounded-lg bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">
-          <p>未能讀取專注 notes：{error}</p>
+          <p>未能讀取工作進度及備註：{error}</p>
           <Button className="mt-2" type="button" variant="secondary" onClick={() => void load()} disabled={loading}><RefreshCw className="h-4 w-4" />再試一次</Button>
         </div>
       ) : null}
 
-      {open && !loading && !error && bundle ? <CheckpointContents bundle={bundle} authorName={authorName} /> : null}
+      {open && !loading && !error && bundle ? <>{target && !matches ? <p role="status" className="mt-3 text-sm">該紀錄並非目前可接續的最新進度。請先核對下方的任務紀錄。</p> : null}<CheckpointContents bundle={bundle} authorName={authorName} target={matches ? target : null} /></> : null}
     </section>
   );
 }
 
 function CheckpointContents({
   bundle,
-  authorName
+  authorName,
+  target
 }: {
   bundle: TaskCheckpointBundle;
   authorName: (authorId: string) => string;
+  target: string | null;
 }) {
   if (!bundle.latest && !bundle.draft) {
-    return <p className="mt-3 rounded-lg bg-white p-3 text-sm leading-6 text-slate-600">暫時未有專注 notes。下次在專注模式按「記錄進度」或完成任務後，工作位置會在此顯示。</p>;
+    return <p className="mt-3 rounded-lg bg-white p-3 text-sm leading-6 text-slate-600">暫無工作進度或備註。下次在專注模式按「記錄進度」或完成任務後，工作位置會在此顯示。</p>;
   }
 
   return (
@@ -88,7 +117,7 @@ function CheckpointContents({
           draft
         />
       ) : null}
-      {bundle.latest ? <CheckpointBlock checkpoint={bundle.latest} title="最新已交差進度" authorName={authorName} /> : null}
+      {bundle.latest ? <CheckpointBlock checkpoint={bundle.latest} title={target ? "接續上次進度" : "最新已儲存的進度"} authorName={authorName} target={target} /> : null}
       {bundle.history.length > 1 ? (
         <details className="rounded-lg border border-indigo-100 bg-white p-3">
           <summary className="cursor-pointer text-sm font-bold text-slate-700">查看較早記錄（{bundle.history.length - 1}）</summary>
@@ -106,16 +135,18 @@ function CheckpointBlock({
   title,
   caption,
   authorName,
-  draft = false
+  draft = false,
+  target
 }: {
   checkpoint: TaskCheckpoint;
   title: string;
   caption?: string;
   authorName: (authorId: string) => string;
   draft?: boolean;
+  target?: string | null;
 }) {
   return (
-    <article className={draft ? "rounded-lg border border-dashed border-indigo-300 bg-white p-3" : "rounded-lg bg-white p-3"}>
+    <article id={target ? "task-progress-"+target : undefined} tabIndex={target ? -1 : undefined} className={draft ? "rounded-lg border border-dashed border-indigo-300 bg-white p-3" : "scroll-mt-24 rounded-lg bg-white p-3"}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-extrabold text-slate-900">{title}</p>
         <p className="text-xs text-slate-500">{formatCheckpointTime(checkpoint.last_worked_at)} · {authorName(checkpoint.author_id)}</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, CheckCircle2, ClipboardCheck, PauseCircle, UsersRound } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { LoadingState } from "@/components/LoadingState";
@@ -39,6 +39,9 @@ function WeeklyReviewContent() {
   const [error, setError] = useState("");
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<"short" | "full">("short");
+  const [saveFailed, setSaveFailed] = useState(false);
+  const savingNow = useRef(false);
   const [message, setMessage] = useState("");
   const [form, setForm] = useState<ReviewForm>(emptyForm());
 
@@ -50,6 +53,7 @@ function WeeklyReviewContent() {
       setSummary(next);
       setStep(0);
       setMessage("");
+      setSaveFailed(false);
       setForm(formFromReview(next));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "未能讀取週檢視。" );
@@ -59,6 +63,17 @@ function WeeklyReviewContent() {
   }
 
   useEffect(() => { void reload(); }, []);
+  const dirty = summary !== null && JSON.stringify(form) !== JSON.stringify(formFromReview(summary));
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+  function openWeek(weekStart?: string) {
+    if (savingNow.current || (dirty && !window.confirm("本頁仍有未儲存的內容。是否放棄這些修改，並讀取已儲存的版本？"))) return;
+    void reload(weekStart);
+  }
 
   const capacity = useMemo(() => {
     if (!summary) return assessWeeklyCapacity(0, null);
@@ -67,12 +82,16 @@ function WeeklyReviewContent() {
   }, [form.availableMinutes, summary]);
 
   async function save(complete = false) {
-    if (!summary || summary.review?.status === "completed") return;
+    if (!summary || summary.review?.status === "completed" || savingNow.current) return;
+    savingNow.current=true;
     setSaving(true);
+    setSaveFailed(false);
     setMessage("");
     try {
       const result = await saveWeeklyReview({
         weekStart: summary.week_start,
+        expectedOwnerId: summary.owner_id,
+        expectedUpdatedAt: summary.review?.updated_at ?? null,
         nextWeekOutcomes: form.outcomes,
         nextWeekAvailableMinutes: form.availableMinutes.trim() === "" ? null : Number(form.availableMinutes),
         rebalancingNote: form.rebalancingNote,
@@ -80,11 +99,15 @@ function WeeklyReviewContent() {
         reflection: form.reflection,
         complete
       });
-      setSummary((current) => current ? { ...current, review: result.review } : current);
+      const confirmed = { ...summary, review: result.review };
+      setSummary(confirmed);
+      setForm(formFromReview(confirmed));
       setMessage(complete ? "已完成這次檢視。今日不需要再完成其他事情。" : "草稿已儲存；你可隨時回來繼續。" );
     } catch (caught) {
+      setSaveFailed(true);
       setMessage(caught instanceof Error ? caught.message : "未能儲存，資料仍留在目前畫面。" );
     } finally {
+      savingNow.current=false;
       setSaving(false);
     }
   }
@@ -98,17 +121,25 @@ function WeeklyReviewContent() {
       <section className="panel flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="eyebrow">低壓力 Weekly Review</p>
-          <h1 className="mt-1 text-2xl font-bold">慢慢整理一週，不用交成績表</h1>
-          <p className="muted mt-2 max-w-2xl">只看有幫助的訊號，先為下星期留一個可重新開始的入口。這個流程不會自動完成、延期、交派或移動任何任務。</p>
+          <h1 className="mt-1 text-2xl font-bold">每週檢視</h1>
+          <p className="muted mt-2 max-w-2xl">先記下有用的做法，再為下星期留一個起點。檢視不會更改任務或交接安排。</p>
         </div>
         <div className="rounded-xl bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">{formatWeek(summary.week_start, summary.week_end)}</div>
       </section>
 
       {locked ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"><div className="flex items-center gap-2 font-bold"><CheckCircle2 className="h-5 w-5" />這次檢視已完成</div><p className="mt-1">已保留你的下星期成果和第一步；不會自動改動任何工作。</p></section> : null}
 
-      {selectedHistory.length ? <section className="panel p-4"><p className="label">最近檢視</p><div className="mt-2 flex flex-wrap gap-2">{selectedHistory.map((review) => <button key={review.id} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={() => void reload(review.week_start)}>{review.week_start}{review.status === "completed" ? " · 已完成" : " · 草稿"}</button>)}</div></section> : null}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="檢視方式">
+        <Button variant={mode==="short"?"primary":"secondary"} aria-pressed={mode==="short"} onClick={()=>setMode("short")}>簡短檢視</Button>
+        <Button variant={mode==="full"?"primary":"secondary"} aria-pressed={mode==="full"} onClick={()=>setMode("full")}>詳細檢視（八步）</Button>
+      </div>
 
-      <section className="panel p-4">
+      {mode==="short" ? <section className="panel space-y-4 p-5 sm:p-6">
+        <div><h2 className="text-xl font-bold">用三句話整理這一週</h2><p className="muted mt-1 text-sm">每題一句即可。不必一次填完，可先儲存草稿。</p></div>
+        <label className="block"><span className="label">本週有甚麼值得繼續？</span><textarea className="field mt-1" rows={2} disabled={locked||saving} maxLength={4000} value={form.reflection} onChange={e=>setForm(v=>({...v,reflection:e.target.value}))}/></label>
+        <label className="block"><span className="label">有甚麼需要等候或轉交？</span><textarea className="field mt-1" rows={2} disabled={locked||saving} maxLength={2000} value={form.rebalancingNote} onChange={e=>setForm(v=>({...v,rebalancingNote:e.target.value}))}/></label>
+        <label className="block"><span className="label">下次開始時，第一步是甚麼？</span><input className="field mt-1" disabled={locked||saving} maxLength={500} value={form.nextMinimumAction} onChange={e=>setForm(v=>({...v,nextMinimumAction:e.target.value}))}/></label>
+      </section> : <><section className="panel p-4">
         <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-600">第 {step + 1}／{steps.length} 步</p><p className="text-sm font-bold text-indigo-700">{steps[step]}</p></div>
         <div className="mt-3 flex gap-1" aria-label="週檢視進度">{steps.map((label, index) => <div key={label} className={`h-1.5 flex-1 rounded-full ${index <= step ? "bg-indigo-500" : "bg-slate-200"}`} />)}</div>
       </section>
@@ -118,21 +149,23 @@ function WeeklyReviewContent() {
         {step === 1 ? <ReviewListStep icon={<ClipboardCheck className="h-6 w-6 text-indigo-600" />} title="仍在處理甚麼" intro="只顯示最接近截止日的項目，避免一次打開整個 backlog。" items={summary.active} count={summary.counts.active} empty="目前沒有進行中的私人任務。" /> : null}
         {step === 2 ? <ReviewListStep icon={<PauseCircle className="h-6 w-6 text-amber-600" />} title="有甚麼被阻塞" intro="阻塞不是失敗，只是一個需要資料、時間或支援的訊號。" items={summary.blocked} count={summary.counts.blocked} empty="沒有被標示為受阻的任務。" /> : null}
         {step === 3 ? <ReviewListStep icon={<ArrowRight className="h-6 w-6 text-sky-600" />} title="Waiting 有甚麼需要跟進" intro="只列出沒有 follow-up 日期，或跟進日期已到的 Waiting 任務。" items={summary.waiting} count={summary.counts.waiting} empty="沒有需要立即跟進的 Waiting 任務。" /> : null}
-        {step === 4 ? <OutcomesStep form={form} disabled={locked} onChange={(outcomes) => setForm((current) => ({ ...current, outcomes }))} /> : null}
-        {step === 5 ? <CapacityStep summary={summary} value={form.availableMinutes} assessment={capacity} disabled={locked} onChange={(availableMinutes) => setForm((current) => ({ ...current, availableMinutes }))} /> : null}
-        {step === 6 ? <RebalancingStep value={form.rebalancingNote} disabled={locked} onChange={(rebalancingNote) => setForm((current) => ({ ...current, rebalancingNote }))} /> : null}
-        {step === 7 ? <FinishStep form={form} disabled={locked} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} /> : null}
-      </section>
+        {step === 4 ? <OutcomesStep form={form} disabled={locked||saving} onChange={(outcomes) => setForm((current) => ({ ...current, outcomes }))} /> : null}
+        {step === 5 ? <CapacityStep summary={summary} value={form.availableMinutes} assessment={capacity} disabled={locked||saving} onChange={(availableMinutes) => setForm((current) => ({ ...current, availableMinutes }))} /> : null}
+        {step === 6 ? <RebalancingStep value={form.rebalancingNote} disabled={locked||saving} onChange={(rebalancingNote) => setForm((current) => ({ ...current, rebalancingNote }))} /> : null}
+        {step === 7 ? <FinishStep form={form} disabled={locked||saving} onChange={(patch) => setForm((current) => ({ ...current, ...patch }))} /> : null}
+      </section></>}
 
       {message ? <p className="rounded-2xl bg-slate-100 p-4 text-sm font-semibold text-slate-700" role="status">{message}</p> : null}
+      {saveFailed && <Button variant="secondary" disabled={saving} onClick={()=>openWeek(summary.week_start)}>重新讀取已儲存的版本</Button>}
 
       <section className="flex flex-wrap items-center justify-between gap-3 pb-4">
-        <Button variant="secondary" disabled={step === 0 || saving} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft className="h-4 w-4" />上一步</Button>
+        {mode==="full" && <Button variant="secondary" disabled={step === 0 || saving} onClick={() => setStep((current) => Math.max(0, current - 1))}><ArrowLeft className="h-4 w-4" />上一步</Button>}
         <div className="flex flex-wrap gap-2">
-          {!locked ? <Button variant="secondary" disabled={saving} onClick={() => void save(false)}>{saving ? "儲存中…" : "先儲存草稿"}</Button> : null}
-          {step < steps.length - 1 ? <Button disabled={saving} onClick={() => setStep((current) => Math.min(steps.length - 1, current + 1))}>下一步<ArrowRight className="h-4 w-4" /></Button> : locked ? <Link className="inline-flex min-h-11 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-base font-semibold text-white transition hover:bg-indigo-700" href="/">回到今日</Link> : <Button disabled={saving || !form.nextMinimumAction.trim()} onClick={() => void save(true)}><CheckCircle2 className="h-4 w-4" />確認完成週檢視</Button>}
+          {!locked ? <Button variant="secondary" disabled={saving||!dirty} onClick={() => void save(false)}>{saving ? "儲存中…" : "先儲存草稿"}</Button> : null}
+          {mode==="full" && step < steps.length - 1 ? <Button disabled={saving} onClick={() => setStep((current) => Math.min(steps.length - 1, current + 1))}>下一步<ArrowRight className="h-4 w-4" /></Button> : locked ? <Link className="inline-flex min-h-11 items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-base font-semibold text-white transition hover:bg-indigo-700" href="/">回到今日</Link> : <Button disabled={saving || !form.nextMinimumAction.trim()} onClick={() => void save(true)}><CheckCircle2 className="h-4 w-4" />確認完成週檢視</Button>}
         </div>
       </section>
+      {selectedHistory.length ? <details className="panel p-4"><summary className="cursor-pointer font-semibold">最近檢視</summary><div className="mt-2 flex flex-wrap gap-2">{selectedHistory.map((review) => <button key={review.id} disabled={saving} className="min-h-11 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold" onClick={() => openWeek(review.week_start)}>{review.week_start}{review.status === "completed" ? " · 已完成" : " · 草稿"}</button>)}</div></details> : null}
     </div>
   );
 }

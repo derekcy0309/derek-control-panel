@@ -107,7 +107,7 @@ try {
       const nowTag = page.locator(`.dl-focus [data-tag-id="${sec.id}"]`);
       await nowTag.waitFor();
       const expectedSec = await colourSignature(nowTag);
-      await page.getByRole("button", { name: "加 Task", exact: true }).click();
+      await page.getByRole("button", { name: "新增任務", exact: true }).click();
       const form = page.getByRole("form", { name: "新增任務", exact: true });
       await form.getByRole("button", {name: "新增詳情", exact:true}).click();
       await form.getByText("＋Tag（可選）", { exact: true }).click();

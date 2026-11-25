@@ -7,7 +7,7 @@ export function defaultCaptureTag(tags: PersonalTaskTag[], preferred?: string | 
 }
 
 export type GuideCheckpoint = { current_position: string | null; next_minimum_step: string | null; completed_summary: string | null };
-export type GuideDetail = { checkpoint: GuideCheckpoint | null; steps: Pick<TaskStep,"id"|"title"|"status"|"updated_at"|"sort_order">[]; openChildren: boolean };
+export type GuideDetail = { checkpoint: GuideCheckpoint | null; steps: Pick<TaskStep,"id"|"title"|"status"|"updated_at"|"sort_order">[]; openChildren: boolean; resumeCheckpointId?: string | null };
 export const guideReview = "開工導航：步驟已完成，等待確認是否結束任務";
 export const guideContinue = "開工導航：下次從這一步繼續";
 const isReview=(value:unknown)=>value===guideReview||value==="開工導航：呢一步已做完，等你決定是否結案";

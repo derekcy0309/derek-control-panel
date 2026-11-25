@@ -175,7 +175,7 @@ try {
    assert.equal(calls.filter(x=>x===roadCalls).length,0,"Today must not fetch traffic even with an old saved traffic preference");
    await fit("Today");await photo("today");
    if(width===360)assert.ok((await start.boundingBox()).y<770,"Start action must fit on the first phone screen");
-   await p.getByRole("button",{name:"加 Task",exact:true}).click();
+   await p.getByRole("button",{name:"新增任務",exact:true}).click();
    const form=p.getByRole("form",{name:"新增任務"});assert.equal(await form.locator("input:visible,textarea:visible,select:visible").count(),1);
    await form.getByLabel("任務名稱",{exact:true}).fill("只填名稱嘅測試工作");
    await form.locator("button[type=submit]").click();

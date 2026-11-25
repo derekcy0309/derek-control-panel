@@ -498,6 +498,7 @@ export type WeeklyReviewItem = {
 };
 
 export type WeeklyReviewSummary = {
+  owner_id: string;
   week_start: string;
   week_end: string;
   next_week_start: string;

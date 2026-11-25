@@ -73,14 +73,14 @@ try {
     page.on('request', request => {
       if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations++;
     });
-    assert.equal(await page.getByRole('button', { name: '加 Task', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('button', { name: '新增任務', exact: true }).count(), 1);
     await page.getByRole('button', { name: '加入現有任務', exact: true }).first().click();
     await page.getByLabel('搜尋要加入今日的任務').fill('驗證用現有');
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
     await page.getByRole('alert').filter({ hasText: '驗證用暫時失敗' }).waitFor();
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
     await page.getByRole('link', { name: '驗證用現有任務', exact: true }).waitFor();
-    await page.getByRole('button', { name: '加 Task', exact: true }).first().click();
+    await page.getByRole('button', { name: '新增任務', exact: true }).first().click();
     const dialog = page.getByRole('form', { name: '新增任務' });
     await dialog.getByLabel('任務名稱', { exact: true }).fill('驗證用今日新任務');
     await dialog.getByRole('button',{name:/新增詳情/}).click();

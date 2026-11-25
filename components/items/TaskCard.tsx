@@ -188,7 +188,7 @@ export function TaskCard({
         onChanged={onChanged}
       />
       <TaskResourcePack taskId={task.id} currentUserId={currentUserId} availableItems={operatingItems} editable />
-      <TaskCheckpointNotesPanel taskId={task.id} participants={participants} />
+      <TaskCheckpointNotesPanel key={task.id+":"+currentUserId} taskId={task.id} currentUserId={currentUserId} participants={participants} />
       {task.description || task.notes || task.definition_of_done ? (
         <section className="mt-4 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4" aria-label="任務背景與完成條件">
           {task.description ? <div><h4 className="text-sm font-extrabold text-slate-900">背景及原始交接內容</h4><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{task.description}</p></div> : null}

@@ -38,7 +38,7 @@ const fixture=http.createServer(async(req,res)=>{
    }else if(p.get('area')==='eq.family'){familyReads.push(actor);result=[{id:uuid(8),item_type:'school',title:identity+' school fixture',due_date:day}];}
    else if(p.get('schedule_status')==='in.(confirmed)'){assert.equal(p.get('item_type'),'eq.event');result=[{id:uuid(9),title:identity+' timed fixture',schedule_status:'confirmed',schedule_start_at:day+'T15:30:00+08:00',schedule_end_at:day+'T16:00:00+08:00'}];}
   } else if(t==='tasks'){
-   if(p.has('id'))result=actor===people.derek && p.get('id')==='eq.'+task?[{id:task}]:[];
+   if(p.has('id'))result=actor===people.derek && p.get('id')==='eq.'+task?[{id:task,owner_id:actor,status:'in_progress'}]:[];
    else if(p.has('owner_id')){assert.equal(p.get('owner_id'),'eq.'+actor);result=[{id:task,title:'deadline fixture',due_date:day,requested_priority:3,status:'not_started'}];}
   } else if(t==='task_steps'){assert.equal(p.get('task_id'),'eq.'+task);if(p.has('id')&&p.get('id')==='eq.'+uuid(20))result=[{sort_order:12,status:'todo',title:'step example',updated_at:'2026-11-25T12:00:00Z'}];}
   else if(t==='task_checkpoints'){
@@ -54,7 +54,8 @@ const fixture=http.createServer(async(req,res)=>{
       if(p.has('id')){assert.equal(p.get('author_id'),'eq.'+actor);result=rows.filter(r=>'eq.'+r.id===p.get('id'));}
       else result=rows.slice(-1);
     }
-  }else if(t==='activity_logs'){let raw='';for await(const c of req)raw+=c;audit.push(JSON.parse(raw));result=null;}
+  }else if(t==='task_resources'||t==='task_checkpoint_resources'){assert.equal(req.method,'GET');assert.ok(actor);assert.equal(p.get('task_id'),'eq.'+task);result=[];}
+  else if(t==='activity_logs'){let raw='';for await(const c of req)raw+=c;audit.push(JSON.parse(raw));result=null;}
   else throw new Error('Unexpected fixture endpoint '+t);
  }catch(e){faults.push(String(e));status=500;result={message:'fixture assertion failed'};}
  res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(result));
@@ -82,6 +83,12 @@ try{
  assert.equal((await post('derek',{...pause,location:'new position'})).status,409);
  assert.equal(rows.length,2);assert.equal(rows[1].completed_summary,null);assert.equal(rows[1].current_position,'開工導航：已暫停原定步驟 #12\na private location');
  assert.equal(audit.length,2);assert.equal(JSON.stringify(audit).includes('private location'),false);
+ const latest=rows.at(-1);latest.last_worked_at='2020-11-25T00:00:00Z';
+ const launch=guide+'&launch=1';
+ assert.equal((await (await read(launch,'derek')).json()).resumeCheckpointId,latest.id);
+ latest.author_id=people.suki;assert.equal((await (await read(launch,'derek')).json()).resumeCheckpointId,null);latest.author_id=people.derek;
+ latest.last_worked_at=new Date().toISOString();assert.equal((await (await read(launch,'derek')).json()).resumeCheckpointId,null);
+ assert.equal((await read(launch,'suki')).status,404);
  assert.equal((await read('/api/calendar-brief')).status,401);assert.equal((await read('/api/calendar-brief?owner_id='+people.suki,'derek')).status,400);
  for(const actor of Object.keys(people)){const response=await read('/api/calendar-brief',actor);assert.equal(response.status,200);assert.match(response.headers.get('cache-control'),/no-store/);const b=await response.json();assert.equal(b.familyDates[0].title,actor+' school fixture');assert.equal(b.nextSchoolDate.title,actor+' next school');assert.equal(b.text.includes('school fixture')||b.text.includes('next school'),false);}
  const stop='/api/calendar-brief?view=work-stop';

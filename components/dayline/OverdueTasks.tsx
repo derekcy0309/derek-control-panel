@@ -8,7 +8,7 @@ const previewLimit = 3;
 
 function pendingState(task: Task) {
   if (task.status === "blocked" || task.blocked_reason?.trim()) return "等解除阻塞";
-  if (task.status === "waiting" || task.current_step_status === "waiting") return "等回覆";
+  if (task.status === "waiting" || task.current_step_status === "waiting") return "等候回覆";
   return null;
 }
 
@@ -34,7 +34,7 @@ export function OverdueTasks({ tasks, today, onShowAll }: {
         <span className="dl-overdue-action">必須立即處理</span>
       </div>
       {overdue.length > previewLimit ? <button type="button" className="dl-overdue-more" onClick={onShowAll}>
-        睇晒已過期 <ArrowRight aria-hidden="true" />
+        查看所有已過期任務 <ArrowRight aria-hidden="true" />
       </button> : null}
     </header>
     <ul className="dl-overdue-list">

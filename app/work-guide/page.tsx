@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TaskCoach } from "@/components/TaskCoach";
 import { QuickInboxMemo } from "@/components/dayline/QuickInboxMemo";
+import { GuideObstacleHelp } from "@/components/dayline/GuideObstacleHelp";
 import { Compass } from "lucide-react";
 import { AuthGate } from "@/components/AuthGate";
 import { GuideWorkStop } from "@/components/WorkStopHint";
@@ -100,6 +101,7 @@ function OneTask({task,userId,reason,onCloseTask,refreshPlan}:{task:Task;userId:
     {draftWarning?<p role="status" className="text-sm">此裝置未能暫存草稿。請在離開前儲存。</p>:null}
     {message?<p role="status">{message}</p>:null}
     {error?<p role="alert" className="rounded-lg bg-amber-50 p-3 text-amber-950">{error} <button className="min-h-11 underline" onClick={()=>{setError("");setAttempt(x=>x+1);void refreshPlan();}}>重讀最新進度</button></p>:null}
+    {!paused&&!waiting&&!review&&!editing?<GuideObstacleHelp key={userId+":"+task.id} userId={userId} taskId={task.id} onSmaller={()=>{setMini(true);setMessage("");}}/>:null}
     <QuickInboxMemo userId={userId}/>
     <TaskCoach title={task.title} step={mini?guide.smaller:guide.text} progress={detail.checkpoint?.completed_summary ?? ""}/>
     <Link href={`/tasks/${task.id}`} className="inline-flex min-h-11 items-center font-semibold underline">查看任務詳情{detail.openChildren?"及子任務":""} →</Link>
