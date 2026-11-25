@@ -22,7 +22,12 @@ try {
       const path = new URL(request.url());
       let body = {};
       if (path.pathname === '/api/auth') body = { user: { id: userId } };
-      else if (path.pathname === '/api/control' && request.method() === 'GET') body = path.searchParams.get('view') === 'assignment_alerts' ? { assignments: [], currentUserId: userId, quietModeUntil: null } : snapshot();
+      else if (path.pathname === '/api/control' && request.method() === 'GET') {
+        const view = path.searchParams.get('view');
+        if (view === 'assignment_alerts') body = { assignments: [], currentUserId: userId, quietModeUntil: null };
+        else if (view === 'work_guide') body = { steps: [], checkpoint: null, openChildren: false };
+        else body = snapshot();
+      }
       else if (path.pathname === '/api/control' && request.method() === 'POST') {
         const input = request.postDataJSON();
         assert.equal(input.action, 'reorder_today_tasks');

@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskQueueBuckets, undatedUrgencyFor } from "../lib/task-queue.ts";
+import { taskQueueBuckets, taskQueuePriorityGroups, undatedUrgencyFor } from "../lib/task-queue.ts";
 import { duePriorityBand, effectiveTaskPriority, operatingItemPriorityBand } from "../lib/due-priority.ts";
+import { createTaskPriorityProjection } from "../lib/upcoming-task-priority.ts";
 import type { Task } from "../lib/types.ts";
 
 const here = resolve(fileURLToPath(new URL(".", import.meta.url)));
@@ -88,6 +89,29 @@ test("dated priority upgrades automatically as the due date approaches", () => {
   assert.equal(operatingItemPriorityBand({ due_date: null, metadata: { manualUrgency: "medium" } }, today), "medium");
 });
 
+test("one-click grade view gives priority across statuses, with deadlines breaking ties", () => {
+  const firstWaiting = task("first-waiting", { status: "waiting", priority_grade: 1, due_date: "2026-09-30" });
+  const upgradedBlocked = task("upgraded-blocked", {
+    status: "blocked", priority_grade: 3, priority_escalation_date: "2026-09-12", due_date: "2026-09-20"
+  });
+  const original = [
+    task("ungraded", { requested_priority: 1 }), firstWaiting,
+    task("non-urgent", { priority_grade: 4 }), task("semi-urgent", { priority_grade: 3 }),
+    upgradedBlocked, task("urgent", { priority_grade: 2 }),
+    task("done", { priority_grade: 1, status: "done" }), task("cancelled", { priority_grade: 1, status: "cancelled" }),
+    task("archived", { priority_grade: 1, archived_at: "2026-09-01" }), task("deleted", { priority_grade: 1, deleted_at: "2026-09-01" })
+  ];
+  const before = structuredClone(original);
+  const grades = createTaskPriorityProjection([], original, "2026-09-09");
+  const groups = taskQueuePriorityGroups(original, grades.grade);
+  assert.deepEqual(groups.map(({ title, tasks }) => [title, tasks.map(t => t.id)]), [
+    ["First priority", [upgradedBlocked.id, firstWaiting.id]],
+    ["Urgent", ["urgent"]], ["Semi urgent", ["semi-urgent"]], ["Non urgent", ["non-urgent"]], ["未分級", ["ungraded"]]
+  ]);
+  assert.deepEqual(original, before, "display sort does not mutate source tasks");
+  assert.deepEqual(taskQueuePriorityGroups([], grades.grade), []);
+});
+
 test("task UI filters by tags, previews five active items and keeps the calendar and A4 print", () => {
   const page = read("components/tasks/TaskActionList.tsx");
   const form = read("components/forms/TaskForm.tsx");
@@ -101,9 +125,10 @@ test("task UI filters by tags, previews five active items and keeps the calendar
   assert.match(page, /title: "未完成"/);
   assert.match(page, /taskMatchesTagText/);
   assert.doesNotMatch(page, /P1 高 High|P2 一般 Normal|P3 低 Low/);
-  assert.ok(page.indexOf("simpleGroups.map") < page.indexOf("<TaskDueCalendar"));
+  assert.ok(page.indexOf("groups.map") >= 0 && page.indexOf("groups.map") < page.indexOf("<TaskDueCalendar"));
   assert.ok(page.indexOf("已做完／已取消") < page.indexOf("<TaskDueCalendar"));
-  assert.match(page, /defaultOpen=\{showOverdue\}/);
+  assert.match(page, /showOverdue \|\| \(gradeOrder && index === 0\)/);
+  assert.match(page, /defaultOpen=\{openByDefault\}/);
   assert.match(section, /defaultOpen = false/);
   assert.match(section, /顯示全部（共 \$\{tasks\.length\} 項）/);
   assert.match(calendar, /另有 \+\{dayTasks\.length - 3\} 項/);

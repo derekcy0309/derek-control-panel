@@ -1,4 +1,5 @@
 import type { Task } from "./types.ts";
+import { taskPriorityGrades, type TaskPriorityGrade } from "./task-priority-grade.ts";
 
 export type UndatedUrgency = "urgent" | "semi_urgent" | "non_urgent";
 
@@ -76,6 +77,23 @@ export function taskQueueBuckets(tasks: Task[], today: string): TaskQueueBuckets
   buckets.blocked.sort(compareUndatedTasks);
   buckets.completed.sort((left, right) => (right.completed_at ?? right.updated_at).localeCompare(left.completed_at ?? left.updated_at));
   return buckets;
+}
+
+/** The grade view is independent of both workflow status and the Today plan. */
+export function taskQueuePriorityGroups(tasks: readonly Task[], gradeOf: (task: Task) => TaskPriorityGrade | null) {
+  const groups = [
+    ...taskPriorityGrades.map(({ value, label }) => ({ grade: value, title: label, tasks: [] as Task[] })),
+    { grade: null, title: "未分級", tasks: [] as Task[] }
+  ];
+  for (const task of tasks) {
+    if (task.deleted_at || task.archived_at || task.status === "done" || task.status === "cancelled") continue;
+    const grade = gradeOf(task);
+    groups[grade === null ? taskPriorityGrades.length : grade - 1].tasks.push(task);
+  }
+  for (const group of groups) {
+    group.tasks.sort((a, b) => (a.due_date ?? "9999-12-31").localeCompare(b.due_date ?? "9999-12-31"));
+  }
+  return groups.filter(group => group.tasks.length > 0);
 }
 
 function compareDatedTasks(left: Task, right: Task) {

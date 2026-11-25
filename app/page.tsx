@@ -44,6 +44,7 @@ function SimpleDashboard() {
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [activeTab, setActiveTab] = useState<ActionCenterTab>("focus");
   const [showOverdue, setShowOverdue] = useState(false);
+  const [taskListGradeOrder, setTaskListGradeOrder] = useState(false);
   const [selectedTags, setSelectedTags] = useState<TaskTagFilter>(allTaskTags);
   const today = useDaylineDate();
   const catalogue = data?.taskTags;
@@ -214,7 +215,7 @@ function SimpleDashboard() {
       <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-600">提醒及活動</summary><ReminderPanel reminders={current.reminders} participants={current.participants} currentUserId={current.currentUser.id} onChanged={reload} /></details>
     </div>:detailsSpare}</details>:null}
     {activeTab === "today" ? (detailsReady?<TodayAllTasks tasks={current.tasks} availableTasks={current.taskQueueCatalog} priorityRank={priority.rank} planning={current.planning} today={today} onChanged={reload} onStart={(task) => void start(task)} onComplete={complete} onBrowseTasks={() => setActiveTab("tasks")} />:detailsSpare) : null}
-    {activeTab === "tasks" ? <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks">{detailsReady?<TaskActionList data={current} onChanged={reload} onTaskSaved={saved} showOverdue={showOverdue} onExitOverdue={()=>setShowOverdue(false)} />:detailsSpare}</div> : null}
+    {activeTab === "tasks" ? <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks">{detailsReady?<TaskActionList data={current} onChanged={reload} onTaskSaved={saved} showOverdue={showOverdue} onExitOverdue={()=>setShowOverdue(false)} sortByGrade={taskListGradeOrder} onToggleGradeSort={()=>setTaskListGradeOrder(enabled=>!enabled)} />:detailsSpare}</div> : null}
     {focusTask ? <FocusMode task={focusTask} defaultMinutes={current.settings.focus_minutes ?? 25} currentUserId={current.currentUser.id} participants={current.participants} sharedTask={Boolean(focusTask.visibility && focusTask.visibility !== "private")} onClose={() => setFocusTask(null)} onChanged={() => void reload()} /> : null}
     <footer className="dl-footer"><span>日序 Dayline · 香港時間</span><span><i aria-hidden="true"/>今週配色：{weekNames[daylineWeek(today)]}</span></footer>
   </>;

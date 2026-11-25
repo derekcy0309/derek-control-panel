@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, ListPlus, Printer, X } from "lucide-react";
+import { ArrowDownWideNarrow, Check, ListPlus, Printer, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { TaskForm, type TaskSaveResult } from "@/components/forms/TaskForm";
 import { TaskDueCalendar } from "@/components/tasks/TaskDueCalendar";
@@ -14,7 +14,7 @@ import { isMyTask } from "@/lib/simple-mode";
 import { taskTagColors } from "@/lib/task-tag-colors";
 import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { taskMatchesTagText } from "@/lib/task-tag-ui";
-import { taskQueueBuckets } from "@/lib/task-queue";
+import { taskQueueBuckets, taskQueuePriorityGroups } from "@/lib/task-queue";
 import { createTaskPriorityProjection } from "@/lib/upcoming-task-priority";
 import { isOverdueTask } from "@/lib/overdue-tasks";
 import type { Task, TodayData } from "@/lib/types";
@@ -28,6 +28,8 @@ type TaskActionListProps = {
   restful?: boolean;
   showOverdue?: boolean;
   onExitOverdue?: () => void;
+  sortByGrade: boolean;
+  onToggleGradeSort: () => void;
 };
 
 export function TaskActionList(props: TaskActionListProps) {
@@ -35,7 +37,7 @@ export function TaskActionList(props: TaskActionListProps) {
   return <TaskActionListContent key={props.showOverdue ? "overdue" : "all"} {...props} />;
 }
 
-function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, showOverdue = false, onExitOverdue }: TaskActionListProps) {
+function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, showOverdue = false, onExitOverdue, sortByGrade, onToggleGradeSort }: TaskActionListProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTags, setSelectedTags] = useState<TaskTagFilter>(allTaskTags);
   const [query, setQuery] = useState("");
@@ -77,7 +79,9 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
 
   const categoryLabel = tagFilter === "untagged" ? "未分類" : showingAllTags ? "全部" : [...tagFilter].map(id => tagNames.get(id)).join("／");
   const ready = tasksInCategory.filter((task) => !["done", "cancelled", "waiting", "blocked"].includes(task.status) && task.current_step_status !== "waiting");
-  const simpleGroups = showOverdue ? [{ title: "已過限期", tasks: tasksInCategory }] : [
+  const gradeOrder = sortByGrade && !showOverdue;
+  const groups = showOverdue ? [{ title: "已過限期", tasks: tasksInCategory }]
+    : gradeOrder ? taskQueuePriorityGroups(tasksInCategory, priority.grade) : [
     { title: "未完成", tasks: ready },
     { title: "等回覆 Waiting", tasks: buckets.waiting },
     { title: "等解除阻塞", tasks: buckets.blocked }
@@ -157,11 +161,16 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
           <div>
             <h2 id="task-action-list-heading">任務總表</h2>
             <p className="mt-1 text-sm text-slate-600">
-              {showOverdue ? "只顯示由你跟進、已過限期但未完成嘅任務。" : restful ? "需要時先打開清單；任務沒有被移動。" : "可多選 Tags；符合其中一個就會顯示。"}
+              {showOverdue ? "只顯示由你跟進、已過限期但未完成嘅任務。" : gradeOrder ? "由最高分級開始排，只影響呢度，唔會改你手排嘅今日次序。" : restful ? "需要時先打開清單；任務沒有被移動。" : "可多選 Tags；符合其中一個就會顯示。"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {showOverdue && onExitOverdue ? <Button variant="secondary" onClick={onExitOverdue}>返回全部任務</Button> : null}
+            {!showOverdue ? (
+              <Button type="button" variant={gradeOrder ? "primary" : "secondary"} aria-pressed={gradeOrder} onClick={onToggleGradeSort}>
+                <ArrowDownWideNarrow className="h-5 w-5" aria-hidden="true" />按分級排序
+              </Button>
+            ) : null}
             <Button variant="secondary" onClick={() => window.print()}><Printer className="h-5 w-5" />列印 A4 清單</Button>
             <Button variant="secondary" onClick={() => bulkMode ? cancelBulkMode() : setBulkMode(true)}>
               {bulkMode ? <X className="h-5 w-5" /> : <ListPlus className="h-5 w-5" />}
@@ -207,10 +216,14 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
           </div>
         </section>
 
-        <section id={showOverdue ? "task-overdue" : undefined} tabIndex={showOverdue ? -1 : undefined} className="grid scroll-mt-24 gap-3" aria-label={showOverdue ? "已過限期任務" : "按狀態顯示工作"}>
-          {simpleGroups.map((group) => <TaskQueueSection key={group.title} title={group.title}
-            description={showOverdue ? "由最早到期開始；等回覆或受阻任務亦會列出" : "按需要打開；先顯示首 5 件"}
-            tasks={group.tasks} defaultOpen={showOverdue} previewLimit={primaryPreviewLimit} {...sectionProps} />)}
+        <section id={showOverdue ? "task-overdue" : undefined} tabIndex={showOverdue ? -1 : undefined} className="grid scroll-mt-24 gap-3" aria-label={showOverdue ? "已過限期任務" : gradeOrder ? "按分級顯示工作" : "按狀態顯示工作"}>
+          {gradeOrder && !groups.length ? <p className="panel p-4 text-sm muted">而家冇符合篩選嘅未完成任務。</p> : null}
+          {groups.map((group, index) => {
+            const openByDefault = showOverdue || (gradeOrder && index === 0);
+            return <TaskQueueSection key={`${group.title}:${openByDefault}`} title={group.title}
+              description={showOverdue ? "由最早到期開始；等回覆或受阻任務亦會列出" : "按需要打開；先顯示首 5 件"}
+              tasks={group.tasks} defaultOpen={openByDefault} previewLimit={primaryPreviewLimit} {...sectionProps} />;
+          })}
           {!showOverdue ? <TaskQueueSection title="已做完／已取消" description="歷史紀錄，預設收起" tasks={buckets.completed} completed {...sectionProps} /> : null}
         </section>
 
@@ -243,7 +256,7 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
         ) : null}
       </div>
 
-      <TaskPrintSheet categoryLabel={categoryLabel} buckets={buckets} groups={simpleGroups} printedOn={today} />
+      <TaskPrintSheet categoryLabel={categoryLabel} buckets={buckets} groups={groups} printedOn={today} />
     </section>
   );
 }

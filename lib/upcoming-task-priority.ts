@@ -56,7 +56,7 @@ export function createTaskPriorityProjection(
     const result = grade(task);
     return result !== null && task.priority_selected_grade && result < task.priority_selected_grade ? virtualTag(result) : undefined;
   }
-  return { catalog: displayCatalog, ids, rank, labels, promotedTag };
+  return { catalog: displayCatalog, ids, grade, rank, labels, promotedTag };
 }
 
 export type TaskPriorityProjection = ReturnType<typeof createTaskPriorityProjection>;
