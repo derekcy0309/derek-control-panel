@@ -1,4 +1,11 @@
-# Grok Bot 專用登入
+# 連接 Grok／其他 AI Bot
+
+## 兩步登入
+
+1. 本人先以平時方法登入日序，去「設定 → 連接 Grok／其他 AI Bot」，核對權限，揀有效期，再按「建立 Bot Code」。預設 30 日；一般 Task／記事 Code 可揀 1、7、30、90 或 365 日。不會延長已有 Code。
+2. 用「複製登入網址」，叫 Grok Bot 打開網址，並顯示安全登入表格（Secure Form）。確認係日序登入頁後，另外用「複製 Code」，**只將 Code 貼入安全表格嘅 Bot Code 欄**。如果冇安全表格，可接管 Grok 嘅電腦，在日序頁面手動輸入。唔好將 Code 貼普通聊天、當作網址或填入自己已登入日序嘅瀏覽器；唔需要供應本人 Email 或 Google 密碼。參閱 [Grok 官方安全登入說明](https://docs.x.ai/grok-bot/vault)。
+
+「365 日」係由簽發起計嘅有效期，唔係保證 Grok 一直保留個瀏覽器登入。如果對方清除登入，未到期嘅 Code 仍可用同一個安全方法登入。學校專用 Code 及進階 Grok 私人 API 係獨立功能，唔可以當一般登入 Code。
 
 ## 權限及操作
 
@@ -10,7 +17,7 @@
 - 即使另一人的工作已分享給授權者，也不能經此入口讀取。財務、藥物、附件、resource pack、handover notes 等不在 Agent API 範圍。
 - 開放的 Task／Notes 文字本身可能包含私人內容，使用者應先檢查。沒有按名稱自動判斷健康狀況或刪改內容。
 
-管理員在 Settings →「AI Bot 登入」揀 1／7／30／90 日有效期，閱讀同意文字後建立。Access Code 只回傳一次，可隨時停用。最多 5 個有效連接；重設採停用舊 Code、建立新 Code，不會復活舊權限。
+Bot Code 只回傳一次，可隨時停用。最多 5 個有效連接；需要換 Code 時先停用舊 Code，再建立新 Code，不會復活舊權限。
 
 自訂 Agent 可沿用 `GET /api/agent?view=list&kind=task` ／ `view=detail&kind=note&id=…`，以及 `POST /api/agent` 新增。新 Code 容許省略 Task Tags。更新用 `PATCH /api/agent`，JSON 為 `{kind,id,requestId,changes}`，只提供想改的欄位（Task：`title`、`description`、`dueDate`、`priority`、`tagIds`、`status`；Notes：`title`、`description`、`category`）。寫入失敗重試用同一 request ID。提出封存用 `POST /api/agent` JSON `{action:"request_archive",kind,id}`；HTTP 202 只表示待本人確認，並非已封存。
 
@@ -22,14 +29,17 @@ Grok 官方說明：同一 Grok 帳戶下的 Bots 共用 cookies／登入，並�
 
 - 隨機 256-bit Code，`dcp_grok_` 前綴；DB 只存 SHA-256 雜湊，authenticated 使用者連雜湊欄位亦不能 SELECT。
 - 登入只收 JSON POST；Code 不可放網址。Cookie 為 HttpOnly／Secure（production）／SameSite Strict，Path `/api/agent`，到期不超過 grant。
+- 一般 Bot Code 嘅有效期最多 365 日。伺服器每次操作仍檢查到期及停用，唔會因為用了長期 Cookie 而跳過授權。長期選項只供新簽發，唔改分享範圍或帳戶權限。
 - 原本人用 API 不接受 Code；Agent API 不採用人用 cookie／JWT，也沒有任意 SQL／REST proxy。
 - 伺服器保留原本 server-only `SUPABASE_SERVICE_ROLE_KEY`，只用它呼叫 allowlisted `agent_access_operation`。RPC 本身為 SECURITY INVOKER，只有 `service_role` 可 EXECUTE，重新驗證 hash、active admin owner、到期、撤銷、資料擁有者及 scope。封存確認只接受經驗證的本人 session，不接受 Agent Code 或 service JWT。
 - 新增與 audit／Tags／idempotency ledger 在同一 DB transaction。以 grant + request UUID 防重複；同 UUID 不同內容回 409。
-- 每連接每分鐘最多 60 次成功操作、每香港日最多新增 50 項，counter 與鎖在 DB，不用不可靠的 function process memory。
+- 每連接每分鐘最多 60 次成功操作；指定項目 Code 每香港日最多新增 50 項，本人工作區 Code 每日最多 100 次新增／修改。計數與鎖在資料庫。
 - log 只記錄固定錯誤碼；audit 只記 action、時間、grant／resource ID，不含 Code、文字、健康或財務內容。
 - 草稿只存當前 grant 的 sessionStorage，不保存讀取的 Task 內容或 credentials；登出／撤銷時清除。
 
 ## Schema / migration
+
+`20261125083037_standard_agent_code_lifetime_365.sql` 保留原有 RLS 同授權範圍，只提高一般 Code 新簽發嘅期限上限。學校專用同私人 API 保持原有期限。回復時先回退 app，再用 `supabase/rollback-standard-agent-code-lifetime-365.sql` 停止新簽發超過 90 日；已簽發嘅長期 Code 保持原到期日，仍可即時停用。舊版本瀏覽器登入可能按原有 90 日上限要求重新輸入未過期 Code。
 
 `20261114071824_grok_agent_access.sql` 新增四表：`agent_access_grants`、`agent_access_resources`、`agent_access_events`、`agent_write_requests`，全部開 RLS。本人 admin 只能建立／查看自己的授權及不可逆停用，不能讀 hash 或操作其他人的授權。
 

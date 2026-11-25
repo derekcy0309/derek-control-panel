@@ -145,9 +145,9 @@ export function GrokPersonalAccessPanel() {
     <div className="flex items-start gap-3">
       <ShieldCheck className="mt-1 h-6 w-6 shrink-0" aria-hidden="true" />
       <div>
-        <p className="eyebrow">Grok · Private access</p>
-        <h2 id="grok-personal-title" className="section-title mt-1">Grok 本人資料存取</h2>
-        <p className="muted mt-2 text-sm leading-6">專用 Code，預設關閉。其他人的資料唔會開放，舊有日報及學校 Bot Code 不變。</p>
+        <h2 id="grok-personal-title" className="section-title">進階：Grok 私人 API</h2>
+        <p className="muted mt-2 text-sm leading-6">呢個係私人 API 憑證，唔係日序 Bot 登入 Code，唔可以用喺 Bot 登入頁。預設關閉，唔會開放其他人嘅資料，亦唔影響日報或學校授權。</p>
+        <a href="#agent-access" className="inline-flex min-h-11 items-center text-sm font-bold text-indigo-700">只想俾 Grok Bot 處理 Task／筆記？去一般 Bot 連接</a>
       </div>
     </div>
 
@@ -163,7 +163,7 @@ export function GrokPersonalAccessPanel() {
         setConsent(false);
       }
     }}>
-      <summary className="flex min-h-11 cursor-pointer items-center font-bold text-indigo-700">管理專用 Code 同封存建議</summary>
+      <summary className="flex min-h-11 cursor-pointer items-center font-bold text-indigo-700">管理私人 API 憑證同封存建議</summary>
       {loading ? <p role="status" className="muted text-sm">讀取設定中…</p> : null}
       {state ? <>
         <div className="rounded-xl border border-slate-200 p-4 text-sm leading-6">
@@ -180,7 +180,7 @@ export function GrokPersonalAccessPanel() {
           </label>
           <div className="flex flex-wrap gap-2">
             <Button type="button" disabled={busy || loading || !consent} onClick={() => void save({ action: "rotate", consent: true })}>
-              <KeyRound className="h-4 w-4" aria-hidden="true" />{state.connected ? "更換 Access Code" : "開啟並建立 Access Code"}
+              <KeyRound className="h-4 w-4" aria-hidden="true" />{state.connected ? "更換私人 API 憑證" : "開啟並建立私人 API 憑證"}
             </Button>
             {state.connected && !revokeOpen ? <Button type="button" variant="secondary" disabled={busy || loading} onClick={() => setRevokeOpen(true)}>停用</Button> : null}
           </div>
@@ -193,7 +193,7 @@ export function GrokPersonalAccessPanel() {
           </div> : null}
         </div>
         {code ? <div className="space-y-3 rounded-xl border border-slate-200 p-4 text-sm">
-          <p className="font-semibold">Access Code 只顯示今次</p>
+          <p className="font-semibold">私人 API 憑證只顯示今次</p>
           <p className="muted">只用作 Grok 工具嘅 Bearer 憑證。唔好放入聊天、連結或截圖；離開本區後無法取回。</p>
           {showCode ? <code className="block select-all whitespace-normal break-all rounded-lg border border-slate-200 p-3">{code}</code> : null}
           <div className="flex flex-wrap gap-2">
@@ -227,7 +227,7 @@ export function GrokPersonalAccessPanel() {
       {notice ? <p className="text-sm font-semibold" role="status">{notice}</p> : null}
       {error ? <div className="space-y-2" role="alert">
         <p className="text-sm text-amber-900">{error}</p>
-        {needsLogin ? <><p className="muted text-sm">登入後會返到「設定」，再打開「Grok 本人資料存取」確認。</p><Button type="button" variant="secondary" disabled={busy || loading} onClick={() => void reauthenticate()}>用 Google 重新登入</Button></> : null}
+        {needsLogin ? <><p className="muted text-sm">登入後會返到「設定」，再打開「進階：Grok 私人 API」確認。</p><Button type="button" variant="secondary" disabled={busy || loading} onClick={() => void reauthenticate()}>用 Google 重新登入</Button></> : null}
       </div> : null}
       <Button type="button" variant="ghost" disabled={busy || loading} onClick={() => void load()}>重新讀取</Button>
     </details>

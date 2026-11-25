@@ -48,7 +48,8 @@ try{
       await route.fulfill({status,json:body});
     });
     await page.goto(base+'/agent',{waitUntil:'domcontentloaded'});await page.getByRole('heading',{name:'AI Bot 登入',exact:true}).waitFor();
-    await page.getByLabel('Access Code',{exact:true}).fill(key);await page.getByRole('button',{name:'登入 Agent 工作區',exact:true}).click();
+    await page.getByText(/提交 Code 會令本人帳戶喺呢個瀏覽器登出/).waitFor();
+    await page.getByLabel('Bot Code',{exact:true}).fill(key);await page.getByRole('button',{name:'用 Bot Code 登入',exact:true}).click();
     await page.getByRole('heading',{name:'Grok Bot',exact:true}).waitFor();
     await page.goto(base+'/agent/brief');await page.getByRole('region',{name:'Grok 三日精簡摘要',exact:true}).getByText(/Apple 私人行程/).waitFor();assert.equal(await page.getByRole('button',{name:'新增 Task',exact:true}).count(),0);await page.goto(base+'/agent');await page.getByRole('heading',{name:'Grok Bot',exact:true}).waitFor();
     assert.notEqual(await page.getByRole('button',{name:'新增 Task',exact:true}).evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -93,6 +94,11 @@ try{
     console.log(`PASS Grok browser ${width}px: limited and owner login, task/note create, draft/retry, owner edit and request-only archive, logout and responsive layout`);await context.close();
   }
   const context=await browser.newContext({viewport:{width:1280,height:920},serviceWorkers:'block'}),page=await context.newPage();page.setDefaultTimeout(18000);
+  // Only capture fixture values in memory; never change the host clipboard.
+  await context.addInitScript(()=>{
+    window.fixtureClipboard=[];
+    Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>{window.fixtureClipboard.push(value);}}});
+  });
   let grant=null,created=0,revoked=0,apple=null,appleSelected=[],reauth=true,decisions=[];
   const reviewId='44444444-4444-4444-8444-444444444444';
   let reviews=[{id:reviewId,kind:'task',label:'我指示封存嘅工作',createdAt:'2026-11-25T00:00:00Z',grantLabel:'Grok Bot'}];
@@ -112,9 +118,9 @@ try{
         const value=request.postDataJSON();
         if(value.action==='create'){
           created++;assert.equal(value.acknowledged,true);
-          if(created===1)assert.deepEqual(value,{action:'create',label:'Grok Bot',days:30,scope:'owner_workspace',acknowledged:true});
-          else{assert.equal(value.scope,'selected');assert.deepEqual(value.tagIds,[tag]);}
-          grant={id,label:'Grok Bot',key_fingerprint:'fixture',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+30*86400000).toISOString(),last_used_at:null,revoked_at:null,owner_workspace:created===1};body={grant,accessCode:key,loginPath:'/agent'};
+          if(created===1)assert.deepEqual(value,{action:'create',label:'Grok Bot',days:365,scope:'owner_workspace',acknowledged:true});
+          else{assert.equal(value.days,30);assert.equal(value.scope,'selected');assert.deepEqual(value.tagIds,[tag]);}
+          grant={id,label:'Grok Bot',key_fingerprint:'fixture',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+value.days*86400000).toISOString(),last_used_at:null,revoked_at:null,owner_workspace:created===1};body={grant,accessCode:key,loginPath:'/agent'};
         }
         else{revoked++;grant.revoked_at=new Date().toISOString();body={ok:true};}
       }else body={grants:grant?[grant]:[],events:[],tasks:[{id:'33333333-3333-4333-8333-333333333333',title:'本人工作（fixture）'}],notes:[],tags:[{id:tag,name:'個人'}]};
@@ -124,21 +130,49 @@ try{
     }else if(url.pathname==='/api/auth')body={user:{id}};
     else if(url.pathname==='/api/integrations/google-calendar')body={connections:[]};
     else if(url.searchParams.get('view')==='assignment_alerts')body={assignments:[],currentUserId:id,quietModeUntil:null};
-    else body={currentUser:{id,displayName:'Derek',email:'owner@example.test'},profile:{user_id:id,display_name:'Derek',active:true,is_admin:true,timezone:'Asia/Hong_Kong'},settings:{theme:'sunrise'},tasks:[],transactions:[],meetings:[],balances:[],operatingItems:[],assignments:[],shares:[],handoffNotes:[],planning:[],participants:[],taskDependencies:[],projectMilestones:[],taskRecurrenceRules:[],capacity:null,notificationPreferences:null,notificationDeliveries:[],activePushSubscriptionCount:0,household:null,calendarConnections:[],taskNoticeRecipients:[],taskFollowers:[],showEncouragement:false};
+    else body={currentUser:{id,displayName:'Derek',email:'derekcy0309@gmail.com'},profile:{user_id:id,display_name:'Derek',active:true,is_admin:true,timezone:'Asia/Hong_Kong'},settings:{theme:'sunrise'},tasks:[],transactions:[],meetings:[],balances:[],operatingItems:[],assignments:[],shares:[],handoffNotes:[],planning:[],participants:[],taskDependencies:[],projectMilestones:[],taskRecurrenceRules:[],capacity:null,notificationPreferences:null,notificationDeliveries:[],activePushSubscriptionCount:0,household:null,calendarConnections:[],taskNoticeRecipients:[],taskFollowers:[],showEncouragement:false};
     await route.fulfill({status,json:body});
   });
-  await page.goto(base+'/settings',{waitUntil:'domcontentloaded'});const manager=page.getByRole('region',{name:'AI Bot 登入',exact:true});
-  await manager.getByText('管理 Bot Login／Access Code',{exact:true}).click();
-  assert.equal(await manager.getByLabel('存取範圍',{exact:true}).inputValue(),'owner_workspace');
-  assert.equal(await manager.getByRole('button',{name:'建立一般 Bot Login',exact:true}).isDisabled(),true);
-  await manager.getByRole('checkbox',{name:/我同意呢個 Agent 讀取/}).check();await manager.getByRole('button',{name:'建立一般 Bot Login',exact:true}).click();
-  await manager.getByLabel('Bot Access Code',{exact:true}).waitFor();assert.equal(await manager.getByLabel('Bot Access Code',{exact:true}).getAttribute('type'),'password');assert.equal(created,1);
-  await manager.getByRole('button',{name:'停用存取',exact:true}).click();await manager.getByRole('button',{name:'確認停用這個 Access Code',exact:true}).click();
-  await manager.getByRole('status').filter({hasText:'已停用；'}).waitFor();assert.equal(revoked,1);assert.equal(await manager.getByLabel('Bot Access Code',{exact:true}).count(),0);
+  await page.setViewportSize({width:360,height:920});
+  await page.goto(base+'/settings',{waitUntil:'domcontentloaded'});const manager=page.getByRole('region',{name:'連接 Grok／其他 AI Bot',exact:true});
+  const manage=manager.getByText('開始連接／管理 Bot Code',{exact:true});
+  await manage.click();
+  const create=manager.getByRole('region',{name:'1. 喺日序建立 Bot Code',exact:true});
+  const connect=manager.getByRole('region',{name:'2. 喺 Grok Bot 安全登入',exact:true});
+  const expiry=create.getByLabel('有效期',{exact:true});
+  const issue=create.getByRole('button',{name:'建立 Bot Code',exact:true});
+  const consent=create.getByRole('checkbox',{name:/我同意呢個 Agent 讀取/});
+  const codeField=connect.getByLabel('Bot Code',{exact:true});
+  assert.equal(await expiry.inputValue(),'30');
+  assert.equal(await issue.isDisabled(),true);
+  assert.equal(await create.getByLabel('存取範圍',{exact:true}).isVisible(),false);
+  assert.equal(await page.getByRole('region',{name:'進階：Grok 私人 API',exact:true}).isVisible(),true);
+  await consent.check();await expiry.selectOption('365');
+  assert.equal(await issue.isDisabled(),true,'changing the duration must clear earlier consent');
+  await consent.check();await issue.click();
+  await codeField.waitFor();assert.equal(await codeField.getAttribute('type'),'password');assert.equal(created,1);
+  assert.equal(await connect.locator('time').getAttribute('datetime'),grant.expires_at);
+  await connect.getByRole('button',{name:'複製登入網址',exact:true}).click();
+  await manager.getByRole('status').filter({hasText:'已複製登入網址'}).waitFor();
+  await connect.getByRole('button',{name:'複製 Code',exact:true}).click();
+  await manager.getByRole('status').filter({hasText:'已複製 Code'}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.fixtureClipboard),[new URL('/agent',base).href,key]);
+  assert.equal(new URL(page.url()).pathname,'/settings','issuing or copying a Code must not sign the human browser into Agent mode');
+  assert.equal(await page.evaluate(secret=>JSON.stringify({...localStorage,...sessionStorage}).includes(secret),key),false);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.setViewportSize({width:1280,height:920});
+  await manager.getByText('管理已建立嘅 Bot Code',{exact:true}).click();
+  await manager.getByRole('button',{name:'停用 Code',exact:true}).click();await manager.getByRole('button',{name:'確認停用呢個 Code',exact:true}).click();
+  await manager.getByRole('status').filter({hasText:'已停用；'}).waitFor();assert.equal(revoked,1);assert.equal(await codeField.count(),0);
+  await expiry.selectOption('30');
+  await create.getByText('進階：只開放指定項目',{exact:true}).click();
   await manager.getByLabel('存取範圍',{exact:true}).selectOption('selected');
   await manager.getByRole('button',{name:'個人',exact:true}).click();
-  await manager.getByRole('checkbox',{name:/我同意呢個 Agent 讀取上述/}).check();await manager.getByRole('button',{name:'建立一般 Bot Login',exact:true}).click();
-  await manager.getByLabel('Bot Access Code',{exact:true}).waitFor();assert.equal(created,2);
+  await manager.getByRole('checkbox',{name:/我同意呢個 Agent 讀取上述/}).check();await issue.click();
+  await codeField.waitFor();assert.equal(created,2);
+  await manage.click();await create.waitFor({state:'hidden'});await manage.click();
+  await create.getByRole('heading',{name:'1. 喺日序建立 Bot Code',exact:true}).waitFor();
+  assert.equal(await codeField.count(),0,'reopening the setup must not reveal a previously created Code');
   await manager.getByText('封存建議 · 由我確認',{exact:true}).click();
   await manager.getByText('我指示封存嘅工作',{exact:true}).waitFor();
   await manager.getByRole('button',{name:'核對封存建議',exact:true}).click();
@@ -154,7 +188,7 @@ try{
   await manager.getByRole('checkbox',{name:'呢一項係我本人要求封存。',exact:true}).check();
   await manager.getByRole('button',{name:'確認封存',exact:true}).click();
   await manager.getByRole('status').filter({hasText:'已按你確認封存'}).waitFor();assert.equal(decisions.length,2);
-  console.log('PASS Agent admin UI: default owner/legacy switch, explicit consent, masked one-time code/revoke and human-only archive with explicit re-confirmation after reauth');
+  console.log('PASS Agent admin UI: two steps, 30-day default and 365-day grant, exact separate clipboard payloads, one-time Code, legacy scope, revoke and explicit human archive re-confirmation');
   const settings=page.getByRole('region',{name:'私人 Calendar 及 Grok 日報',exact:true});await settings.getByText('連接 Apple／設定三日日報',{exact:true}).click();
   await settings.getByLabel('Apple Account 電郵',{exact:true}).fill('fixture@example.test');await settings.getByLabel('App 專用密碼（不是主密碼）',{exact:true}).fill('xxxx-yyyy-zzzz-wwww');
   await settings.getByRole('checkbox',{name:/同意 Panel 安全保存/}).check();await settings.getByRole('button',{name:'連接／重新連接 Apple',exact:true}).click();await settings.getByText('私人行程',{exact:true}).waitFor();

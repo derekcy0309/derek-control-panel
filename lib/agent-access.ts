@@ -8,6 +8,15 @@ export type AgentItem = { id: string; kind: AgentKind; title: string; descriptio
 
 export const agentKeyPattern = /^dcp_grok_[A-Za-z0-9_-]{43}$/;
 export const agentUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const agentMaxGrantDays = 365;
+export const agentGrantDays: readonly number[] = [1, 7, 30, 90, agentMaxGrantDays];
+
+// The signed-in browser must never outlive the server-checked grant.
+export function agentSessionMaxAge(expiresAt: unknown, now = Date.now()): number | null {
+  if (typeof expiresAt !== "string") return null;
+  const remaining = Math.floor((Date.parse(expiresAt) - now) / 1000);
+  return Number.isFinite(remaining) && remaining > 0 ? Math.min(remaining, agentMaxGrantDays * 86400) : null;
+}
 export function agentObject(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
@@ -20,7 +29,7 @@ export function validateAgentGrant(value: unknown) {
   const input = agentObject(value);
   if (!input || !hasOnlyAgentFields(input, ["action", "scope", "label", "days", "taskIds", "noteIds", "tagIds", "acknowledged"])) return { error: "Agent 授權資料不正確。" } as const;
   const label = typeof input.label === "string" ? input.label.trim() : "Grok Bot";
-  if (!label || Array.from(label).length > 50 || ![1, 7, 30, 90].includes(Number(input.days)) || typeof input.days !== "number") return { error: "請填寫連接名稱及有效期。" } as const;
+  if (!label || Array.from(label).length > 50 || typeof input.days !== "number" || !agentGrantDays.includes(input.days)) return { error: "請填寫連接名稱及有效期。" } as const;
   // Preserve old clients' deliberately selected grants. A new form with no
   // selection fields gets the owner workspace only after explicit consent.
   const hasSelections = ["taskIds", "noteIds", "tagIds"].some(field => Object.hasOwn(input, field));

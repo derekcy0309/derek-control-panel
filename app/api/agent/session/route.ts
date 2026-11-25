@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { agentKeyPattern, hasOnlyAgentFields } from "@/lib/agent-access";
+import { agentKeyPattern, agentSessionMaxAge, hasOnlyAgentFields } from "@/lib/agent-access";
 import { clearSession } from "@/lib/server/auth-cookies";
 import { agentCookie } from "@/lib/server/agent-key";
 import { agentJson, agentOriginAllowed, readAgentBody, runAgentOperation } from "@/lib/server/agent-request";
@@ -10,8 +10,8 @@ export async function POST(request: NextRequest) {
   const body = await readAgentBody(request, 2048); if (body instanceof Response) return body;
   if (!hasOnlyAgentFields(body, ["key"]) || typeof body.key !== "string" || !agentKeyPattern.test(body.key)) return agentJson({ error: "Access Code 格式不正確。" }, 422);
   const result = await runAgentOperation(request, "status", {}, body.key); if (result instanceof Response) return result;
-  const maxAge = Math.min(90 * 86400, Math.floor((Date.parse(String(result.expiresAt)) - Date.now()) / 1000));
-  if (!Number.isFinite(maxAge) || maxAge <= 0) return agentJson({ error: "Access Code 已到期。" }, 401);
+  const maxAge = agentSessionMaxAge(result.expiresAt);
+  if (maxAge === null) return agentJson({ error: "Bot Code 已到期。" }, 401);
   // A shared Grok computer must not retain a privileged human session beside
   // this restricted session. This clears local cookies, not other devices.
   const response = clearSession(NextResponse.json(result, { headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } }));

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { validateAgentArchiveRequest, validateAgentCreate, validateAgentGrant, validateAgentUpdate } from "../lib/agent-access.ts";
+import { agentSessionMaxAge, validateAgentArchiveRequest, validateAgentCreate, validateAgentGrant, validateAgentUpdate } from "../lib/agent-access.ts";
 import { hashAgentKey, newAgentKey } from "../lib/server/agent-key.ts";
 const id="11111111-1111-4111-8111-111111111111";
 test("Grok key is high entropy, hashed and distinct from human session credentials",()=>{
@@ -22,17 +22,30 @@ test("Grok grants require explicit consent and cannot introduce arbitrary scopes
   const input={action:"create",label:"Grok Bot",days:30,taskIds:[],noteIds:[],tagIds:[id],acknowledged:true};
   assert.ok(validateAgentGrant(input).data);
   assert.ok(validateAgentGrant({...input,acknowledged:false}).error);
-  assert.ok(validateAgentGrant({...input,days:365}).error);
+  assert.equal(validateAgentGrant({...input,days:365}).data?.days,365);
+  assert.ok(validateAgentGrant({...input,days:366}).error);
+  assert.ok(validateAgentGrant({...input,days:"365"}).error);
   assert.ok(validateAgentGrant({...input,fullAccess:true}).error);
 });
 test("new grants default to owner workspace while selected grants keep their scope",()=>{
   const input={action:"create",label:"私人助理",days:7,acknowledged:true};
   assert.deepEqual(validateAgentGrant(input).data,{scope:"owner_workspace",label:"私人助理",days:7});
   assert.equal(validateAgentGrant({...input,taskIds:[id],noteIds:[],tagIds:[id]}).data?.scope,"selected");
+  assert.equal(validateAgentGrant({...input,days:365}).data?.days,365);
   for (const invalid of [
     {...input,acknowledged:false},{...input,scope:"owner_workspace",taskIds:[]},
     {...input,scope:"settings"},{...input,scope:"selected"},{...input,permissions:["read_settings"]},
   ]) assert.ok(validateAgentGrant(invalid).error);
+});
+test("browser Bot sign-in is capped at 365 days and cannot outlive the approved grant",()=>{
+  const now=Date.parse("2026-11-25T08:00:00+08:00"), secondsPerDay=86400;
+  const expiry=(days:number)=>new Date(now+days*secondsPerDay*1000).toISOString();
+  assert.equal(agentSessionMaxAge(expiry(365),now),365*secondsPerDay);
+  assert.equal(agentSessionMaxAge(expiry(366),now),365*secondsPerDay);
+  assert.equal(agentSessionMaxAge(expiry(30),now),30*secondsPerDay);
+  assert.equal(agentSessionMaxAge(expiry(0),now),null);
+  assert.equal(agentSessionMaxAge(undefined,now),null);
+  assert.equal(agentSessionMaxAge("invalid",now),null);
 });
 test("owner workspace may create unlabelled tasks without widening other create fields",()=>{
   const base={kind:"task",requestId:id,title:"不需要 Tag"};

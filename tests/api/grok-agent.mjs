@@ -17,7 +17,7 @@ const backend=http.createServer(async(req,res)=>{
     assert.equal(req.headers.authorization,'Bearer fixture-service');assert.ok(workspace||body.p_token_hash===hash);
     assert.equal(raw.includes(key)||raw.includes(workspaceKey),false);
     if(revoked){status=400;result={message:'AGENT_UNAUTHORIZED',code:'P0001'};}
-    else if(body.p_action==='status')result={id:fixtureOwner,label:'Grok Bot',expiresAt:new Date(Date.now()+30*86400000).toISOString(),tags:[],
+    else if(body.p_action==='status')result={id:fixtureOwner,label:'Grok Bot',expiresAt:new Date(Date.now()+(workspace?365:30)*86400000).toISOString(),tags:[],
       ...(workspace?{scope:'owner_workspace'}:{}),permissions:{read:true,create:true,update:workspace,delete:false,...(workspace?{requestArchive:true}:{})}};
     else if(body.p_action==='update'||body.p_action==='request_archive'){
       if(!workspace){status=400;result={message:'AGENT_FORBIDDEN',code:'P0001'};}
@@ -39,7 +39,7 @@ const backend=http.createServer(async(req,res)=>{
   }else if(req.url==='/rest/v1/rpc/create_my_owner_workspace_agent'){
     let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);
     assert.equal(req.headers.authorization,'Bearer human-session');
-    assert.deepEqual(Object.keys(body).sort(),['p_days','p_label','p_token_hash']);assert.equal(body.p_days,7);
+    assert.deepEqual(Object.keys(body).sort(),['p_days','p_label','p_token_hash']);assert.equal(body.p_days,365);
     assert.equal(body.p_label,'Workspace fixture');assert.match(body.p_token_hash,/^[0-9a-f]{64}$/);
     workspaceGrants++;result={id:proposalId,owner_workspace:true};
   }else if(req.url==='/rest/v1/rpc/school_bot_request'){
@@ -79,6 +79,13 @@ try{
   const status=await request('/api/agent');assert.equal(status.status,200);assert.match(status.headers.get('cache-control'),/private, no-store/);assert.equal((await status.json()).permissions.delete,false);
   const login=await request('/api/agent/session',{method:'POST',headers:{Origin:base,'Content-Type':'application/json',Cookie:'dcp_access=old-human; dcp_refresh=old-refresh'},body:JSON.stringify({key})});assert.equal(login.status,200);
   const cookies=login.headers.getSetCookie().join(';');assert.match(cookies,/dcp_agent=/);assert.match(cookies,/HttpOnly/i);assert.match(cookies,/SameSite=strict/i);assert.match(cookies,/dcp_refresh=;[^;]*Max-Age=0|dcp_refresh=;[\s\S]*Max-Age=0/i);
+  const cookieLifetime=response=>Number(response.headers.getSetCookie().find(value=>value.startsWith('dcp_agent='))?.match(/Max-Age=(\d+)/i)?.[1]);
+  const previousLifetime=cookieLifetime(login);
+  assert.ok(previousLifetime<=30*86400&&previousLifetime>30*86400-10);
+  const loginWorkspace=await request('/api/agent/session',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({key:workspaceKey})});
+  assert.equal(loginWorkspace.status,200);
+  const longLifetime=cookieLifetime(loginWorkspace);
+  assert.ok(longLifetime<=365*86400&&longLifetime>365*86400-10);
   const before=operations;
   for(const method of ['DELETE','PUT'])assert.equal((await request('/api/agent',{method})).status,403);
   assert.equal((await request('/api/agent',{method:'PATCH'})).status,415);
@@ -114,10 +121,11 @@ try{
     action:'save_settings',settings:{pinned_pages:['/calendar']},
   })});
   assert.equal(settingsDenied.status,401);assert.equal(pinSaves,0);
-  const grant={action:'create',label:'Workspace fixture',days:7,acknowledged:true};
-  const issue=(headers)=>fetch(base+'/api/agent-access',{method:'POST',headers:{Origin:base,'Content-Type':'application/json',...headers},body:JSON.stringify(grant)});
+  const grant={action:'create',label:'Workspace fixture',days:365,acknowledged:true};
+  const issue=(headers,data=grant)=>fetch(base+'/api/agent-access',{method:'POST',headers:{Origin:base,'Content-Type':'application/json',...headers},body:JSON.stringify(data)});
   assert.equal((await issue({Authorization:'Bearer '+workspaceKey})).status,401);
   assert.equal((await issue({Authorization:'Bearer human-session'})).status,403);
+  assert.equal((await issue({Cookie:'dcp_access=human-session'},{...grant,days:366})).status,422);
   const issued=await issue({Cookie:'dcp_access=human-session'});assert.equal(issued.status,201);
   assert.match((await issued.json()).accessCode,/^dcp_grok_[\w-]{43}$/);
   assert.deepEqual([workspaceCreates,workspaceEdits,workspaceArchiveRequests,workspaceGrants],[1,1,1,1]);

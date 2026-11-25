@@ -146,6 +146,8 @@ try {
   assert.equal((await db.query("select auth.uid() id, current_user role")).rows[0].id,null);
   assert.equal((await db.query('select title from public.tasks where id=$1',[foreign])).rows[0].title,'Another user fixture');
   await db.exec('reset role');
+  const {testStandardAgentCodeLifetime}=await import('./standard-agent-code-lifetime-fixture.mjs');
+  await testStandardAgentCodeLifetime({db,asRole,owner,other,task,hidden,foreign,tag,directory});
   await db.exec(await readFile(new URL('../../supabase/rollback-owner-workspace-agent.sql',import.meta.url),'utf8'));
   await asRole('service_role');
   await assert.rejects(operation('status'),/AGENT_UNAUTHORIZED/);
