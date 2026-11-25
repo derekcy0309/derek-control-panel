@@ -58,10 +58,10 @@ try{
         else if(p==='/api/weather/hong-kong')json={observed:null,forecast:[],warnings:[],checkedAt:now};
         await route.fulfill({status,json});
       });
-      const agenda=page.getByRole('region',{name:'行程同限期',exact:true});
-      const refresh=agenda.getByRole('button',{name:'更新行程同限期',exact:true});
-      const sourceDetails=agenda.getByText('日曆來源同設定',{exact:true});
-      const toggle=page.locator('#google-calendar').getByRole('switch',{name:'在「行程同限期」顯示工作 Calendar',exact:true});
+      const agenda=page.getByRole('region',{name:'行程及限期',exact:true});
+      const refresh=agenda.getByRole('button',{name:'更新行程及限期',exact:true});
+      const sourceDetails=agenda.getByText('日曆來源及設定',{exact:true});
+      const toggle=page.locator('#google-calendar').getByRole('switch',{name:'在「行程及限期」顯示工作日曆',exact:true});
       const goHome=async()=>{
         await page.goto(origin+'/');
         await agenda.getByText(appleEvent.title,{exact:true}).waitFor();
@@ -99,13 +99,13 @@ try{
       assert.equal(await agenda.getByText(appleEvent.title,{exact:true}).count(),1);
       assert.equal(await agenda.getByText(deadline.title,{exact:true}).count(),1);
       mode='empty';await refresh.click();await sourceDetails.click();
-      await agenda.getByText(/^工作 · Google：已更新，呢三日冇可顯示嘅工作行程/).waitFor();
+      await agenda.getByText(/^工作 · Google：已更新，未來三日暫無工作行程/).waitFor();
       assert.equal(await agenda.getByRole('alert').filter({hasText:workSource}).count(),0);
 
       mode='reconnect';await refresh.click();
       const expired=agenda.getByRole('alert').filter({hasText:'授權已失效，請重新連接'});
       await expired.getByRole('link',{name:'Google Calendar 設定',exact:true}).click();
-      await toggle.waitFor();
+      await page.locator('#google-calendar').getByRole('switch',{name:'在「行程及限期」顯示工作日曆',exact:true,checked:true}).waitFor();
       assert.equal(await toggle.isChecked(),true,'Saved opt-in persists when navigating back to Settings.');
       await toggle.click();
       await page.getByRole('status').filter({hasText:'已關閉工作行程顯示。'}).waitFor();

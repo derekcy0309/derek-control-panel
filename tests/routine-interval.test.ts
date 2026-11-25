@@ -23,7 +23,7 @@ test("weekly routine preview supports multiple selected weekdays", () => {
 
 test("routine form is intentionally simple and does not ask for a repeat count", () => {
   const form = read("components/forms/TaskForm.tsx");
-  assert.match(form, /這是一項 Routine 工作/);
+  assert.match(form, /這是一項恆常工作/);
   assert.match(form, /recurrence_interval_value/);
   assert.match(form, /每星期指定日子/);
   assert.match(form, /星期幾（可多選）/);

@@ -34,7 +34,7 @@ function Day({day,brief}:{day:DashboardBrief["days"][number];brief:DashboardBrie
   const primary=rows.slice(0,3),due=rows.find(x=>x.due);
   if(due&&!primary.some(x=>x.due)&&primary.length===3)primary[2]=due;
   const rest=rows.filter(x=>!primary.includes(x));
-  return <section aria-label={daylineDate(date)}><div className="dl-dayline"><span>{date===today?"今日":date===addBriefDays(today,1)?"聽日":date===addBriefDays(today,2)?"後日":"日期"}</span><time dateTime={date}>{daylineDate(date)}</time></div>
+  return <section aria-label={daylineDate(date)}><div className="dl-dayline"><span>{date===today?"今日":date===addBriefDays(today,1)?"明天":date===addBriefDays(today,2)?"後天":"日期"}</span><time dateTime={date}>{daylineDate(date)}</time></div>
     <div className="dl-rail">{primary.map(x=><Line key={x.id} row={x}/>)}</div>
     {rest.length||past.length?<details className="dl-more-rows"><summary>{rest.length?"其餘安排（"+rest.length+"）":""}{rest.length&&past.length?" · ":""}{past.length?"已過時間（"+past.length+"）":""}</summary><div className="dl-rail">{[...rest,...past].map(x=><Line key={x.id} row={x}/>)}</div></details>:null}
   </section>;
@@ -44,7 +44,7 @@ function GoogleAgendaNotice({source}:{source:BriefSource}) {
   const errorCode:string|undefined=source.errorCode;
   if(source.state==="fresh")return null;
   const message=source.state==="not_connected"?"未連接工作 Google 日曆。"
-    :source.state==="select_calendars"?"未揀要顯示嘅工作 Google 日曆。"
+    :source.state==="select_calendars"?"尚未選擇要顯示的工作 Google 日曆。"
     :errorCode==="GOOGLE_RECONNECT"?"授權已失效，請重新連接。"
     :"暫時未能讀取，請稍後按「更新」再試。";
   return <p role={source.state==="stale"?"alert":"status"} className="dl-agenda-state">{WORK_GOOGLE}：{message} <Link className="underline" href="/settings#google-calendar">Google Calendar 設定</Link></p>;
@@ -56,23 +56,23 @@ export function DaylineAgenda({brief,error,busy,reload,stop,userId}:{brief:Dashb
   const google=brief?.sources.find(s=>s.label===WORK_GOOGLE);
   const hasGoogleEvents=brief?.days.some(d=>d.events.some(e=>e.source===WORK_GOOGLE));
   return <section className="dl-agenda" aria-labelledby="private-brief-title">
-    <div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true"><b/>AGENDA · 呢三日</span><h2 id="private-brief-title">行程同限期</h2></div><div className="dl-agenda-actions"><Link className="dl-text-btn" href="/calendar">日曆 →</Link><button type="button" onClick={reload} disabled={busy} className="dl-agenda-refresh" aria-label="更新行程同限期"><RefreshCw aria-hidden="true"/>{busy?"讀取中":"更新"}</button></div></div>
-    {busy&&!brief?<p role="status" className="dl-agenda-state">讀緊你嘅三日安排…</p>:null}
+    <div className="dl-section-heading"><div><span className="dl-eyebrow" aria-hidden="true"><b/>AGENDA · 未來三日</span><h2 id="private-brief-title">行程及限期</h2></div><div className="dl-agenda-actions"><Link className="dl-text-btn" href="/calendar">日曆 →</Link><button type="button" onClick={reload} disabled={busy} className="dl-agenda-refresh" aria-label="更新行程及限期"><RefreshCw aria-hidden="true"/>{busy?"讀取中":"更新"}</button></div></div>
+    {busy&&!brief?<p role="status" className="dl-agenda-state">正在讀取未來三日的安排…</p>:null}
     {error?<p role="alert" className="dl-agenda-state">{error} {brief?"以下保留上次結果。":""}</p>:null}
     {brief?<>{brief.sources.filter(s=>s.state==="stale"&&s.label!==WORK_GOOGLE).map(s=><p key={s.label} role="alert" className="dl-agenda-state">{s.label} 未能更新。{calendarErrorMessage(s.errorCode)}{s.lastSync?" 上次更新："+daylineDate(briefDate(new Date(s.lastSync)),true)+" "+briefTime(s.lastSync):""}</p>)}
       {google?<GoogleAgendaNotice source={google}/>:null}
       {brief.familyWarning?<p role="alert" className="dl-agenda-state">{brief.familyWarning}</p>:null}
-      {brief.truncated?<p role="status" className="dl-agenda-state">未能列出全部安排；完整清單可到日曆或任務查看。{google?" 工作 Google 行程請返 Google Calendar 睇。":""}</p>:null}
-      {any?visibleAgendaDays(brief.days).map(day=><Day key={day.date} day={day} brief={brief}/>):<p className="dl-agenda-state">已讀取嘅資料內，三日暫無行程或限期。</p>}
+      {brief.truncated?<p role="status" className="dl-agenda-state">未能列出全部安排；完整清單可到日曆或任務查看。{google?" 工作行程請於 Google 日曆查看。":""}</p>:null}
+      {any?visibleAgendaDays(brief.days).map(day=><Day key={day.date} day={day} brief={brief}/>):<p className="dl-agenda-state">根據已讀取的資料，未來三日暫無行程或限期。</p>}
       {school?<div className="dl-later"><Bookmark aria-hidden="true"/><div><span>三日以外 · 下一個學校限期</span><Link href={"/workspace/school#item-"+school.id}><time dateTime={school.date}>{daylineDate(school.date)}</time>　{school.title}</Link></div></div>:null}
-      {brief.nextSchoolWarning?<p className="dl-agenda-state">三日以外嘅學校限期暫未能讀取。 <Link href="/workspace/school" className="underline">去子女及學校</Link></p>:null}
+      {brief.nextSchoolWarning?<p className="dl-agenda-state">暫時未能讀取三日後的學校限期。 <Link href="/workspace/school" className="underline">查看子女及學校</Link></p>:null}
       {brief.warnings?.map(w=><p className="dl-agenda-state" key={w} role="status">{w}</p>)}
-      {stop?<details className="dl-context"><summary>幾點要收手／預留出門時間</summary><WorkStopHint key={userId} userId={userId} snapshot={error?{...stop,incomplete:true}:stop}/></details>:null}
+      {stop?<details className="dl-context"><summary>建議停止工作時間及出門準備</summary><WorkStopHint key={userId} userId={userId} snapshot={error?{...stop,incomplete:true}:stop}/></details>:null}
       <details className="dl-context">
-        <summary><CalendarDays aria-hidden="true"/>　日曆來源同設定</summary>
-        {brief.sources.map(s=><p key={s.label} className="dl-agenda-state">{s.label}：{s.state==="fresh"?(s.label===WORK_GOOGLE&&!hasGoogleEvents?"已更新，呢三日冇可顯示嘅工作行程":"已更新"):s.state==="not_connected"?"未連接":s.state==="select_calendars"?"未揀 Calendar":"未能更新"}{s.lastSync?" · "+daylineDate(briefDate(new Date(s.lastSync)))+" "+briefTime(s.lastSync):""}</p>)}
-        <p className="dl-agenda-state">已揀嘅 iCloud 行程只需入一次，要改請返 iPhone。 <Link className="underline" href="/settings#private-calendar">私人 Calendar 設定</Link></p>
-        <p className="dl-agenda-state">工作 Google 行程只會喺本人首頁顯示，要改請返 Google Calendar。 <Link className="underline" href="/settings#google-calendar">工作 Google Calendar 設定</Link></p>
+        <summary><CalendarDays aria-hidden="true"/>　日曆來源及設定</summary>
+        {brief.sources.map(s=><p key={s.label} className="dl-agenda-state">{s.label}：{s.state==="fresh"?(s.label===WORK_GOOGLE&&!hasGoogleEvents?"已更新，未來三日暫無工作行程":"已更新"):s.state==="not_connected"?"未連接":s.state==="select_calendars"?"尚未選擇日曆":"未能更新"}{s.lastSync?" · "+daylineDate(briefDate(new Date(s.lastSync)))+" "+briefTime(s.lastSync):""}</p>)}
+        <p className="dl-agenda-state">已選擇的 iCloud 行程會自動顯示。如需修改，請在 iPhone 編輯。 <Link className="underline" href="/settings#private-calendar">私人日曆設定</Link></p>
+        <p className="dl-agenda-state">工作行程只會在你的首頁顯示。如需修改，請在 Google 日曆編輯。 <Link className="underline" href="/settings#google-calendar">工作 Google Calendar 設定</Link></p>
       </details>
     </>:null}
   </section>;

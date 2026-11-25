@@ -162,7 +162,7 @@ test("handoff picker exposes only explicit trusted connections", () => {
 });
 
 test("new tasks can start a trusted handoff from every task form", () => {
-  assert.match(taskForm, /邊個跟/);
+  assert.match(taskForm, /<span classname="label">負責人<\/span>/);
   assert.match(taskForm, /建立後直接交給對方確認及跟進/);
   assert.match(taskForm, /handoff_to_user_id/);
   assert.match(taskForm, /handoff_note/);

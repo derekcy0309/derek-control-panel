@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { defaultCaptureTag, guideInstruction, guideReview, guideContinue, type GuideDetail } from "../lib/work-guide.ts";
+import { defaultCaptureTag, guideInstruction, guidePausePosition, pauseForCurrentStep, readGuidePause, guideReview, guideContinue, type GuideDetail } from "../lib/work-guide.ts";
 import { simpleToday } from "../lib/simple-mode.ts";
 import type { Task, Assignment, PlanningMetadata } from "../lib/types.ts";
 import { readDashboardFamilyDates } from "../lib/server/dashboard-family-dates.ts";
@@ -32,7 +32,7 @@ test("guide and dashboard share manual order; pending handoffs do not follow an 
 });
 test("a title-only task can start, resume its real next step, and gets an explicit closure decision",()=>{
  const task={title:"交學校回條",next_action:null},d:GuideDetail={steps:[],checkpoint:null,openChildren:false};
- const first=guideInstruction(task,d);assert.equal(first.kind,"starter");assert.match(first.text,/份表/);assert.equal(first.smaller.includes("連結"),true);
+ const first=guideInstruction(task,d);assert.equal(first.kind,"starter");assert.match(first.text,/表格/);assert.equal(first.smaller.includes("連結"),true);
  const cp={current_position:guideContinue,completed_summary:first.text,next_minimum_step:first.follow};
  assert.equal(guideInstruction(task,{...d,checkpoint:cp}).text,first.follow);
  assert.equal(guideInstruction(task,{...d,checkpoint:{...cp,current_position:guideReview,next_minimum_step:null}}).kind,"review");
@@ -56,7 +56,7 @@ test("outbound email progresses one confirmed action at a time", () => {
   const task = { title: "SEND EMAIL TO swd - 7 月ccsv attendance", next_action: null };
   const detail: GuideDetail = { steps: [], checkpoint: null, openChildren: false };
   let guide = guideInstruction(task, detail);
-  for (const expected of [/inbox/, /Compose/, /主旨/, /內文/, /附件/, /收件人/, /核對/, /傳送/]) {
+  for (const expected of [/電郵/, /Compose/, /主旨/, /內文/, /附件/, /收件人/, /核對/, /傳送/]) {
     assert.match(guide.text, expected);
     assert.ok(guide.smaller);
     detail.checkpoint = { completed_summary: guide.text, current_position: guide.follow ? guideContinue : guideReview, next_minimum_step: guide.follow };
@@ -66,4 +66,29 @@ test("outbound email progresses one confirmed action at a time", () => {
   detail.checkpoint = { completed_summary: null, current_position: guideContinue, next_minimum_step: "先同同事確認附件" };
   assert.equal(guideInstruction(task, detail).follow, "");
   assert.match(guideInstruction({title:"回覆電郵", next_action:null}, {...detail, checkpoint:null}).text, /對話/);
+});
+
+test("pause is not completion: restores position and preparation, never resurrects a completed checklist step",()=>{
+ const task={title:"完成文件",next_action:null}, empty:GuideDetail={steps:[],checkpoint:null,openChildren:false};
+ const original=guideInstruction(task,empty);
+ const cp={current_position:guidePausePosition(null,true,"第 3 頁\n表格底部"),completed_summary:null,next_minimum_step:original.text};
+ assert.deepEqual(readGuidePause(cp),{stepNumber:null,preparation:true,location:"第 3 頁\n表格底部",next:original.text});
+ const resumed=guideInstruction(task,{...empty,checkpoint:cp});assert.equal(resumed.text,original.text);assert.equal(resumed.follow,original.follow);
+ const step={id:"s",title:"覆核金額",sort_order:4,updated_at:"t",status:"todo" as const};
+ const real={...cp,current_position:guidePausePosition(step.sort_order,false,"第 4 行"),next_minimum_step:step.title};
+ const lookup=(steps:GuideDetail["steps"])=>{const d={...empty,checkpoint:real,steps};return pauseForCurrentStep(d,guideInstruction(task,d))};
+ assert.equal(lookup([step])?.location,"第 4 行");
+ assert.equal(lookup([{...step,status:"done"},{...step,id:"other",sort_order:7}]),null);
+ assert.equal(lookup([{...step,title:"新名稱"}]),null);assert.equal(lookup([{...step,status:"waiting"}]),null);
+ assert.equal(guideInstruction(task,{...empty,checkpoint:real,steps:[step]}).text,step.title);
+ assert.equal(guideInstruction(task,{...empty,checkpoint:real,steps:[{...step,status:"waiting"}]}).kind,"waiting");
+ assert.equal(guideInstruction(task,{...empty,checkpoint:real,steps:[{...step,status:"done"}]}).kind,"review");
+ assert.equal(guideInstruction(task,{...empty,checkpoint:real,steps:[]}).kind,"starter");
+});
+test("legacy generated email checkpoints advance without rewriting a manually entered next step",()=>{
+ const task={title:"send email",next_action:null},detail={steps:[],openChildren:false};
+ const old={current_position:"開工導航：下次由呢一步接住",completed_summary:"打開你平時用嚟寄信嘅 inbox。",next_minimum_step:"撳「新增郵件 / Compose」，開一封空白草稿。"};
+ const resumed=guideInstruction(task,{...detail,checkpoint:old});assert.match(resumed.text,/選擇/);assert.match(resumed.follow,/主旨/);
+ assert.equal(guideInstruction(task,{...detail,checkpoint:{...old,completed_summary:null}}).text,old.next_minimum_step);
+ assert.equal(guideInstruction(task,{...detail,checkpoint:{...old,current_position:"開工導航：呢一步已做完，等你決定是否結案",next_minimum_step:null}}).kind,"review");
 });

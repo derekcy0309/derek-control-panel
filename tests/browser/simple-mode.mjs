@@ -85,7 +85,7 @@ try {
             const task=makeTask(crypto.randomUUID(),input.title,{due_date:input.dueDate,requested_priority:input.requestedPriority,priority_grade:input.priorityGrade??null,priority_selected_grade:input.priorityGrade??null,personal_tag_ids:input.tagIds??[],work_dates:input.workDates,work_start_date:input.workStartDate});tasks.push(task);body={task};
             if(input.addToToday) planning.push({user_id:userId,resource_type:'task',resource_id:task.id,planned_date:today,plan_role:'later',plan_source:'manual',plan_position:null});
           }
-        } else if(input.action==='record_guide_step'){guideWrites++;const checkpoint={current_position:input.next?'開工導航：下次由呢一步接住':'開工導航：呢一步已做完，等你決定是否結案',next_minimum_step:input.next||null,completed_summary:input.completed};guideRecords.set(input.taskId,checkpoint);body={checkpoint};}
+        } else if(input.action==='record_guide_step'){guideWrites++;const checkpoint={current_position:input.pause?'開工導航：已暫停當前動作'+(input.preparation?'（準備動作）':'')+(input.location?'\n'+input.location:''):input.next?'開工導航：下次從這一步繼續':'開工導航：步驟已完成，等待確認是否結束任務',next_minimum_step:input.next||null,completed_summary:input.completed};guideRecords.set(input.taskId,checkpoint);body={checkpoint};}
         else if(input.action==='update_task') {updates.push(input);const task=tasks.find(t=>t.id===input.id);Object.assign(task,input.changes);if(input.priorityGrade!==undefined){task.priority_grade=input.priorityGrade;task.priority_selected_grade=input.priorityGrade;}if(input.tagIds!==undefined)task.personal_tag_ids=input.tagIds;body={task};}
         else if(input.action==='set_quiet_mode') {preferences={quiet_mode_until:input.until};body={ok:true};}
         else if(input.action==='manage_task_tag') {
@@ -105,24 +105,24 @@ try {
     });
     await page.goto(base,{waitUntil:'domcontentloaded'});
     await page.getByRole('heading',{name:'今日總覽',exact:true}).waitFor();
-    await page.getByRole('heading',{name:'行程同限期',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'行程及限期',exact:true}).waitFor();
     await page.locator('.dl-event').filter({hasText:role+' 固定行程'}).waitFor();
     const firstEvent=await page.locator('.dl-event').first().boundingBox(),firstTask=await page.locator('.dl-focus').boundingBox();
     assert.ok(firstEvent && firstTask && firstEvent.y+firstEvent.height<=920, JSON.stringify({width,firstEvent,firstTask}));if(width<600)assert.ok(firstEvent.y>firstTask.y);else assert.ok(firstEvent.x>firstTask.x);
     assert.ok(await page.locator('.dl-calendarline').innerText().then(t=>t.includes('星期')));
-    assert.equal(await page.getByRole('form',{name:'新增 Task'}).count(),0);
+    assert.equal(await page.getByRole('form',{name:'新增任務'}).count(),0);
     await page.getByText('生效警告：測試警告',{exact:true}).waitFor();
     await page.getByRole('link',{name:new RegExp(role+' 遠期限期')}).waitFor();
     if(width<600){await page.getByRole('button',{name:'三日預報'}).click();await page.locator('.dl-forecast').waitFor();await page.getByRole('button',{name:'三日預報'}).click();}
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:process.env.SCREENSHOT_DIR+'/dashboard-'+role+'-'+width+'.png',fullPage:false});}
-    await page.getByText('幾點要收手／預留出門時間',{exact:true}).click();
-    const stopHint=page.getByRole('region',{name:'幾點要收手',exact:true});await stopHint.getByText('15:10 收手 · 仲有 18 分鐘',{exact:true}).waitFor();
-    await stopHint.getByText('預留時間：20 分鐘',{exact:true}).click();await stopHint.getByLabel('出門／準備要幾多分鐘？').fill('30');
-    await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
+    await page.getByText('建議停止工作時間及出門準備',{exact:true}).click();
+    const stopHint=page.getByRole('region',{name:'建議停止工作時間',exact:true});await stopHint.getByText('15:10 停止工作 · 尚餘 18 分鐘',{exact:true}).waitFor();
+    await stopHint.getByText('預留時間：20 分鐘',{exact:true}).click();await stopHint.getByLabel('預留準備或出門時間（分鐘）').fill('30');
+    await stopHint.getByText('15:00 停止工作 · 尚餘 8 分鐘',{exact:true}).waitFor();
     assert.equal(await page.evaluate(key=>localStorage.getItem(key),'dcp:work-stop:v1:'+userId),'30');
 
     await page.locator('.dl-more-rows > summary').first().click();
-    await page.getByText(`${role} 私人 Deadline`,{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'行程同限期',exact:true}).count(),1);
+    await page.getByText(`${role} 私人 Deadline`,{exact:true}).waitFor();assert.equal(await page.getByRole('heading',{name:'行程及限期',exact:true}).count(),1);
     await page.getByText(/全日 · 2026年7月18日.*2036年7月18日/).waitFor();
     await page.getByRole('status').filter({hasText:'請檢查來源 Calendar 結束日期（測試）'}).waitFor();
     page.on('request',request=>{if(request.isNavigationRequest()&&request.frame()===page.mainFrame())navigations++;});
@@ -134,7 +134,7 @@ try {
     await page.locator('.dl-agenda a').filter({hasText:role+' 家庭限期'}).waitFor();
     const dashboardTags=page.getByRole('group',{name:'Dashboard Tags'});
     const dashboardTools=page.locator('.dl-support');
-    const dashboardToggle=dashboardTools.getByText('任務工具、提醒同篩選',{exact:true});
+    const dashboardToggle=dashboardTools.getByText('任務工具、提醒及篩選',{exact:true});
     await dashboardToggle.click();
     await dashboardTags.waitFor();
     assert.deepEqual(await dashboardTags.locator('.simple-tag-filter').allTextContents(),['全部','First priority','Urgent','Semi urgent',...names.filter(name=>!/^P[1-3]$/.test(name)),'未分類']);
@@ -158,26 +158,32 @@ try {
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/${role}-${width}.png`,fullPage:true});}
     await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
     const guide=page.locator('.work-guide');await guide.getByRole('heading',{name:'我排第一件',exact:true}).waitFor();
-    await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
-    await guide.getByRole('button',{name:'再細一步'}).click();await guide.getByRole('button',{name:'起咗步，接住做'}).click();assert.equal(guideWrites,0);
-    await guide.getByRole('button',{name:'記低下次點接'}).click();await guide.getByLabel('下次返嚟做乜？').fill('只係本分頁嘅草稿');
-    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
-    assert.equal(await guide.getByLabel('下次返嚟做乜？').inputValue(),'只係本分頁嘅草稿');await guide.getByRole('button',{name:'取消',exact:true}).click();
+    await stopHint.getByText('15:00 停止工作 · 尚餘 8 分鐘',{exact:true}).waitFor();
+    await guide.getByRole('button',{name:'拆細一步'}).click();await guide.getByRole('button',{name:'已準備好，返回目前步驟'}).click();assert.equal(guideWrites,0);
+    await guide.getByRole('button',{name:'自訂下一步'}).click();await guide.getByLabel('下次從哪一步開始？').fill('只係本分頁嘅草稿');
+    await guide.getByRole('link',{name:/返回今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
+    assert.equal(await guide.getByLabel('下次從哪一步開始？').inputValue(),'只係本分頁嘅草稿');await guide.getByRole('button',{name:'取消',exact:true}).click();
     assert.equal(guideWrites,0);
-    await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('status').filter({hasText:'成件 Task 未結案'}).waitFor();
+    await guide.getByText('補充暫停位置（選填）',{exact:true}).click();await guide.getByLabel('目前停在哪裏？').fill('第 3 頁');
+    await guide.getByRole('button',{name:'暫停並儲存位置'}).click();await guide.getByRole('button',{name:'從這一步繼續'}).waitFor();
     assert.equal(tasks[0].status,'not_started');assert.equal(guideWrites,1);
-    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
+    await guide.getByRole('link',{name:/返回今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
+    await guide.getByRole('heading',{name:'我排第一件',exact:true}).waitFor();await guide.getByText('上次停在：第 3 頁',{exact:true}).waitFor();
+    await guide.getByRole('button',{name:'從這一步繼續'}).click();
+    await guide.getByRole('button',{name:'完成這一步'}).click();await guide.getByRole('status').filter({hasText:'整項任務仍未結束'}).waitFor();
+    assert.equal(tasks[0].status,'not_started');assert.equal(guideWrites,2);
+    await guide.getByRole('link',{name:/返回今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
     await guide.getByText(guideRecords.get(tasks[0].id).next_minimum_step,{exact:true}).waitFor();
-    await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('button',{name:'確認整件完成'}).waitFor();assert.equal(tasks[0].status,'not_started');
-    await guide.getByRole('button',{name:'確認整件完成'}).click();await guide.getByRole('heading',{name:'我排第二件',exact:true}).waitFor();
-    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.locator('.dl-focus').waitFor();
+    await guide.getByRole('button',{name:'完成這一步'}).click();await guide.getByRole('button',{name:'確認完成整項任務'}).waitFor();assert.equal(tasks[0].status,'not_started');
+    await guide.getByRole('button',{name:'確認完成整項任務'}).click();await guide.getByRole('heading',{name:'我排第二件',exact:true}).waitFor();
+    await guide.getByRole('link',{name:/返回今日總覽/}).click();await page.locator('.dl-focus').waitFor();
     assert.equal(await page.locator('.dl-focus, .dl-queue-list details').count(),1);
     assert.match(await page.locator('.dl-focus').innerText(),/我排第二件/);
-    await page.getByText('任務工具、提醒同篩選',{exact:true}).click();
+    await page.getByText('任務工具、提醒及篩選',{exact:true}).click();
     await page.getByRole('button',{name:'安靜模式',exact:true}).click();await page.getByRole('button',{name:'安靜中',exact:true}).waitFor();
     assert.ok(preferences.quiet_mode_until); // Per-account API; no other profile changes.
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
-    const dialog=page.getByRole('form',{name:'新增 Task',exact:true});
+    const dialog=page.getByRole('form',{name:'新增任務',exact:true});
     assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),1);
     assert.equal(await dialog.locator('input:visible:required,select:visible:required,textarea:visible:required').count(),1);
     const gradePicker=dialog.getByLabel('優先級 Priority（選填）',{exact:true});
@@ -188,7 +194,7 @@ try {
     await assertSaveButtonReadable(saveButton);
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await saveButton.scrollIntoViewIfNeeded();await page.screenshot({path:process.env.SCREENSHOT_DIR+'/save-'+role+'-'+width+'.png',animations:'disabled',style:'nextjs-portal{display:none!important}'});}
     await saveButton.click();
-    await page.getByRole('status').filter({hasText:'Task 已儲存'}).waitFor();assert.equal(creates.length,1);assert.equal(creates[0].tagIds,undefined);assert.equal(creates[0].dueDate,null);assert.equal(creates[0].requestedPriority,3);
+    await page.getByRole('status').filter({hasText:'任務已儲存'}).waitFor();assert.equal(creates.length,1);assert.equal(creates[0].tagIds,undefined);assert.equal(creates[0].dueDate,null);assert.equal(creates[0].requestedPriority,3);
     await page.getByRole('tab',{name:/任務總表/}).click();
     await page.getByRole('searchbox',{name:'搜尋 Task'}).fill(newTitle);
     const queue=page.locator('#task-action-list');
@@ -210,7 +216,7 @@ try {
     ]) {
       await gradePicker.selectOption(grade);
       assert.ok((await gradePicker.locator('option:checked').innerText()).startsWith(label+' · '));
-      await dialog.getByText('預設 Deadline：'+due+'。你可以改日期，分級會保留。',{exact:true}).waitFor();
+      await dialog.getByText('預設限期：'+due+'。你可以改日期，分級會保留。',{exact:true}).waitFor();
     }
     await dialog.getByText('日期及負責人',{exact:false}).click();
     await dialog.getByRole('button',{name:'今日',exact:true}).click();
@@ -225,7 +231,7 @@ try {
     assert.equal(draftAfterClose?.title,'草稿保留測試','closing the form must retain the entered draft');
     assert.equal(draftAfterClose?.priority_deadline_mode,'manual');
     assert.equal(draftAfterClose?.priority_grade,1);
-    await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();await guide.getByRole('link',{name:/返今日總覽/}).click();
+    await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();await guide.getByRole('link',{name:/返回今日總覽/}).click();
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
@@ -235,7 +241,7 @@ try {
     assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await dialog.getByRole('button',{name:'WECARE',exact:true}).getAttribute('aria-pressed'),'true');
     await dialog.getByText('更多設定',{exact:false}).click();
-    await dialog.getByText('自訂哪幾日做／提醒',{exact:false}).click();
+    await dialog.getByText('自訂工作日及提醒',{exact:false}).click();
     await dialog.getByLabel('加入要做的日子').fill(today);await dialog.getByRole('button',{name:'加入',exact:true}).click();
     await dialog.getByRole('button',{name:`移除 ${today}`,exact:true}).waitFor();
     createFailures=1;await saveButton.click();

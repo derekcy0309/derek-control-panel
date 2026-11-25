@@ -34,8 +34,8 @@ export function TaskWorkDaysPicker({
 
   return (
     <fieldset className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4" disabled={disabled}>
-      <legend className="px-1 font-extrabold text-slate-900">邊幾日提醒我做？</legend>
-      <p className="mt-1 text-sm leading-6 text-slate-600">揀要做的日子，再按「加入」。完成日可留空；沒有填開始日會用第一個加入的日子。只有清單內的日子會自動出現在今日建議及發工作提醒。</p>
+      <legend className="px-1 font-extrabold text-slate-900">工作日及提醒</legend>
+      <p className="mt-1 text-sm leading-6 text-slate-600">選擇工作日後按「加入」。限期可留空；如沒有填寫開始日期，系統會使用最早的工作日。只會在已選工作日顯示任務建議及發出提醒。</p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label>
           <span className="label">任務開始日</span>
@@ -65,7 +65,7 @@ export function TaskWorkDaysPicker({
         {error ? <p className="mt-3 text-sm font-semibold text-amber-800" role="alert">{error}</p> : null}
         {feedback && !error ? <p className="mt-3 text-sm font-semibold text-indigo-800" role="status">{feedback}</p> : null}
       </div>
-      {isCalendarDate(dueDate) && !workDates.includes(dueDate) ? <button className="mt-3 min-h-10 rounded-lg border border-indigo-200 bg-white px-3 text-sm font-bold text-indigo-700" type="button" onClick={() => addDate(dueDate)}>＋完成日都要做</button> : null}
+      {isCalendarDate(dueDate) && !workDates.includes(dueDate) ? <button className="mt-3 min-h-10 rounded-lg border border-indigo-200 bg-white px-3 text-sm font-bold text-indigo-700" type="button" onClick={() => addDate(dueDate)}>＋將限期加入工作日</button> : null}
       {workDates.length ? (
         <div className="mt-3 flex flex-wrap gap-2" aria-label="已選工作日">
           {workDates.map((date) => <button key={date} type="button" className="min-h-11 rounded-full bg-white px-3 text-sm font-bold text-indigo-800 ring-1 ring-indigo-200" onClick={() => {

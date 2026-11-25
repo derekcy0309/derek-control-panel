@@ -108,7 +108,7 @@ try {
       await nowTag.waitFor();
       const expectedSec = await colourSignature(nowTag);
       await page.getByRole("button", { name: "加 Task", exact: true }).click();
-      const form = page.getByRole("form", { name: "新增 Task", exact: true });
+      const form = page.getByRole("form", { name: "新增任務", exact: true });
       await form.getByRole("button", {name: "新增詳情", exact:true}).click();
       await form.getByText("＋Tag（可選）", { exact: true }).click();
       const option = tag => form.getByRole("button", { name: tag.name, exact: true });
@@ -126,7 +126,7 @@ try {
       }
       await form.getByLabel("任務名稱", { exact: true }).fill("用兩個 Tag 新增測試");
       await form.getByRole("button", { name: "儲存任務", exact: true }).click();
-      await page.getByRole("status").filter({ hasText: "Task 已儲存" }).waitFor();
+      await page.getByRole("status").filter({ hasText: "任務已儲存" }).waitFor();
       assert.equal(writes.length, 1);
       assert.deepEqual(writes[0].tagIds, [sec.id, wecare.id]);
 

@@ -81,7 +81,7 @@ try {
     await page.getByRole('button', { name: '＋今日', exact: true }).click();
     await page.getByRole('link', { name: '驗證用現有任務', exact: true }).waitFor();
     await page.getByRole('button', { name: '加 Task', exact: true }).first().click();
-    const dialog = page.getByRole('form', { name: '新增 Task' });
+    const dialog = page.getByRole('form', { name: '新增任務' });
     await dialog.getByLabel('任務名稱', { exact: true }).fill('驗證用今日新任務');
     await dialog.getByRole('button',{name:/新增詳情/}).click();
     await dialog.getByText('＋Tag（可選）',{exact:true}).click();
@@ -91,7 +91,7 @@ try {
     await dialog.getByRole('checkbox', { name: /加入今日 Today/ }).check();
     await dialog.getByText('日期及負責人',{exact:false}).click();
     await dialog.getByText('更多設定',{exact:false}).click();
-    await dialog.getByText('自訂哪幾日做／提醒', { exact: false }).click();
+    await dialog.getByText('自訂工作日及提醒', { exact: false }).click();
     await dialog.getByLabel('任務開始日').fill(today);
     await dialog.getByLabel('加入要做的日子').fill(today);
     await dialog.getByRole('button', { name: '加入', exact: true }).click();
@@ -141,7 +141,7 @@ try {
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
     const edit = page.getByRole('dialog', { name: '修改任務' });
     await edit.getByText('更多設定',{exact:false}).click();
-    await edit.getByText('自訂哪幾日做／提醒', { exact: false }).click();
+    await edit.getByText('自訂工作日及提醒', { exact: false }).click();
     await edit.getByRole('button', { name: `移除 ${today}`, exact: true }).waitFor();
     await edit.getByLabel('加入要做的日子').fill(tomorrowDate);
     await edit.getByRole('button', { name: '加入', exact: true }).click();
@@ -152,7 +152,7 @@ try {
     if(await taskRow.locator('details').getAttribute('open')===null)await taskRow.locator('summary').click();
     await page.getByRole('button', { name: '修改任務：驗證用今日新任務', exact: true }).click();
     await edit.getByText('更多設定',{exact:false}).click();
-    await edit.getByText('自訂哪幾日做／提醒', { exact: false }).click();
+    await edit.getByText('自訂工作日及提醒', { exact: false }).click();
     await edit.getByRole('button', { name: `移除 ${tomorrowDate}`, exact: true }).waitFor();
     assert.equal(navigations, 0, 'saving must not reload the page');
     assert.deepEqual(errors, []);

@@ -109,7 +109,7 @@ export function GoogleCalendarSettings({
       }
       if (actionName === "set_work_agenda") {
         if (typeof updatedConnection?.show_work_in_agenda !== "boolean") throw new Error("未能確認是否已儲存。請重新載入設定。");
-        setMessage(updatedConnection.show_work_in_agenda ? "已開啟。工作行程會喺你嘅「行程同限期」顯示。" : "已關閉工作行程顯示。");
+        setMessage(updatedConnection.show_work_in_agenda ? "已開啟。工作行程會在你的「行程及限期」顯示。" : "已關閉工作行程顯示。");
       } else if (actionName === "disconnect") {
         setMessage("已解除連接。");
       } else {
@@ -187,7 +187,7 @@ export function GoogleCalendarSettings({
                         });
                       }}
                     />
-                    在「行程同限期」顯示工作 Calendar
+                    在「行程及限期」顯示工作日曆
                   </label>
                   <p id="work-google-agenda-help" className="pb-1 text-xs leading-5 text-slate-600">
                     {!connection

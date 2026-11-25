@@ -25,7 +25,7 @@ Settings → 私人 Calendar 及 Grok 日報：
 
 三日摘要末行附有「登入日序開始工作」連結。只有已獲授權的 Agent 可查閱本人的日報。系統只會顯示經確認由本人擁有、按本人手動次序排列且可開始的首項工作；未能確認時，只顯示登入連結。連結不含任務識別碼、文件位置或憑證。登入後，以當時的「今日」次序為準。此入口不會發出額外通知、更改 08:30 排程或授權 Agent 開啟文件。
 
-現有 Google 同步（Panel confirmed schedule → 選定 Google Calendar）不改動。需要顯示 Google 原有行程，可到「設定 → Google Calendar → 工作 Calendar」，確認已連接帳戶及日曆，再開啟「喺『行程同限期』顯示」。只在本人首頁額外讀取所選工作日曆的三日行程，不加到月曆、開工提示或 Grok 摘要。此開關預設關閉，更換帳戶或日曆後要重開；要更改行程仍到 Google Calendar。iPhone 上的 Google／Exchange 行程不是 iCloud 行程，並不經 Apple 連接讀取。
+現有 Google 同步（Panel confirmed schedule → 選定 Google Calendar）不改動。需要顯示 Google 原有行程，可到「設定 → Google Calendar → 工作 Calendar」，確認已連接帳戶及日曆，再開啟「在『行程及限期』顯示」。只在本人首頁額外讀取所選工作日曆的三日行程，不加到月曆、開工提示或 Grok 摘要。此開關預設關閉，更換帳戶或日曆後要重開；要更改行程仍到 Google Calendar。iPhone 上的 Google／Exchange 行程不是 iCloud 行程，並不經 Apple 連接讀取。
 
 Google 讀取使用現有連接，對 events API 只作有時限的 GET；不儲存 Google 行程，亦不從讀取流程覆寫原有 OAuth 憑證。只讀取顯示及去重需要的欄位，私人／機密標題顯示「私人行程」，不讀備註、地點或出席者。Dayline 已送去 Google 的副本按同步標記去重，不用標題猜測。取得 Google 資料途中如關閉開關、更換連接或 Calendar，應丟棄舊結果。讀取失敗不阻止 Apple、Dayline 或 Deadline 顯示。
 

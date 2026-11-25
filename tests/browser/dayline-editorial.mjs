@@ -124,11 +124,11 @@ try {
     }));
     for (const {selector,foreground,background} of samples) {
      const ratio=contrastRatio(foreground,background);
-     assert.ok(ratio>=4.5,`「而家做」 ${width}px ${theme} ${selector}: ${ratio.toFixed(2)}:1 (${foreground} on ${background})`);
+     assert.ok(ratio>=4.5,`「現在處理」 ${width}px ${theme} ${selector}: ${ratio.toFixed(2)}:1 (${foreground} on ${background})`);
     }
-    await fit(`「而家做」 ${theme}`);
+    await fit(`「現在處理」 ${theme}`);
     if (theme==="dark") await photo("today-dark");
-    console.log(`PASS 「而家做」 ${width}px ${theme}: all 8 text colors at least 4.5:1`);
+    console.log(`PASS 「現在處理」 ${width}px ${theme}: all 8 text colors at least 4.5:1`);
    }
    await p.evaluate(()=>{document.documentElement.dataset.theme="light";});
    if (process.env.DAYLINE_NOW_CONTRAST_ONLY === "1") { assert.deepEqual(errors,[]); continue; }
@@ -176,10 +176,10 @@ try {
    await fit("Today");await photo("today");
    if(width===360)assert.ok((await start.boundingBox()).y<770,"Start action must fit on the first phone screen");
    await p.getByRole("button",{name:"加 Task",exact:true}).click();
-   const form=p.getByRole("form",{name:"新增 Task"});assert.equal(await form.locator("input:visible,textarea:visible,select:visible").count(),1);
+   const form=p.getByRole("form",{name:"新增任務"});assert.equal(await form.locator("input:visible,textarea:visible,select:visible").count(),1);
    await form.getByLabel("任務名稱",{exact:true}).fill("只填名稱嘅測試工作");
    await form.locator("button[type=submit]").click();
-   await p.getByText("Task 已儲存。",{exact:true}).first().waitFor();
+   await p.getByText("任務已儲存。",{exact:true}).first().waitFor();
    assert.ok(writes.some(x=>x.part==="/api/control"&&x.body.action==="create_task"&&x.body.title==="只填名稱嘅測試工作"));
    await p.goto(origin+"/calendar?date="+date);
    await p.getByRole("heading",{name:/日曆/}).first().waitFor();await fit("Calendar");await photo("calendar");

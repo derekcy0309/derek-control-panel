@@ -4,7 +4,7 @@ import { syncConfirmedSchedule } from "@/lib/integrations/google-calendar";
 import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/lib/weekly-review";
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { taskTagNameError } from "@/lib/simple-mode";
-import { guideContinue, guideReview } from "@/lib/work-guide";
+import { guideContinue, guidePausePosition, guideReview } from "@/lib/work-guide";
 import { pickLaunchResource } from "@/lib/launch-resource";
 import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/server/task-tags";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
@@ -931,7 +931,7 @@ export async function POST(request: NextRequest) {
     case "save_checkpoint": return saveTaskCheckpoint(context, body, "saved");
     case "record_guide_step": {
       const origin=request.headers.get("origin");
-      if(request.headers.get("sec-fetch-site")==="cross-site" || (origin && origin!==request.nextUrl.origin))return jsonError("請喺 Panel 內儲存下一步。",403);
+      if(request.headers.get("sec-fetch-site")==="cross-site" || (origin && origin!==request.nextUrl.origin) || (body.pause===true && (!request.cookies.get("dcp_access")?.value || context.user.is_anonymous)))return jsonError("請登入日序後儲存工作進度。",403);
       return recordGuideStep(context, body);
     }
     case "create_task_resource": return createTaskResource(context, body);
@@ -2820,23 +2820,37 @@ async function workGuide({client,user}:RequestContext, requested:string, withLau
 // Append to the existing checkpoint history; never consume a pending Focus draft or its private links.
 async function recordGuideStep({client,user}:RequestContext, body:Record<string,unknown>) {
   const taskId=uuidValue(body.taskId), id=uuidValue(body.clientMutationId);
-  const completed=checkpointText(body.completed,2000,"完成嘅一步"), next=checkpointText(body.next,2000,"接住做嘅一步");
+  const completed=checkpointText(body.completed,2000,"已完成的步驟"), next=checkpointText(body.next,2000,"下一步");
   if(completed instanceof Response)return completed;if(next instanceof Response)return next;
+  const pausing=body.pause===true;
+  if(body.pause!==undefined && typeof body.pause!=="boolean")return jsonError("暫停設定不正確。",422);
+  if(pausing && (!next || completed || typeof body.actualStep!=="boolean" || typeof body.preparation!=="boolean" || typeof body.location!=="string"))return jsonError("請保留要繼續的步驟。暫停不會完成任務。",422);
+  const location=pausing?checkpointText(body.location,1000,"暫停位置"):null;
+  if(location instanceof Response)return location;
   if(!id||!taskId||(!completed && !next))return jsonError("請保留一步進度或下一個動作。",422);
   const task=await client.from("tasks").select("id").eq("id",taskId).is("archived_at",null).is("deleted_at",null).not("status","in","(done,cancelled,waiting,blocked)").maybeSingle();
   if(task.error)return databaseError(task.error);if(!task.data)return jsonError("任務狀態已改變，請重新載入。",409);
-  const position=next?guideContinue:guideReview;
+  let stepNumber:number|null=null;
+  if(pausing && body.actualStep){
+    const stepId=uuidValue(body.stepId);
+    if(!stepId || typeof body.stepVersion!=="string")return jsonError("步驟記錄不完整。請重新讀取任務。",422);
+    const step=await client.from("task_steps").select("sort_order,status,title,updated_at").eq("task_id",taskId).eq("id",stepId).maybeSingle();
+    if(step.error)return databaseError(step.error);
+    if(!step.data||!["todo","later"].includes(step.data.status)||step.data.updated_at!==body.stepVersion||step.data.title!==next||!Number.isSafeInteger(step.data.sort_order))return jsonError("目前步驟已更改。請重新讀取進度。",409);
+    stepNumber=step.data.sort_order;
+  }
+  const position=pausing?guidePausePosition(stepNumber,body.preparation===true,location??""):next?guideContinue:guideReview;
   const entry={id,task_id:taskId,author_id:user.id,state:"saved",completed_summary:completed,current_position:position,next_minimum_step:next};
   const fields="completed_summary,current_position,next_minimum_step";
   const result=await client.from("task_checkpoints").insert(entry).select(fields).single();
   if(result.error?.code==="23505"){
     const previous=await client.from("task_checkpoints").select(fields).eq("id",id).eq("task_id",taskId).eq("author_id",user.id).eq("state","saved").maybeSingle();
     if(previous.error)return databaseError(previous.error);
-    if(!previous.data||previous.data.completed_summary!==completed||previous.data.next_minimum_step!==next)return jsonError("進度已更改，請重新載入。",409);
+    if(!previous.data||previous.data.completed_summary!==completed||previous.data.next_minimum_step!==next||previous.data.current_position!==position)return jsonError("進度已更改，請重新載入。",409);
     return Response.json({checkpoint:previous.data},{headers:privateHeaders()});
   }
   if(result.error)return databaseError(result.error);
-  await recordActivity(client,user.id,"task",taskId,"checkpoint_saved","已記低開工導航進度");
+  await recordActivity(client,user.id,"task",taskId,"checkpoint_saved","已儲存開工導航進度");
   return Response.json({checkpoint:result.data},{status:201,headers:privateHeaders()});
 }
 

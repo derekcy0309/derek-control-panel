@@ -19,6 +19,16 @@ type RequestContext = { client: SupabaseClient; user: User };
 export async function POST(request: NextRequest) {
   const context = await authenticate(request);
   if (context instanceof Response) return context;
+  // Optional for existing clients; new inline forms bind the user's intent to
+  // the same human session that rendered the form, even if another tab logs in.
+  const expectedAccount = request.headers.get("x-dayline-account");
+  if (expectedAccount !== null) {
+    if (request.headers.get("origin") !== request.nextUrl.origin) return jsonError("請返回日序儲存備忘。", 403);
+    if (expectedAccount !== context.user.id) return jsonError("登入帳戶已變更。請重新整理頁面。", 409);
+    const profile = await context.client.from("user_profiles").select("active").eq("user_id",context.user.id).maybeSingle();
+    if (profile.error) return jsonError("暫時未能確認帳戶狀態。請稍後重試。", 503);
+    if (!profile.data?.active) return jsonError("此帳戶尚未啟用。", 403);
+  }
 
   let form: FormData;
   try {
@@ -38,6 +48,10 @@ export async function POST(request: NextRequest) {
   const clientFileId = optionalUuid(form.get("clientFileId"));
   const rawAudioRetained = form.get("rawAudioRetained") === "true";
 
+  if (expectedAccount !== null && (
+    Array.from(form.keys()).some(key => !["clientCaptureId","title","area","source"].includes(key)) ||
+    form.get("area") !== "personal" || form.get("source") !== "text"
+  )) return jsonError("備忘只支援私人文字內容。", 422);
   if (!clientCaptureId || !title) return jsonError("請輸入一句可辨識的內容。", 422);
   if (form.get("targetUserId") && !targetUserId) return jsonError("後續處理者不正確。", 422);
   if (form.get("sourceUrl") && !sourceUrl) return jsonError("分享網址必須是有效的 HTTPS 網址。", 422);
@@ -55,6 +69,11 @@ export async function POST(request: NextRequest) {
   if (created.error) return databaseError(created.error);
   const item = Array.isArray(created.data) ? created.data[0] : created.data;
   if (!item?.id) return jsonError("未能建立收集箱項目。", 500);
+  if (item.owner_id !== context.user.id) return jsonError("無法確認此收集箱項目。", 409);
+  if (expectedAccount !== null) {
+    if (item.visibility !== "private" || item.item_type !== "inbox" || item.title !== title) return jsonError("原有備忘已變更。請在收集箱核對。", 409);
+    return Response.json({item:{id:item.id,owner_id:item.owner_id,item_type:item.item_type,title:item.title},uploaded:false},{status:201,headers:privateHeaders()});
+  }
   if (!(file instanceof File)) return Response.json({ item, uploaded: false }, { status: 201, headers: privateHeaders() });
 
   const fileError = validateFile(file);

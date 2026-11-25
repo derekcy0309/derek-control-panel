@@ -224,7 +224,7 @@ export function TaskForm({
       }
       setForm((current) => ({ ...current, client_request_id: current.client_request_id || crypto.randomUUID() }));
     } catch {
-      setDraftError("瀏覽器未能保留草稿，離開前請先儲存 Task。");
+      setDraftError("瀏覽器未能保留草稿，離開前請先儲存任務。");
     } finally {
       setDraftReady(true);
     }
@@ -239,7 +239,7 @@ export function TaskForm({
       else sessionStorage.removeItem(draftKey);
       setDraftError("");
     } catch {
-      setDraftError("草稿未能自動儲存，離開前請先儲存 Task。");
+      setDraftError("草稿未能自動儲存，離開前請先儲存任務。");
     }
   }, [draftEligible, draftKey, draftReady, form]);
 
@@ -434,7 +434,7 @@ export function TaskForm({
   }
 
   return (
-    <form className="grid min-w-0 gap-3" aria-label={initialTask ? "修改 Task" : "新增 Task"} onSubmit={save}>
+    <form className="grid min-w-0 gap-3" aria-label={initialTask ? "修改任務" : "新增任務"} onSubmit={save}>
       {draftRestored ? <p className="rounded-xl bg-indigo-50 p-3 text-sm font-semibold text-indigo-900" role="status">已恢復上次未送出的任務草稿；成功儲存前會繼續自動保留。</p> : null}
       {draftError ? <p role="status" className="text-sm text-amber-800">{draftError}</p> : null}
       {createdTaskId ? (
@@ -467,9 +467,9 @@ export function TaskForm({
           {initialTask
             ? "更改分級不會影響限期；更改日期亦會保留原有分級。"
             : autoDeadline
-              ? `預設 Deadline：${dueDate}。你可以改日期，分級會保留。`
+              ? `預設限期：${dueDate}。你可以改日期，分級會保留。`
               : selectedPriority
-                ? dueDate ? `自訂 Deadline：${dueDate}。更改日期不會影響分級。` : "已選擇不設限期；分級維持不變。"
+                ? dueDate ? `自訂限期：${dueDate}。更改日期不會影響分級。` : "已選擇不設限期；分級維持不變。"
                 : "選擇分級後，系統會建議限期；自行設定的日期會保留。"}
         </p>
       </div>
@@ -482,25 +482,25 @@ export function TaskForm({
         加入今日 Today
       </label> : null}
       <details className="rounded-2xl border border-slate-200 p-3">
-        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期及負責人 <span className="text-xs font-normal text-slate-500">{dueDate || "無 Deadline"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
+        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期及負責人 <span className="text-xs font-normal text-slate-500">{dueDate || "不設限期"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <DueDatePicker
           value={dueDate}
-          label="Deadline（可留空）"
+          label="限期（選填）"
           onChange={(value) => setForm((current) => ({ ...current, due_date: value, priority_deadline_mode: "manual" }))}
         />
       {!initialTask ? <label>
-        <span className="label">邊個跟？</span>
+        <span className="label">負責人</span>
         <select className="field mt-2" value={form.handoff_to_user_id} onChange={(event) => update("handoff_to_user_id", event.target.value)}>
           <option value="">我自己</option>
           {otherParticipants.map((participant) => <option key={participant.user_id} value={participant.user_id}>{participant.display_name}</option>)}
         </select>
         <span className="mt-1 block text-xs leading-5 text-slate-600">選另一位會在建立後直接交給對方確認及跟進。</span>
-      </label> : <p className="self-center text-sm text-slate-500">轉交工作請用 Task 詳情內的「交接」，保留完整紀錄。</p>}
+      </label> : <p className="self-center text-sm text-slate-500">轉交工作請在任務詳情使用內的「交接」，保留完整紀錄。</p>}
       </div>
       {!initialTask && form.handoff_to_user_id ? <label>
-        <span className="label">交接 Notes（可留空）</span>
-        <textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="有咩要對方留意？留空會用任務名稱交接。" maxLength={500} />
+        <span className="label">交接備註（選填）</span>
+        <textarea className="field mt-2 min-h-24" value={form.handoff_note} onChange={(event) => update("handoff_note", event.target.value)} placeholder="請填寫需要對方留意的事項；如留空，交接會使用任務名稱。" maxLength={500} />
       </label> : null}
       </details>
       <details className="rounded-2xl border border-slate-200 bg-white p-4" open={initialTask?.status === "waiting" || undefined}>
@@ -530,7 +530,7 @@ export function TaskForm({
       ) : null}
       {!initialTask?.recurrence_rule_id ? (
         <details className="rounded-2xl border border-slate-200 p-3">
-          <summary className="min-h-11 cursor-pointer py-2 font-extrabold text-slate-900">自訂哪幾日做／提醒{form.work_dates.length ? `（已揀 ${form.work_dates.length} 日）` : "（選填）"}</summary>
+          <summary className="min-h-11 cursor-pointer py-2 font-extrabold text-slate-900">自訂工作日及提醒{form.work_dates.length ? `（已選 ${form.work_dates.length} 日）` : "（選填）"}</summary>
           <TaskWorkDaysPicker
             startDate={form.work_start_date}
             dueDate={dueDate}
@@ -595,8 +595,8 @@ export function TaskForm({
               onChange={(event) => update("recurrence_enabled", event.target.checked)}
             />
             <span>
-              <span className="block font-extrabold text-slate-900">這是一項 Routine 工作</span>
-              <span className="mt-1 block text-sm leading-6 text-slate-600">完成今次後才會建立下一次。遲完成亦會沿用原定到期日計算，不會令整個 schedule 越推越遲。</span>
+              <span className="block font-extrabold text-slate-900">這是一項恆常工作</span>
+              <span className="mt-1 block text-sm leading-6 text-slate-600">完成本期後才會建立下期。即使較遲完成，系統仍會沿用原定日期計算。</span>
             </span>
           </label>
           {form.recurrence_enabled ? (

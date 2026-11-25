@@ -104,7 +104,7 @@ function SimpleDashboard() {
     saveTaskLocally(result.task);
     window.dispatchEvent(new Event("dcp:calendar-changed"));
     if (result.refreshRelated) void reload();
-    setMessage("Task 已儲存。");
+    setMessage("任務已儲存。");
   }
 
   if (loading && !data) return <LoadingState />;
@@ -156,7 +156,7 @@ function SimpleDashboard() {
       window.dispatchEvent(new Event("dcp:calendar-changed"));
       if (task.recurrence_rule_id) void reload();
       const next = plan.top.find((t) => t.id !== task.id);
-      setMessage(`${task.recurrence_rule_id ? "今次已做完；之後會按重複設定繼續。" : "已做完。"}${next ? ` 下一件：${next.title}` : ""}`);
+      setMessage(`${task.recurrence_rule_id ? "本期已完成，下期會按原有設定繼續。" : "已做完。"}${next ? ` 下一項：${next.title}` : ""}`);
     } catch (caught) { setActionError(caught instanceof Error ? caught.message : "未能儲存完成狀態；請重試。"); }
     finally { setBusy(false); }
   }
@@ -166,7 +166,7 @@ function SimpleDashboard() {
     try {
       await controlAction("set_quiet_mode", { until: quiet ? null : new Date(Date.now() + 8 * 3_600_000).toISOString() });
       await reload();
-      setMessage(quiet ? "一般通知已恢復。" : "已開安靜模式 8 小時；非緊急通知留待摘要，其他人的設定不變。");
+      setMessage(quiet ? "一般通知已恢復。" : "已啟用安靜模式 8 小時；非緊急通知留待摘要，其他人的設定不變。");
     } catch (caught) { setActionError(caught instanceof Error ? caught.message : "未能更改通知設定。"); }
     finally { setBusy(false); }
   }
@@ -199,11 +199,11 @@ function SimpleDashboard() {
       {decisions.length ? <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold">等我決定（{decisions.length}）</summary>{decisions.slice(0, 3).map((task) => <Link key={task.id} className="mt-2 flex min-h-12 items-center justify-between rounded-xl bg-slate-50 p-3 text-sm font-semibold" href={`/tasks/${task.id}`}>{task.title}<ArrowRight className="h-4 w-4" /></Link>)}</details> : null}
     </div>:null}
     <div className="dl-tabtools">{nav}</div>
-    {activeTab==="focus"?<details className="dl-support"><summary><ListChecks aria-hidden="true"/>任務工具、提醒同篩選</summary>{detailsReady?<div className="dl-support-body">
+    {activeTab==="focus"?<details className="dl-support"><summary><ListChecks aria-hidden="true"/>任務工具、提醒及篩選</summary>{detailsReady?<div className="dl-support-body">
     <section className="grid grid-cols-3 gap-2 sm:gap-4" aria-label="我的工作概覽">
       <button type="button" className="simple-stat-card text-left" onClick={() => setActiveTab("today")}><span className="simple-stat-label"><CheckCircle2 className="h-4 w-4" />今日 Today</span><span className="simple-stat-number">{completed}<small>／{plan.planned.length}</small></span><span className="simple-progress-track"><span style={{ width: `${progress}%` }} /></span><span className="simple-stat-foot">已做完</span></button>
-      <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "waiting"} onClick={() => { setActiveTab("focus"); setSummary(summary === "waiting" ? null : "waiting"); }}><span className="simple-stat-label"><Clock3 className="h-4 w-4" />等回覆</span><span className="simple-stat-number">{waiting.length}</span><span className="simple-stat-foot break-words">{waiting[0] ? [waiting[0].waiting_for && `等 ${waiting[0].waiting_for}`,waiting[0].title].filter(Boolean).join(" · ") : "暫時冇等緊嘅工作"}</span></button>
-      <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "week"} onClick={() => { setActiveTab("focus"); setSummary(summary === "week" ? null : "week"); }}><span className="simple-stat-label"><CalendarDays className="h-4 w-4" />即將到期 · 14 日</span><span className="simple-stat-number">{upcoming.length}</span><span className="simple-stat-foot break-words">{upcoming[0] ? `${formatDate(upcoming[0].due_date)} · ${upcoming[0].title}` : "暫時冇即將到期嘅 Task"}</span></button>
+      <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "waiting"} onClick={() => { setActiveTab("focus"); setSummary(summary === "waiting" ? null : "waiting"); }}><span className="simple-stat-label"><Clock3 className="h-4 w-4" />等回覆</span><span className="simple-stat-number">{waiting.length}</span><span className="simple-stat-foot break-words">{waiting[0] ? [waiting[0].waiting_for && `等 ${waiting[0].waiting_for}`,waiting[0].title].filter(Boolean).join(" · ") : "暫無等候回覆的任務"}</span></button>
+      <button type="button" className="simple-stat-card text-left" aria-pressed={summary === "week"} onClick={() => { setActiveTab("focus"); setSummary(summary === "week" ? null : "week"); }}><span className="simple-stat-label"><CalendarDays className="h-4 w-4" />即將到期 · 14 日</span><span className="simple-stat-number">{upcoming.length}</span><span className="simple-stat-foot break-words">{upcoming[0] ? `${formatDate(upcoming[0].due_date)} · ${upcoming[0].title}` : "暫無即將到期的任務"}</span></button>
     </section>
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1 basis-60">
@@ -233,7 +233,7 @@ function SimpleDashboard() {
         </Link>;
       })}{!(summary === "waiting" ? waiting : upcoming).length ? <p className="text-sm text-slate-500">暫時冇相關工作。</p> : null}<button type="button" className="min-h-11 text-sm font-bold text-indigo-700" onClick={() => { setActiveTab("tasks"); setSummary(null); }}>打開完整清單 →</button></section> : null}
       {matches.map((task,i)=><SimpleTaskCard key={task.id} task={task} priority={priority} tagColors={tagColors} index={i} inToday={plannedIds.has(task.id)} busy={busy} onStart={()=>void start(task)} onComplete={()=>void complete(task)}/>)}
-      {!showingAllTags&&!matches.length?<p className="dl-tools-muted">暫時冇符合所揀 Tags、可以開始嘅工作。</p>:null}
+      {!showingAllTags&&!matches.length?<p className="dl-tools-muted">暫無符合所選標籤、可立即開始的任務。</p>:null}
       <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-600">提醒及活動</summary><ReminderPanel reminders={current.reminders} participants={current.participants} currentUserId={current.currentUser.id} onChanged={reload} /></details>
     </div>:detailsSpare}</details>:null}
     {activeTab === "today" ? (detailsReady?<TodayAllTasks tasks={current.tasks} availableTasks={current.taskQueueCatalog} priorityRank={priority.rank} planning={current.planning} today={today} onChanged={reload} onStart={(task) => void start(task)} onComplete={complete} onBrowseTasks={() => setActiveTab("tasks")} />:detailsSpare) : null}
@@ -244,11 +244,11 @@ function SimpleDashboard() {
 }
 
 function SimpleTaskCard({ task, priority, tagColors, index, inToday, busy, onStart, onComplete }: { task: Task; priority: TaskPriorityProjection; tagColors: ReturnType<typeof taskTagColors>; index: number; inToday: boolean; busy: boolean; onStart: () => void; onComplete: () => void }) {
-  return <article className={`simple-focus-card ${index === 0 ? "is-now" : ""}`} aria-label={`${index === 0 ? "而家做" : "之後做"}：${task.title}`}>
-    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-extrabold uppercase tracking-wider text-indigo-600">{index === 0 ? "而家做 Now" : `之後做 Next ${index}`}</p><div className="flex min-w-0 flex-wrap gap-1">{priority.labels(task).slice(0,2).map(tag=><span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-3 py-1 text-xs font-bold" style={tagColors.get(tag.id)}>{tag.name}</span>)}</div></div>
+  return <article className={`simple-focus-card ${index === 0 ? "is-now" : ""}`} aria-label={`${index === 0 ? "現在處理" : "接下來"}：${task.title}`}>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-extrabold uppercase tracking-wider text-indigo-600">{index === 0 ? "現在處理" : `接下來 ${index}`}</p><div className="flex min-w-0 flex-wrap gap-1">{priority.labels(task).slice(0,2).map(tag=><span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-3 py-1 text-xs font-bold" style={tagColors.get(tag.id)}>{tag.name}</span>)}</div></div>
     <Link href={`/tasks/${task.id}`} className={`mt-3 block break-words font-extrabold text-slate-950 hover:text-indigo-700 ${index === 0 ? "text-2xl sm:text-3xl" : "text-lg"}`}>{task.title}</Link>
     <p className="mt-3 break-words text-sm leading-6 text-slate-600">{taskVisibleNextAction(task) || starterSteps(task.title)[0]}</p>
     <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500"><span>Deadline：{task.due_date ? formatDate(task.due_date) : "未定"}</span><span>{task.custom_status_label || (task.status === "in_progress" ? "做緊" : "未開始")}</span>{!inToday ? <span>建議，未加入今日</span> : null}</div>
-    <div className="mt-5 flex flex-wrap items-center gap-2"><Button disabled={busy} onClick={onStart}><Play className="h-4 w-4" />{index === 0 ? "開始做 Start" : "做呢件"}</Button><Button variant="secondary" disabled={busy} onClick={onComplete}><Check className="h-4 w-4" />{task.recurrence_rule_id ? "今次做完" : "做完 Done"}</Button><Link href={`/tasks/${task.id}`} className="ml-auto inline-flex min-h-11 items-center gap-1 px-2 text-sm font-semibold text-slate-600">詳情<ArrowRight className="h-4 w-4" /></Link></div>
+    <div className="mt-5 flex flex-wrap items-center gap-2"><Button disabled={busy} onClick={onStart}><Play className="h-4 w-4" />{index === 0 ? "開始工作" : "開始這項任務"}</Button><Button variant="secondary" disabled={busy} onClick={onComplete}><Check className="h-4 w-4" />{task.recurrence_rule_id ? "完成本期" : "完成任務"}</Button><Link href={`/tasks/${task.id}`} className="ml-auto inline-flex min-h-11 items-center gap-1 px-2 text-sm font-semibold text-slate-600">詳情<ArrowRight className="h-4 w-4" /></Link></div>
   </article>;
 }

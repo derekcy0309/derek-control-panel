@@ -37,7 +37,7 @@ test("Today keeps the main action before secondary tools and exposes the followi
   const tabs = await readFile(new URL("../components/ActionCenterTabs.tsx", import.meta.url), "utf8");
   const cards = await readFile(new URL("../components/dayline/TodayCards.tsx", import.meta.url), "utf8");
   assert.match(page, /simpleToday/);
-  assert.match(page, /下一件：/);
+  assert.match(page, /下一項：/);
   assert.match(cards, /現在處理/);
   assert.ok(page.indexOf("<DaylineNow") < page.indexOf("<DaylineNext") && page.indexOf("<DaylineNext") < page.lastIndexOf("<TodayAllTasks"));
   assert.match(page,/tasks=\{plan.top.slice\(1\)\}/);
