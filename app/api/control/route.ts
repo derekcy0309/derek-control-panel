@@ -5,6 +5,7 @@ import { addCalendarDays, normalizeWeeklyOutcomes, weekStartForDate } from "@/li
 import { taskCategoryFields, taskCategoryValue } from "@/lib/task-categories";
 import { taskTagNameError } from "@/lib/simple-mode";
 import { guideContinue, guideReview } from "@/lib/work-guide";
+import { pickLaunchResource } from "@/lib/launch-resource";
 import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/server/task-tags";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
 import { isCalendarDate, validateTaskWorkSchedule } from "@/lib/task-work-schedule";
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
   if (view === "calendar") return calendarPanel(context, request.nextUrl.searchParams);
   if (view === "search") return search(context, request.nextUrl.searchParams.get("q") ?? "");
   if (view === "task_checkpoints") return taskCheckpoints(context, request.nextUrl.searchParams.get("taskId") ?? "");
-  if (view === "work_guide") return workGuide(context, request.nextUrl.searchParams.get("taskId") ?? "");
+  if (view === "work_guide") return workGuide(context, request.nextUrl.searchParams.get("taskId") ?? "", request.nextUrl.searchParams.get("launch") === "1");
   if (view === "task_resources") return taskResources(context, request.nextUrl.searchParams.get("taskId") ?? "");
   if (view === "inbox_capture_files") return inboxCaptureFiles(context, request.nextUrl.searchParams.get("inboxItemId") ?? "");
   if (view === "time_estimate_suggestion") return timeEstimateSuggestion(context, request.nextUrl.searchParams);
@@ -2793,19 +2794,27 @@ async function search({ client, user }: RequestContext, query: string) {
   return Response.json({ results }, { headers: privateHeaders() });
 }
 
-async function workGuide({client}:RequestContext, requested:string) {
+async function workGuide({client,user}:RequestContext, requested:string, withLaunch:boolean) {
   const id=uuidValue(requested);
   if(!id)return jsonError("任務識別碼不正確。",400);
   const task=await client.from("tasks").select("id").eq("id",id).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").maybeSingle();
   if(task.error)return databaseError(task.error);
   if(!task.data)return jsonError("任務已結束或你冇權限查看，請重新載入今日安排。",404);
-  const [steps,latest,children]=await Promise.all([
+  const [steps,latest,children,resources]=await Promise.all([
     client.from("task_steps").select("id,title,status,sort_order,updated_at").eq("task_id",id).order("sort_order").limit(50),
-    client.from("task_checkpoints").select("current_position,completed_summary,next_minimum_step").eq("task_id",id).eq("state","saved").order("last_worked_at",{ascending:false}).order("created_at",{ascending:false}).limit(1).maybeSingle(),
-    client.from("tasks").select("id").eq("parent_task_id",id).is("archived_at",null).is("deleted_at",null).not("status","in","(done,cancelled)").limit(1)
+    client.from("task_checkpoints").select("id,author_id,current_position,completed_summary,next_minimum_step").eq("task_id",id).eq("state","saved").order("last_worked_at",{ascending:false}).order("created_at",{ascending:false}).limit(1).maybeSingle(),
+    client.from("tasks").select("id").eq("parent_task_id",id).is("archived_at",null).is("deleted_at",null).not("status","in","(done,cancelled)").limit(1),
+    withLaunch ? client.from("task_resources").select("id,label,resource_type,url,linked_item_id,item:operating_items(id,item_type,area,status,owner_id,archived_at)")
+      .eq("task_id",id).in("resource_type",["url","document","storage_file","note","sop"]).order("updated_at",{ascending:false}).order("id").limit(50)
+      : Promise.resolve({data:[],error:null})
   ]);
   const error=steps.error??latest.error??children.error;if(error)return databaseError(error);
-  return Response.json({checkpoint:latest.data,steps:steps.data??[],openChildren:Boolean(children.data?.length)},{headers:privateHeaders()});
+  const checkpoint=latest.data;
+  const links=withLaunch && checkpoint?.author_id===user.id
+    ? await client.from("task_checkpoint_resources").select("label,url").eq("task_id",id).eq("author_id",user.id).eq("checkpoint_id",checkpoint.id).order("position").limit(10)
+    : {data:[],error:null};
+  const launch=withLaunch?pickLaunchResource(resources.data??[],(links.data??[]).map(row=>({...row,resource_type:"url"})),user.id):null;
+  return Response.json({checkpoint:checkpoint?{current_position:checkpoint.current_position,completed_summary:checkpoint.completed_summary,next_minimum_step:checkpoint.next_minimum_step}:null,steps:steps.data??[],openChildren:Boolean(children.data?.length),...(withLaunch?{launch,launchUnavailable:!!(links.error||resources.error)}:{})},{headers:privateHeaders()});
 }
 
 // Append to the existing checkpoint history; never consume a pending Focus draft or its private links.

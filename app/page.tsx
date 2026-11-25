@@ -80,7 +80,7 @@ function SimpleDashboard() {
     const open = () => {setCaptureOpen(true);setFocusCapture(true);};
     const overview=()=>{setShowOverdue(false);setActiveTab("focus");}, tasks=()=>{setShowOverdue(false);setActiveTab("tasks");};
     window.addEventListener("dayline:overview",overview);window.addEventListener("dayline:tasks",tasks);
-    const syncHash = () => { if (window.location.hash === "#task-action-list") tasks(); if(window.location.hash==="#today-order") {setShowOverdue(false);setActiveTab("today");} };
+    const syncHash = () => { if (window.location.hash === "#dayline-start") overview(); if (window.location.hash === "#task-action-list") tasks(); if(window.location.hash==="#today-order") {setShowOverdue(false);setActiveTab("today");} };
     window.addEventListener("dcp:open-task-form", open);
     window.addEventListener("hashchange", syncHash);
     syncHash();
@@ -184,7 +184,7 @@ function SimpleDashboard() {
     {activeTab==="focus"?<div id="action-center-panel-focus" role="tabpanel" aria-labelledby="action-center-tab-focus">
       <OverdueTasks tasks={overdue} today={today} onShowAll={()=>{setShowOverdue(true);setActiveTab("tasks");}}/>
       <div className="dl-board dl-editorial-board">
-        <DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} task={plan.top[0]} priority={priority} tagColors={tagColors} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
+        <DaylineNow key={current.currentUser.id+":"+(plan.top[0]?.id??"empty")} userId={current.currentUser.id} task={plan.top[0]} priority={priority} tagColors={tagColors} suggestion={plan.isSuggestion} completed={Boolean(completed&&completed===plan.planned.length)} onOrder={()=>setActiveTab("today")}/>
         <DaylineNext tasks={plan.top.slice(1)} priority={priority} tagColors={tagColors} suggestion={plan.isSuggestion} onOrder={()=>setActiveTab("today")}/>
         <CalendarBriefPanel key={current.currentUser.id} userId={current.currentUser.id}/>
         <figure className="dl-harbour-figure">

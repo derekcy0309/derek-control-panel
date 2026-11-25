@@ -109,6 +109,7 @@ try {
       const expectedSec = await colourSignature(nowTag);
       await page.getByRole("button", { name: "加 Task", exact: true }).click();
       const form = page.getByRole("form", { name: "新增 Task", exact: true });
+      await form.getByRole("button", {name: "加詳情", exact:true}).click();
       await form.getByText("＋Tag（可選）", { exact: true }).click();
       const option = tag => form.getByRole("button", { name: tag.name, exact: true });
       const palette = new Map();

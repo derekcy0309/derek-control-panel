@@ -23,6 +23,8 @@ Settings → 私人 Calendar 及 Grok 日報：
 3. 明確開放一個本人 Grok grant 的 Calendar 摘要／本人現有及日後 Task。此權限可由停用整個 Agent Code 撤銷；Notes 的逐項範圍不擴大。
 4. 將 Routine 指令送到本人的 Grok Bot 私人對話：每日 Asia/Hong_Kong 08:30，只讀 `/agent/brief` 一份文字並回報當日起三日。先試跑並核對儲存時間；Panel 不會把「複製指令」當作已建立排程。
 
+原本三日摘要尾有一行「登入日序開工」。只有已開放本人日報嘅 Agent 先可讀摘要；只有能確認首項為本人手排、本人擁有而可開始嘅工作時，先會顯示名稱。否則只列登入入口，唔估工作名。入口連去本人登入後嘅「而家做」，冇 Task ID、檔案／網址或密碼；以開啟時嘅實際「今日」次序為準。呢行唔會額外寄通知、改 08:30 排程或授權 Bot 開文件。
+
 現有 Google 同步（Panel confirmed schedule → 選定 Google Calendar）不改動。需要顯示 Google 原有行程，可到「設定 → Google Calendar → 工作 Calendar」，確認已連接帳戶及日曆，再開啟「喺『行程同限期』顯示」。只在本人首頁額外讀取所選工作日曆的三日行程，不加到月曆、開工提示或 Grok 摘要。此開關預設關閉，更換帳戶或日曆後要重開；要更改行程仍到 Google Calendar。iPhone 上的 Google／Exchange 行程不是 iCloud 行程，並不經 Apple 連接讀取。
 
 Google 讀取使用現有連接，對 events API 只作有時限的 GET；不儲存 Google 行程，亦不從讀取流程覆寫原有 OAuth 憑證。只讀取顯示及去重需要的欄位，私人／機密標題顯示「私人行程」，不讀備註、地點或出席者。Dayline 已送去 Google 的副本按同步標記去重，不用標題猜測。取得 Google 資料途中如關閉開關、更換連接或 Calendar，應丟棄舊結果。讀取失敗不阻止 Apple、Dayline 或 Deadline 顯示。

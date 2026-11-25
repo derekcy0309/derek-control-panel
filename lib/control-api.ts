@@ -71,8 +71,8 @@ export async function loadTaskDetail(taskId: string): Promise<TaskDetailData> {
   );
 }
 
-export function loadWorkGuide(taskId: string) {
-  return controlRequest<import("./work-guide").GuideDetail>(`/api/control?view=work_guide&taskId=${encodeURIComponent(taskId)}`, {method:"GET"});
+export function loadWorkGuide(taskId: string, withLaunch = false) {
+  return controlRequest<import("./work-guide").GuideDetail & { launch?: import("./launch-resource").LaunchTarget | null; launchUnavailable?: boolean }>(`/api/control?view=work_guide&taskId=${encodeURIComponent(taskId)}${withLaunch?"&launch=1":""}`, {method:"GET"});
 }
 
 export type AssignmentAlertRecord = {

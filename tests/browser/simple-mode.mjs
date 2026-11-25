@@ -178,10 +178,10 @@ try {
     assert.ok(preferences.quiet_mode_until); // Per-account API; no other profile changes.
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     const dialog=page.getByRole('form',{name:'新增 Task',exact:true});
-    assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),2);
+    assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),1);
     assert.equal(await dialog.locator('input:visible:required,select:visible:required,textarea:visible:required').count(),1);
     const gradePicker=dialog.getByLabel('優先級 Priority（選填）',{exact:true});
-    assert.equal(await gradePicker.inputValue(),'');
+    assert.equal(await gradePicker.isVisible(),false);
     const saveButton=dialog.getByRole('button',{name:'儲存任務',exact:true}),newTitle='簡易模式新增驗證';
     await dialog.getByLabel('任務名稱',{exact:true}).fill(newTitle);
     await dialog.locator('button[type="submit"]:enabled').waitFor();
@@ -200,6 +200,7 @@ try {
     assert.equal(await newTask.count(),1);assert.equal(navigations,0);
     await page.getByRole('tab',{name:/今日重點/}).click();
     const tagToggle=dialog.getByText('＋Tag（可選）',{exact:true});
+    await dialog.getByRole('button',{name:/加詳情/}).click();
     if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
     await dialog.getByRole('button',{name:'P3',exact:true}).click();
     await dialog.getByRole('button',{name:'WECARE',exact:true}).click();
@@ -211,7 +212,6 @@ try {
       assert.ok((await gradePicker.locator('option:checked').innerText()).startsWith(label+' · '));
       await dialog.getByText('預設 Deadline：'+due+'。你可以改日期，分級會保留。',{exact:true}).waitFor();
     }
-    await dialog.getByRole('button',{name:/更改設定/}).click();
     await dialog.getByText('日期／邊個跟',{exact:false}).click();
     await dialog.getByRole('button',{name:'今日',exact:true}).click();
     assert.equal(await gradePicker.inputValue(),'4','manually changing the date does not change grade');
@@ -229,11 +229,11 @@ try {
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
+    await dialog.getByRole('button',{name:/加詳情/}).click();
     assert.equal(await gradePicker.inputValue(),'1');
     if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
     assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await dialog.getByRole('button',{name:'WECARE',exact:true}).getAttribute('aria-pressed'),'true');
-    await dialog.getByRole('button',{name:/更改設定/}).click();
     await dialog.getByText('更多設定',{exact:false}).click();
     await dialog.getByText('自訂哪幾日做／提醒',{exact:false}).click();
     await dialog.getByLabel('加入要做的日子').fill(today);await dialog.getByRole('button',{name:'加入',exact:true}).click();
@@ -241,11 +241,12 @@ try {
     createFailures=1;await saveButton.click();
     await dialog.getByRole('alert').filter({hasText:'驗證用網絡失敗'}).waitFor();
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
-    await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/更改設定/}).waitFor();assert.equal(creates.length,3);
+    await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/加詳情/}).waitFor();assert.equal(creates.length,3);
     assert.equal(creates[1].clientRequestId,creates[2].clientRequestId);
     assert.equal(creates[2].priorityGrade,1);assert.equal(creates[2].priorityDeadlineMode,'manual');assert.equal(creates[2].dueDate,today);
     assert.equal(creates[2].requestedPriority,1);assert.equal(creates[2].energyLevel,undefined);assert.equal(creates[2].estimatedMinutes,undefined);
     assert.deepEqual(creates[2].workDates,[today]);assert.deepEqual(creates[2].tagIds,[tags.find(t=>t.name==='P3').id,tags.find(t=>t.name==='WECARE').id]);
+    await dialog.getByRole('button',{name:/加詳情/}).click();
     if(!(await dialog.getByText('管理我的 Tags',{exact:true}).isVisible())) await tagToggle.click();
     await dialog.getByText('管理我的 Tags',{exact:true}).click();
     const manager=dialog.locator('fieldset').filter({has:page.getByText('管理我的 Tags',{exact:true})}).locator('details');

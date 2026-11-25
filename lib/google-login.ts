@@ -23,6 +23,7 @@ export function safeLoginDestination(value: unknown): string {
     const parsed = new URL(value, "https://panel.invalid");
     const path = decodeURIComponent(parsed.pathname);
     if (parsed.origin !== "https://panel.invalid" || unsafePath.test(path) || /^\/(api|auth)(\/|$)/i.test(path)) return "/";
+    if (parsed.pathname === "/" && parsed.hash === "#dayline-start") return "/#dayline-start";
     if (!publicationPages.has(parsed.pathname)) return parsed.pathname;
     const single = (key: string) => {
       const values = parsed.searchParams.getAll(key);

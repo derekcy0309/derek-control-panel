@@ -18,14 +18,14 @@ export function sortByPriority<T extends Pick<Task, "requested_priority">>(tasks
   return [...tasks].sort((a, b) => rank(a) - rank(b));
 }
 
-export function isMyTask(task: Task, userId: string, assignments: Assignment[]) {
+export function isMyTask(task: Pick<Task,"id"|"owner_id"|"user_id">, userId: string, assignments: Pick<Assignment,"resource_type"|"resource_id"|"assigned_to_id"|"status">[]) {
   const active = assignments.filter((a) => a.resource_type === "task" && a.resource_id === task.id
     && ["pending_acceptance", "accepted", "in_progress", "waiting", "blocked"].includes(a.status));
   if (active.length) return active.some((a) => a.assigned_to_id === userId && a.status !== "pending_acceptance");
   return (task.owner_id ?? task.user_id) === userId;
 }
 
-export function actionableTask(task: Task, dependencies: TaskDependency[], allTasks: Task[]) {
+export function actionableTask(task: Pick<Task,"id"|"deleted_at"|"archived_at"|"status"|"current_step_status"|"blocked_reason">, dependencies: Pick<TaskDependency,"task_id"|"depends_on_task_id">[], allTasks: Pick<Task,"id"|"status">[]) {
   if (task.deleted_at || task.archived_at || ["done", "cancelled", "waiting", "blocked"].includes(task.status)
     || task.current_step_status === "waiting" || task.blocked_reason?.trim()) return false;
   return !dependencies.some((d) => d.task_id === task.id
@@ -33,7 +33,7 @@ export function actionableTask(task: Task, dependencies: TaskDependency[], allTa
 }
 
 // Snoozes created by the planner are Hong Kong calendar days stored as timestamps.
-function snoozedPastToday(value:string|null|undefined,today:string) {
+export function snoozedPastToday(value:string|null|undefined,today:string) {
   if(!value)return false;
   if(/^\d{4}-\d{2}-\d{2}$/.test(value))return value>today;
   const ms=Date.parse(value);

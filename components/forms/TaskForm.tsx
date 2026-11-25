@@ -452,6 +452,10 @@ export function TaskForm({
         <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="寫低要做嘅事，或者用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
       </label>
       {inline ? <Button type="submit" className="simple-add-task shrink-0 whitespace-nowrap" disabled={saving || Boolean(createdTaskId)}>{saving ? "儲存中…" : "儲存任務"}</Button> : null}</div>
+      {!initialTask ? <button type="button" aria-expanded={optionsOpen} aria-controls={priorityPickerId+"-details"} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm font-semibold underline">
+        {optionsOpen?"收起詳情":"加詳情"}{!optionsOpen && (dueDate || form.handoff_to_user_id) ? " · "+[dueDate,participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name].filter(Boolean).join(" · ") : ""}
+      </button> : null}
+      <div id={priorityPickerId+"-details"} hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
       <div>
         <label htmlFor={priorityPickerId} className="label block">優先級 Priority（選填）</label>
         <select id={priorityPickerId} className="field mt-1" value={selectedPriority ?? ""} aria-describedby={priorityHintId} disabled={saving || Boolean(initialTask && (initialTask.owner_id ?? initialTask.user_id) !== userId)}
@@ -473,8 +477,6 @@ export function TaskForm({
         onCatalog={(tags) => { setCatalog(tags); setCatalogRead(true); }}
         onLoadedValue={(tag_ids) => { setBaselineTags(tag_ids); setForm(current => ({ ...current, tag_ids })); }}
         onChange={(tag_ids) => { setTagsTouched(true); setForm(current => ({ ...current, tag_ids })); }} />
-      {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {dueDate || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
-      <div hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
       {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
         <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
         加入今日 Today
