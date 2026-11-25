@@ -12,7 +12,7 @@ import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { controlAction } from "@/lib/control-api";
 import { isMyTask } from "@/lib/simple-mode";
 import { taskTagColors } from "@/lib/task-tag-colors";
-import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
+import { activeTaskTagFilter, allTaskTags, isTaskTagFilterSelected, matchesTaskTagFilter, selectAllTaskTags, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { taskMatchesTagText } from "@/lib/task-tag-ui";
 import { taskQueueBuckets, taskQueuePriorityGroups } from "@/lib/task-queue";
 import { createTaskPriorityProjection } from "@/lib/upcoming-task-priority";
@@ -56,7 +56,7 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
   const tagNames = useMemo(() => new Map(priority.catalog.map(tag => [tag.id, tag.name])), [priority.catalog]);
   const tagColors = useMemo(() => taskTagColors(priority.catalog), [priority.catalog]);
   const tagFilter = useMemo(() => activeTaskTagFilter(selectedTags, tagNames.keys()), [selectedTags, tagNames]);
-  const showingAllTags = tagFilter !== "untagged" && tagFilter.size === 0;
+  const allTagsChecked = tagFilter === selectAllTaskTags;
   const searchText = query.trim().toLocaleLowerCase();
   const tasksInCategory = useMemo(() => sourceTasks
     .filter((task) => {
@@ -77,7 +77,7 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
     return counts;
   }, [sourceTasks, priority]);
 
-  const categoryLabel = tagFilter === "untagged" ? "未分類" : showingAllTags ? "全部" : [...tagFilter].map(id => tagNames.get(id)).join("／");
+  const categoryLabel = tagFilter === "untagged" ? "未分類" : allTagsChecked || !tagFilter.size ? "全部" : [...tagFilter].map(id => tagNames.get(id)).join("／");
   const ready = tasksInCategory.filter((task) => !["done", "cancelled", "waiting", "blocked"].includes(task.status) && task.current_step_status !== "waiting");
   const gradeOrder = sortByGrade && !showOverdue;
   const groups = showOverdue ? [{ title: "已過限期", tasks: tasksInCategory }]
@@ -200,12 +200,12 @@ function TaskActionListContent({ data, onChanged, onTaskSaved, restful = false, 
         <section className="panel dl-queue-filters space-y-3 p-3 sm:p-4" aria-label="選擇任務 Tags">
           <input className="field" type="search" aria-label="搜尋 Task" placeholder="搵 Task 或 Tag…" value={query} onChange={(event) => setQuery(event.target.value)} />
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={`simple-tag-filter gap-1 ${showingAllTags ? "is-active" : ""}`} aria-pressed={showingAllTags} onClick={() => setSelectedTags(allTaskTags)}>
-              {showingAllTags ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}全部
+            <button type="button" className={`simple-tag-filter gap-1 ${allTagsChecked ? "is-active" : ""}`} aria-pressed={allTagsChecked} onClick={() => setSelectedTags(selectAllTaskTags)}>
+              {allTagsChecked ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}全部
             </button>
             {priority.catalog.map(tag => {
-              const selected = tagFilter !== "untagged" && tagFilter.has(tag.id);
-              return <button type="button" key={tag.id} data-tag-id={tag.id} className="simple-tag-filter task-tag-color gap-1" style={tagColors.get(tag.id)} aria-pressed={selected} onClick={() => setSelectedTags(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, tagNames.keys()), tag.id))}>
+              const selected = isTaskTagFilterSelected(tagFilter, tag.id);
+              return <button type="button" key={tag.id} data-tag-id={tag.id} className="simple-tag-filter task-tag-color gap-1" style={tagColors.get(tag.id)} aria-pressed={selected} onClick={() => setSelectedTags(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, tagNames.keys()), tag.id, tagNames.keys()))}>
                 <Check aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${selected ? "" : "invisible"}`} />
                 <span className="min-w-0 break-words font-extrabold">{tag.name}</span><span className="ml-1">{categoryCounts.get(tag.id) ?? 0}</span>
               </button>;

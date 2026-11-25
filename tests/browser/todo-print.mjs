@@ -90,10 +90,10 @@ try {
     assert.equal(await paper.locator('article').count(), 3);
     const selectionOrder = await paper.locator('article h4').allTextContents();
     await tagFilters.getByRole('button', { name: '全部', exact: true }).click();
-    assert.equal(await familyTag.getAttribute('aria-pressed'), 'false');
-    assert.equal(await personalTag.getAttribute('aria-pressed'), 'false');
+    assert.equal(await familyTag.getAttribute('aria-pressed'), 'true');
+    assert.equal(await personalTag.getAttribute('aria-pressed'), 'true');
     assert.equal(await page.getByRole('checkbox').count(), 20);
-    assert.deepEqual(await paper.locator('article h4').allTextContents(), selectionOrder, 'filter reset does not change print order or selection');
+    assert.deepEqual(await paper.locator('article h4').allTextContents(), selectionOrder, 'selecting all Tags does not change print order or selection');
     await page.getByRole('button', { name: '清除選取', exact: true }).click();
     assert.equal(await paper.locator('article').count(), 0);
     empty = true;

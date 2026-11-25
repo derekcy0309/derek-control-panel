@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter } from "../lib/task-tag-filter.ts";
+import { activeTaskTagFilter, allTaskTags, isAllTaskTagFilter, isTaskTagFilterSelected, matchesTaskTagFilter, selectAllTaskTags, toggleTaskTagFilter } from "../lib/task-tag-filter.ts";
 
 test("multiple selected Tag filters match any of the choices without mutating the selection", () => {
   const family = toggleTaskTagFilter(allTaskTags, "family");
@@ -25,4 +25,32 @@ test("untagged is exclusive and a removed Tag falls out of the active filter", (
   assert.equal(activeTaskTagFilter(workOrFamily, ["work", "family"]), workOrFamily);
   assert.deepEqual([...activeTaskTagFilter(workOrFamily, ["work"])], ["work"]);
   assert.equal(matchesTaskTagFilter(["personal"], activeTaskTagFilter(workOrFamily, ["personal"])), true);
+});
+
+test("pressing All checks all visible Tags without excluding untagged tasks", () => {
+  const catalogue = ["family", "work", "dayline-priority:1"];
+  const selected = activeTaskTagFilter(selectAllTaskTags, catalogue);
+  assert.equal(selected, selectAllTaskTags);
+  assert.equal(isAllTaskTagFilter(selected), true);
+  assert.ok(catalogue.every(id => isTaskTagFilterSelected(selected, id)));
+  assert.equal(matchesTaskTagFilter(["family"], selected), true);
+  assert.equal(matchesTaskTagFilter(undefined, selected), true);
+  assert.equal(matchesTaskTagFilter(["no-longer-listed"], selected), true);
+  assert.equal(isTaskTagFilterSelected(allTaskTags, "family"), false, "initial unfiltered view still allows one-click narrowing");
+  assert.equal(isTaskTagFilterSelected("untagged", "family"), false);
+});
+
+test("unchecking a Tag after All keeps the other Tags checked with OR matching", () => {
+  const catalogue = new Set(["family", "work", "dayline-priority:1"]);
+  const deselected = toggleTaskTagFilter(selectAllTaskTags, "family", catalogue);
+  assert.equal(isAllTaskTagFilter(deselected), false);
+  assert.equal(isTaskTagFilterSelected(deselected, "family"), false);
+  assert.equal(isTaskTagFilterSelected(deselected, "work"), true);
+  assert.equal(isTaskTagFilterSelected(deselected, "dayline-priority:1"), true);
+  assert.equal(matchesTaskTagFilter(["family"], deselected), false);
+  assert.equal(matchesTaskTagFilter(["family", "work"], deselected), true);
+  assert.equal(matchesTaskTagFilter(["dayline-priority:1"], deselected), true);
+  assert.equal(matchesTaskTagFilter([], deselected), false);
+  assert.equal(toggleTaskTagFilter(selectAllTaskTags, "stale", catalogue), selectAllTaskTags);
+  assert.deepEqual([...catalogue], ["family", "work", "dayline-priority:1"]);
 });

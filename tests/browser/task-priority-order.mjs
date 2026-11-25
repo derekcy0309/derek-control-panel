@@ -11,6 +11,9 @@ const timestamp = "2026-11-24T21:30:00.000Z";
 const id = number => "82500000-0000-4000-8000-" + String(number).padStart(12, "0");
 const owner = id(1);
 const user = { id: owner, displayName: "排序測試", email: "priority@example.test" };
+const otherUser = { id: id(2), displayName: "第二個測試帳戶", email: "other-priority@example.test" };
+const fixturePassword = "test-fixture-only";
+const preferenceKey = account => `dcp:my-tasks-sort:v1:${account.id}`;
 const taskTags = [{ id: id(100), name: "排序測試 Tag", legacy_key: null }];
 
 function task(number, title, grade, options = {}) {
@@ -50,26 +53,54 @@ const taskData = {
   taskNoticeRecipients: [], taskFollowers: [], taskDependencies: [], shares: [], taskSteps: [],
   capacity: null, capacityCommitments: [], reminders: [], notificationPreferences: null, calendarConnections: [],
 };
+const otherTask = task(21, "另一個帳戶嘅任務", 2, { owner_id: otherUser.id, user_id: otherUser.id });
+const otherTaskData = {
+  ...taskData,
+  currentUser: otherUser,
+  profile: { ...taskData.profile, user_id: otherUser.id, display_name: otherUser.displayName },
+  participants: [{ user_id: otherUser.id, display_name: otherUser.displayName }],
+  tasks: [otherTask], taskQueueCatalog: [otherTask], taskCatalog: [otherTask], taskTags: [], planning: [],
+};
 
 async function intercept(page) {
-  const writes = [], errors = [];
+  const writes = [], errors = [], sessionActions = [];
+  let signedIn = user;
   page.on("pageerror", error => errors.push(error.message));
   await page.clock.setFixedTime(new Date(timestamp));
   await page.route("**/*", async route => {
     const request = route.request(), url = new URL(request.url());
     if (url.origin !== origin) return route.abort();
+    // The sign-out and sign-in requests are the only allowed non-GET actions;
+    // both are handled by the fake session and never reach the running app.
+    if (url.pathname === "/api/auth" && request.method() === "DELETE") {
+      signedIn = null;
+      sessionActions.push("logout");
+      return route.fulfill({ status: 200, json: { ok: true } });
+    }
+    if (url.pathname === "/api/auth" && request.method() === "POST") {
+      const input = request.postDataJSON();
+      const account = [user, otherUser].find(item => item.email === input?.email);
+      if (input?.action === "password" && input.password === fixturePassword && account) {
+        signedIn = account;
+        sessionActions.push(`login:${account.id}`);
+        return route.fulfill({ status: 200, json: { user: { id: signedIn.id } } });
+      }
+    }
     if (!["GET", "HEAD"].includes(request.method())) {
       if (url.pathname.startsWith("/api/")) writes.push(`${request.method()} ${url.pathname}`);
       return route.abort();
     }
     if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (!signedIn && (url.pathname === "/api/auth" || url.pathname === "/api/control")) {
+      return route.fulfill({ status: 401, json: { error: "請先登入。" } });
+    }
     let json = {};
-    if (url.pathname === "/api/auth") json = { user: { id: owner } };
+    if (url.pathname === "/api/auth") json = { user: { id: signedIn.id } };
     else if (url.pathname === "/api/control") {
       const view = url.searchParams.get("view");
-      if (view === "assignment_alerts") json = { assignments: [], currentUserId: owner, quietModeUntil: null };
+      if (view === "assignment_alerts") json = { assignments: [], currentUserId: signedIn.id, quietModeUntil: null };
       else if (view === "work_guide") json = { steps: [], checkpoint: null, openChildren: false };
-      else json = taskData;
+      else json = signedIn.id === otherUser.id ? otherTaskData : taskData;
     }
     else if (url.pathname === "/api/calendar-brief") json = { from: today, untilExclusive: "2026-11-28", generatedAt: timestamp, days: [], sources: [], familyDates: [] };
     else if (url.pathname === "/api/hk-calendar-day") json = { date: today, lunarDate: "十月十七", holidayName: null };
@@ -78,7 +109,7 @@ async function intercept(page) {
     else if (url.pathname === "/api/weather/hong-kong") json = { observed: { temperature: 21, icon: 50, at: timestamp }, forecast: [], warnings: [], checkedAt: timestamp };
     return route.fulfill({ json, status: 200 });
   });
-  return { writes, errors };
+  return { writes, errors, sessionActions };
 }
 
 try {
@@ -89,7 +120,7 @@ try {
     try {
       const page = await context.newPage();
       page.setDefaultTimeout(16000);
-      const { writes, errors } = await intercept(page);
+      const { writes, errors, sessionActions } = await intercept(page);
       await page.goto(origin + "/");
       const todayTab = page.getByRole("tab", { name: /今日全部/ });
       const allTab = page.getByRole("tab", { name: /任務總表/ });
@@ -107,6 +138,21 @@ try {
         const taskLinks = todayPanel.locator('article a[href^="/tasks/"]');
         await taskLinks.first().waitFor();
         assert.deepEqual(await taskLinks.allTextContents(), manuallyOrdered.map(record => record.title));
+      }
+
+      async function signOut() {
+        await page.getByLabel("更多功能", { exact: true }).press("Enter");
+        await page.getByRole("button", { name: "登出", exact: true }).press("Enter");
+        await page.getByRole("heading", { name: "登入日序", exact: true }).waitFor();
+      }
+
+      async function signIn(account) {
+        await page.getByText("其他登入方法（後備）", { exact: true }).click();
+        await page.getByLabel("電郵地址", { exact: true }).fill(account.email);
+        await page.locator('input[autocomplete="current-password"]').fill(fixturePassword);
+        await page.getByRole("button", { name: "登入", exact: true }).click();
+        await allTab.click();
+        await sort.waitFor();
       }
 
       await verifyToday();
@@ -155,6 +201,7 @@ try {
       await sort.click();
       await queue.getByRole("region", { name: "按狀態顯示工作", exact: true }).waitFor();
       assert.equal(await sort.getAttribute("aria-pressed"), "false");
+      assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey(user)), "status");
       assert.equal(await tag.getAttribute("aria-pressed"), "true");
       assert.equal(await search.inputValue(), "自動升級");
       await sort.click();
@@ -164,9 +211,43 @@ try {
       assert.equal(await grades.getByRole("button", { name: /^First priority/ }).count(), 0);
       assert.equal(await tag.getAttribute("aria-pressed"), "true");
       assert.equal(await search.inputValue(), "自動升級");
+
+      await search.fill("");
+      const showAll = filters.getByRole("button", { name: "全部", exact: true });
+      const chips = filters.locator("button[data-tag-id]");
+      const selectedChips = filters.locator('button[data-tag-id][aria-pressed="true"]');
+      await showAll.click();
+      assert.equal(await showAll.getAttribute("aria-pressed"), "true");
+      assert.equal(await chips.count(), 5, "four grade chips and one custom Tag");
+      assert.equal(await selectedChips.count(), 5);
+      await grades.getByRole("button", { name: /^未分級/ }).click();
+      await grades.getByText(ungraded.title, { exact: true }).waitFor();
+      await tag.click();
+      assert.equal(await tag.getAttribute("aria-pressed"), "false");
+      assert.equal(await showAll.getAttribute("aria-pressed"), "false");
+      assert.equal(await selectedChips.count(), 4);
+
+      assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey(user)), "grade");
+      await page.reload();
+      await allTab.click();
+      await grades.waitFor();
+      assert.equal(await sort.getAttribute("aria-pressed"), "true", "remember after reload");
+      await verifyToday();
+
+      await signOut();
+      await signIn(otherUser);
+      await queue.getByRole("region", { name: "按狀態顯示工作", exact: true }).waitFor();
+      assert.equal(await sort.getAttribute("aria-pressed"), "false", "other account starts with its own default");
+      assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey(otherUser)), null);
+      await signOut();
+      await signIn(user);
+      await grades.waitFor();
+      assert.equal(await sort.getAttribute("aria-pressed"), "true", "original account remembers its choice on sign-in");
+      await verifyToday();
+      assert.deepEqual(sessionActions, ["logout", `login:${otherUser.id}`, "logout", `login:${user.id}`]);
       assert.deepEqual(writes, [], "switching the display order never writes records or Today positions");
       assert.deepEqual(errors, []);
-      console.log(`PASS ${width}px: effective four-grade order, preserved filters, unchanged manual Today order and no writes.`);
+      console.log(`PASS ${width}px: independent per-login sort, all Tags selected, unchanged manual Today order and no task writes.`);
     } finally {
       await context.close();
     }

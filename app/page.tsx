@@ -28,7 +28,7 @@ import { isOverdueTask } from "@/lib/overdue-tasks";
 import { OverdueTasks } from "@/components/dayline/OverdueTasks";
 import { taskVisibleNextAction } from "@/lib/task-steps";
 import { taskTagColors } from "@/lib/task-tag-colors";
-import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
+import { activeTaskTagFilter, allTaskTags, isAllTaskTagFilter, isTaskTagFilterSelected, matchesTaskTagFilter, selectAllTaskTags, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { starterSteps } from "@/lib/work-guide";
 import { shiftIsoDate } from "@/lib/due-priority";
 import type { Task } from "@/lib/types";
@@ -37,6 +37,9 @@ import "./dayline-overdue.css";
 
 export default function HomePage() { return <AuthGate><SimpleDashboard /></AuthGate>; }
 
+const taskListOrderKey = (userId: string) => `dcp:my-tasks-sort:v1:${userId}`;
+type TaskListOrder = "grade" | "status";
+
 function SimpleDashboard() {
   const { data, loading, error, detailsReady, reload, saveTaskLocally } = useTodayData(true);
   const info=useInfoChoices(data?.currentUser?.id??null);
@@ -44,7 +47,9 @@ function SimpleDashboard() {
   const [focusTask, setFocusTask] = useState<Task | null>(null);
   const [activeTab, setActiveTab] = useState<ActionCenterTab>("focus");
   const [showOverdue, setShowOverdue] = useState(false);
-  const [taskListGradeOrder, setTaskListGradeOrder] = useState(false);
+  const [taskListOrder, setTaskListOrder] = useState<{ userId: string; order: TaskListOrder } | null>(null);
+  const taskListOrderOwner = data?.currentUser.id;
+  const taskListGradeOrder = taskListOrder?.userId === taskListOrderOwner && taskListOrder?.order === "grade";
   const [selectedTags, setSelectedTags] = useState<TaskTagFilter>(allTaskTags);
   const today = useDaylineDate();
   const catalogue = data?.taskTags;
@@ -61,6 +66,15 @@ function SimpleDashboard() {
   useEffect(()=>{if(lastDate.current!==today){lastDate.current=today;void reload();window.dispatchEvent(new Event("dcp:calendar-changed"));}},[today,reload]);
   const [captureOpen,setCaptureOpen]=useState(false);
   useEffect(()=>{window.dispatchEvent(new CustomEvent("dayline:tab",{detail:activeTab}));},[activeTab]);
+
+  useEffect(() => {
+    if (!taskListOrderOwner) return;
+    let order: TaskListOrder = "status";
+    try {
+      if (localStorage.getItem(taskListOrderKey(taskListOrderOwner)) === "grade") order = "grade";
+    } catch { /* Storage may be unavailable; manual sorting still works in this visit. */ }
+    setTaskListOrder({ userId: taskListOrderOwner, order });
+  }, [taskListOrderOwner]);
 
   useEffect(() => {
     const open = () => {setCaptureOpen(true);setFocusCapture(true);};
@@ -100,7 +114,8 @@ function SimpleDashboard() {
   // The bounded Today read model includes dependency checks; the full queue is for browsing only.
   const plan = simpleToday({ tasks: current.tasks, planning: current.planning,
     dependencies: current.taskDependencies, assignments: current.assignments, userId: current.currentUser.id, today, priorityRank: priority.rank });
-  const showingAllTags = tagFilter !== "untagged" && tagFilter.size === 0;
+  const showingAllTags = isAllTaskTagFilter(tagFilter);
+  const allTagsChecked = tagFilter === selectAllTaskTags;
   const matches = (showingAllTags ? plan.top : plan.ordered.filter(task => matchesTaskTagFilter(priority.ids(task), tagFilter))).slice(0,3);
   const plannedIds = new Set(plan.planned.map((t) => t.id));
   const completed = plan.planned.filter((t) => t.status === "done").length;
@@ -115,6 +130,13 @@ function SimpleDashboard() {
   const pending = current.assignments.filter((a) => a.assigned_to_id === current.currentUser.id && a.status === "pending_acceptance");
   const decisions = active.filter((t) => t.needs_decision_from_id === current.currentUser.id && !t.decision_resolved_at);
   const quiet = Boolean(current.notificationPreferences?.quiet_mode_until && new Date(current.notificationPreferences.quiet_mode_until).getTime() > Date.now());
+
+  function toggleTaskListOrder() {
+    const userId = current.currentUser.id;
+    const order: TaskListOrder = taskListGradeOrder ? "status" : "grade";
+    setTaskListOrder({ userId, order });
+    try { localStorage.setItem(taskListOrderKey(userId), order); } catch { /* Apply the view choice without saving. */ }
+  }
 
   async function start(task: Task) {
     if (busy) return;
@@ -187,12 +209,12 @@ function SimpleDashboard() {
         <div className="min-w-0 flex-1 basis-60">
           <p className="dl-tools-muted">Tags 可多選，符合其中一個就會顯示。</p>
           <div className="mt-1 flex min-w-0 gap-2 overflow-x-auto p-1" role="group" aria-label="Dashboard Tags">
-            <button type="button" aria-pressed={showingAllTags} className={`simple-tag-filter shrink-0 gap-1 ${showingAllTags ? "is-active" : ""}`} onClick={() => setSelectedTags(allTaskTags)}>
-              {showingAllTags ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}全部
+            <button type="button" aria-pressed={allTagsChecked} className={`simple-tag-filter shrink-0 gap-1 ${allTagsChecked ? "is-active" : ""}`} onClick={() => setSelectedTags(selectAllTaskTags)}>
+              {allTagsChecked ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /> : null}全部
             </button>
             {priority.catalog.map(tag => {
-              const selected = tagFilter !== "untagged" && tagFilter.has(tag.id);
-              return <button key={tag.id} type="button" aria-pressed={selected} data-tag-id={tag.id} className="simple-tag-filter task-tag-color shrink-0 gap-1" style={tagColors.get(tag.id)} onClick={() => setSelectedTags(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, knownTagIds), tag.id))}>
+              const selected = isTaskTagFilterSelected(tagFilter, tag.id);
+              return <button key={tag.id} type="button" aria-pressed={selected} data-tag-id={tag.id} className="simple-tag-filter task-tag-color shrink-0 gap-1" style={tagColors.get(tag.id)} onClick={() => setSelectedTags(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, knownTagIds), tag.id, knownTagIds))}>
                 <Check aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${selected ? "" : "invisible"}`} />{tag.name}
               </button>;
             })}
@@ -215,7 +237,7 @@ function SimpleDashboard() {
       <details className="panel p-4"><summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-600">提醒及活動</summary><ReminderPanel reminders={current.reminders} participants={current.participants} currentUserId={current.currentUser.id} onChanged={reload} /></details>
     </div>:detailsSpare}</details>:null}
     {activeTab === "today" ? (detailsReady?<TodayAllTasks tasks={current.tasks} availableTasks={current.taskQueueCatalog} priorityRank={priority.rank} planning={current.planning} today={today} onChanged={reload} onStart={(task) => void start(task)} onComplete={complete} onBrowseTasks={() => setActiveTab("tasks")} />:detailsSpare) : null}
-    {activeTab === "tasks" ? <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks">{detailsReady?<TaskActionList data={current} onChanged={reload} onTaskSaved={saved} showOverdue={showOverdue} onExitOverdue={()=>setShowOverdue(false)} sortByGrade={taskListGradeOrder} onToggleGradeSort={()=>setTaskListGradeOrder(enabled=>!enabled)} />:detailsSpare}</div> : null}
+    {activeTab === "tasks" ? <div id="action-center-panel-tasks" role="tabpanel" aria-labelledby="action-center-tab-tasks">{detailsReady?<TaskActionList data={current} onChanged={reload} onTaskSaved={saved} showOverdue={showOverdue} onExitOverdue={()=>setShowOverdue(false)} sortByGrade={taskListGradeOrder} onToggleGradeSort={toggleTaskListOrder} />:detailsSpare}</div> : null}
     {focusTask ? <FocusMode task={focusTask} defaultMinutes={current.settings.focus_minutes ?? 25} currentUserId={current.currentUser.id} participants={current.participants} sharedTask={Boolean(focusTask.visibility && focusTask.visibility !== "private")} onClose={() => setFocusTask(null)} onChanged={() => void reload()} /> : null}
     <footer className="dl-footer"><span>日序 Dayline · 香港時間</span><span><i aria-hidden="true"/>今週配色：{weekNames[daylineWeek(today)]}</span></footer>
   </>;

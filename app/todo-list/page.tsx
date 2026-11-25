@@ -10,7 +10,7 @@ import { TodoPrintSheet } from "@/components/tasks/TodoPrintSheet";
 import { useTodayData } from "@/hooks/useTodayData";
 import { hkDateIso } from "@/lib/planning";
 import { taskTagColors } from "@/lib/task-tag-colors";
-import { activeTaskTagFilter, allTaskTags, matchesTaskTagFilter, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
+import { activeTaskTagFilter, allTaskTags, isTaskTagFilterSelected, matchesTaskTagFilter, selectAllTaskTags, toggleTaskTagFilter, type TaskTagFilter } from "@/lib/task-tag-filter";
 import { customPrintableTasks, printableTaskPool, todayPrintableTasks } from "@/lib/todo-print";
 import type { TodayData } from "@/lib/types";
 
@@ -40,7 +40,7 @@ function TodoListContent({ data }: { data: TodayData }) {
   const tags = data.taskTags ?? [];
   const tagColors = taskTagColors(tags);
   const activeTags = activeTaskTagFilter(tagFilter, tagColors.keys());
-  const showAllTags = activeTags !== "untagged" && activeTags.size === 0;
+  const allTagsChecked = activeTags === selectAllTaskTags;
   const visible = candidates.filter(task => matchesTaskTagFilter(task.personal_tag_ids, activeTags)
     && task.title.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   const pages = Math.max(1, Math.ceil(visible.length / 20));
@@ -81,10 +81,10 @@ function TodoListContent({ data }: { data: TodayData }) {
             <legend className="label">Tags 篩選</legend>
             <p className="muted text-xs">可多選；符合其中一個 Tag 就會顯示。唔會改已揀嘅列印任務。</p>
             <div className="flex flex-wrap gap-2">
-              <button type="button" aria-pressed={showAllTags} className={`simple-tag-filter ${showAllTags ? "is-active" : ""}`} onClick={() => { setTagFilter(allTaskTags); setPage(0); }}>全部</button>
+              <button type="button" aria-pressed={allTagsChecked} className={`simple-tag-filter ${allTagsChecked ? "is-active" : ""}`} onClick={() => { setTagFilter(selectAllTaskTags); setPage(0); }}>全部</button>
               {tags.map(tag => {
-                const pressed = activeTags !== "untagged" && activeTags.has(tag.id);
-                return <button type="button" key={tag.id} data-tag-id={tag.id} aria-pressed={pressed} className="simple-tag-filter task-tag-color inline-flex min-w-0 max-w-full items-center gap-1.5" style={tagColors.get(tag.id)} onClick={() => { setTagFilter(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, tagColors.keys()), tag.id)); setPage(0); }}>
+                const pressed = isTaskTagFilterSelected(activeTags, tag.id);
+                return <button type="button" key={tag.id} data-tag-id={tag.id} aria-pressed={pressed} className="simple-tag-filter task-tag-color inline-flex min-w-0 max-w-full items-center gap-1.5" style={tagColors.get(tag.id)} onClick={() => { setTagFilter(previous => toggleTaskTagFilter(activeTaskTagFilter(previous, tagColors.keys()), tag.id, tagColors.keys())); setPage(0); }}>
                   {pressed ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}<span className="min-w-0 break-words">{tag.name}</span>
                 </button>;
               })}

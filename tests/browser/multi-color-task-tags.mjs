@@ -152,10 +152,22 @@ try {
       assert.equal(await row(tasks[1].title).count(), 0);
       await filters.getByRole("button", { name: "全部", exact: true }).click();
       await row(tasks[2].title).waitFor();
-      assert.equal(await filter(wecare).getAttribute("aria-pressed"), "false");
+      for (const tag of tags) {
+        assert.equal(await filter(tag).getAttribute("aria-pressed"), "true", "All checks every visible Tag");
+        assert.equal(await filter(tag).locator("svg").isVisible(), true, "All shows a visible checkmark");
+      }
+      const showRemaining = queue.getByRole("button", { name: /^顯示全部（共/ });
+      if (await showRemaining.isVisible()) await showRemaining.click();
+      await row(tasks[4].title).waitFor();
+      await filter(sec).click();
+      assert.equal(await filter(sec).getAttribute("aria-pressed"), "false");
+      assert.equal(await filter(wecare).getAttribute("aria-pressed"), "true");
+      assert.equal(await row(tasks[0].title).count(), 0, "unchecking from All removes SEC-only tasks");
+      await row("用兩個 Tag 新增測試").waitFor();
+      assert.equal(await row(tasks[4].title).count(), 0, "the narrowed filter now only matches selected Tags");
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "filters must fit the viewport");
       assert.deepEqual(errors, []);
-      console.log(`PASS ${width}px: two Tags submitted, multi-filter OR/reset, distinct and consistent colours, light/dark contrast`);
+      console.log(`PASS ${width}px: two Tags submitted, All visibly checks Tags, multi-filter OR, consistent light/dark colours`);
     } finally { await context.close(); }
   }
 } finally { await browser.close(); }

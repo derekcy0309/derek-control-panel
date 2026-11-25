@@ -38,11 +38,19 @@ try {
       await page.goto(origin + "/offline");
       if (dark) await page.evaluate(() => { document.documentElement.dataset.theme = "dark"; });
       const rail = page.locator(".site-clock-bar");
+      const date = rail.locator(".live-clock-date");
       await rail.locator("time").filter({ hasText: /^23:59:59$/ }).waitFor();
       assert.equal(await rail.getAttribute("data-red-date"), null);
+      const fontSize = await date.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+      assert.ok(fontSize >= 16, `Gregorian date is easy to read at ${width}px (font size: ${fontSize}px)`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+      const dateBox = await date.boundingBox();
+      const timeBox = await rail.locator("time").boundingBox();
+      assert.ok(dateBox && timeBox && dateBox.y < timeBox.y + timeBox.height && timeBox.y < dateBox.y + dateBox.height,
+        "date stays alongside clock time");
 
       await page.clock.setFixedTime(new Date("2026-11-28T16:00:00.000Z"));
-      await rail.locator(".live-clock-date").filter({ hasText: /29\/11\/26 \(Sun\)/ }).waitFor();
+      await date.filter({ hasText: /29\/11\/26 \(Sun\)/ }).waitFor();
       assert.equal(await rail.getAttribute("data-red-date"), "true");
       assert.equal(await rail.locator(".live-clock-holiday").count(), 0);
 
@@ -77,7 +85,7 @@ try {
       assert.ok(requestedDates.includes("2026-11-29") && requestedDates.includes("2027-07-01"));
       assert.ok(requestedDates.length <= 6, "calendar request is not repeated per second");
       assert.deepEqual(pageErrors, []);
-      console.log(`PASS ${width}px ${dark ? "dark" : "light"}: HK midnight, lunar days, red Sundays and named holidays, narrow layout and print.`);
+      console.log(`PASS ${width}px ${dark ? "dark" : "light"}: larger date, HK midnight, lunar days, red holidays, narrow layout and print.`);
     } finally {
       await context.close();
     }
