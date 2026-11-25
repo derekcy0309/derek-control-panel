@@ -1,8 +1,9 @@
 import { calendarErrorMessage, type CalendarErrorCode } from "./calendar-errors.ts";
+import { priorityGradeOption, type TaskPriorityGrade } from "./task-priority-grade.ts";
 export const briefTimezone = "Asia/Hong_Kong";
 export const GOOGLE_WORK_SOURCE = "工作 · Google";
 export type BriefEvent = { id: string; uid: string; title: string; start: string; end: string; allDay: boolean; source: "Apple" | "Panel" | typeof GOOGLE_WORK_SOURCE; tentative?: boolean; family?: boolean };
-export type BriefDeadline = { id: string; title: string; due: string; priority: number; status: string };
+export type BriefDeadline = { id: string; title: string; due: string; priority: number; status: string; grade?: TaskPriorityGrade };
 export type FamilyDate = { id:string; title:string; date:string; kind:"family"|"school" };
 export type DashboardBrief = CalendarBrief & { familyDates?: FamilyDate[]; familyWarning?:string; nextSchoolDate?: FamilyDate|null; nextSchoolWarning?:boolean };
 export type BriefSource = { label: string; state: "fresh" | "stale" | "not_connected" | "select_calendars"; lastSync: string | null; errorCode?: CalendarErrorCode };
@@ -41,7 +42,7 @@ export function makeCalendarBrief(events: BriefEvent[], deadlines: BriefDeadline
   ...sources.filter(s=>s.state==="stale"&&s.errorCode).map(s=>`原因：${calendarErrorMessage(s.errorCode)}`),...warnings.map(w=>`注意：${w}`),
   ...(truncated?["注意：資料超過本次上限，以下不是完整清單。"]:[]), ...days.flatMap((d,i)=>[`${["今日","聽日","後日"][i]} ${d.date}`,
    ...d.events.map(e=>`${briefEventTime(e)} ${e.title} [${e.source}${e.tentative?"・待確認":""}]`),
-   ...d.deadlines.map(t=>`Deadline ${t.title} [${t.priority<=2?"P1":t.priority===3?"P2":"P3"}・${t.status==="waiting"?"等回覆":t.status==="blocked"?"待處理阻塞":t.status==="in_progress"?"做緊":"未完成"}]`),
+   ...d.deadlines.map(t=>`Deadline ${t.title} [${priorityGradeOption(t.grade ?? (t.priority<=2?1:t.priority<=4?2:3)).label}・${t.status==="waiting"?"等回覆":t.status==="blocked"?"待處理阻塞":t.status==="in_progress"?"做緊":"未完成"}]`),
    ...(!d.events.length&&!d.deadlines.length?["暫無已讀取的行程或 Deadline"]:[])])].join("\n");
  return { generatedAt:now.toISOString(),from,untilExclusive:until,days,sources,truncated,warnings,text };
 }

@@ -19,6 +19,7 @@ function task(n, title, due, priority = 3, extra = {}) {
   return {
     id: id(n), owner_id: owner, user_id: owner, scope: "home", area: "personal", source_type: "follow_up",
     title, due_date: due, status: "not_started", next_action: "核對日期", requested_priority: priority * 2 - 1,
+    priority_grade: priority, priority_selected_grade: priority, priority_escalation_date: due,
     personal_tag_ids: [priorities[priority - 1].id, wecare.id], archived_at: null, deleted_at: null,
     created_at: now, updated_at: now, ...extra
   };
@@ -29,7 +30,7 @@ const blocked = task(12, "過期限期｜受阻", "2026-11-21", 3, { status: "bl
 const older = task(13, "過期限期｜未完成", "2026-11-23", 3);
 const yesterday = task(14, "昨日到期｜已接手", "2026-11-24", 3, { owner_id: colleague, user_id: colleague });
 const dueToday = task(16, "今日到期｜唔係已過期", today, 1);
-const weekTwo = task(17, "十四日後 P3 任務", "2026-12-09");
+const weekTwo = task(17, "原本十四日後的任務，已改期", "2026-12-08", 3, { priority_escalation_date: "2026-12-09" });
 const weekOne = task(18, "七日後 P2 任務", "2026-12-02", 2);
 const immediateP3 = task(19, "七日後 P3 任務", "2026-12-02");
 const beyond = task(20, "十五日後 P3 任務", "2026-12-10");
@@ -118,8 +119,8 @@ try {
       const upcoming = page.getByRole("region", { name: "即將到期 · 14 日" });
       await upcoming.getByText(weekTwo.title, { exact: true }).waitFor();
       const upcomingLink = record => upcoming.locator('a[href="/tasks/' + record.id + '"]');
-      for (const [record, upgraded] of [[weekTwo, p2], [eighth, p2], [weekOne, p1], [immediateP3, p1]]) {
-        assert.equal(await upcomingLink(record).locator('[data-tag-id="' + upgraded.id + '"]').textContent(), "自動升級 · " + upgraded.name);
+      for (const [record, grade, label] of [[weekTwo, 2, "Urgent"], [eighth, 2, "Urgent"], [weekOne, 1, "First priority"], [immediateP3, 1, "First priority"]]) {
+        assert.equal(await upcomingLink(record).locator('[data-tag-id="dayline-priority:' + grade + '"]').textContent(), "自動升級 · " + label);
       }
       assert.equal(await upcoming.getByText(beyond.title, { exact: true }).count(), 0);
       assert.equal(await upcoming.getByText(yesterday.title, { exact: true }).count(), 0);
@@ -140,12 +141,12 @@ try {
       assert.equal(await overdueList.count(), 0);
       const queue = page.locator("#task-action-list");
       const filters = queue.getByRole("region", { name: "選擇任務 Tags" });
-      await filters.locator('button[data-tag-id="' + p2.id + '"]').click();
+      await filters.locator('button[data-tag-id="dayline-priority:2"]').click();
       await queue.getByRole("button", { name: /^未完成/ }).click();
       const row = record => queue.locator(".task-queue-row").filter({ hasText: record.title });
       await row(weekTwo).waitFor();
-      assert.equal(await row(weekTwo).locator('[data-tag-id="' + p2.id + '"]').count(), 1);
-      assert.equal(await row(weekTwo).locator('[data-tag-id="' + p3.id + '"]').count(), 0);
+      assert.equal(await row(weekTwo).locator('[data-tag-id="dayline-priority:2"]').count(), 1);
+      assert.equal(await row(weekTwo).locator('[data-tag-id="dayline-priority:3"]').count(), 0);
       assert.equal(await row(weekOne).count(), 0);
       assert.equal(await row(beyond).count(), 0);
       await queue.getByRole("searchbox", { name: "搜尋 Task" }).fill("P2");
@@ -161,7 +162,7 @@ try {
 
       assert.deepEqual(writes, [], "No task, label, status or settings write should occur.");
       assert.deepEqual(errs, []);
-      console.log("PASS " + width + "px: 14/7-day promotions, overdue preview/navigation, permissions and original edit tags.");
+      console.log("PASS " + width + "px: independent 14/7-day promotions, overdue preview/navigation, permissions and original edit tags.");
     } finally { await context.close(); }
   }
 } finally { await browser.close(); }

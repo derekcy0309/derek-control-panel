@@ -31,7 +31,7 @@ function SearchContent() {
     setQuery(value); setResults([]); setError(""); setLoading(value.trim().length >= 2);
   }
   return <div className="mx-auto max-w-4xl space-y-5">
-    <section><p className="eyebrow">Search</p><h1 className="page-title mt-1">全域搜尋</h1><p className="muted mt-2 text-sm leading-6">可以用任務名稱或你自己嘅 Tag 搵，例如「P1」或「Wecare」。只會顯示你有權睇嘅資料。</p></section>
+    <section><p className="eyebrow">Search</p><h1 className="page-title mt-1">全域搜尋</h1><p className="muted mt-2 text-sm leading-6">可以用任務名稱或你自己嘅 Tag 搵，例如「Wecare」。要按分級篩選，請去「我的任務」。只會顯示你有權睇嘅資料。</p></section>
     <section className="panel overflow-hidden">
       <label className="relative block border-b border-slate-200">
         <Search className="pointer-events-none absolute left-4 top-5 h-5 w-5 text-slate-400" aria-hidden="true" />

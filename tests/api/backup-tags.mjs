@@ -15,9 +15,11 @@ const backend=http.createServer(async(req,res)=>{
     if(url.pathname==='/auth/v1/user') {
       assert.equal(req.headers.authorization,'Bearer fixture-access');
       result={id:actor,email:'fixture@example.test',aud:'authenticated',role:'authenticated',app_metadata:{},user_metadata:{},created_at:'2026-11-14T00:00:00Z'};
-    } else if(url.pathname==='/rest/v1/rpc/restore_backup_v3') {
+    } else if(url.pathname==='/rest/v1/rpc/restore_backup_v4') {
       rpcs++;let raw='';for await(const chunk of req)raw+=chunk;
       const body=JSON.parse(raw);assert.equal(body.p_backup.ownerId,actor);assert.equal(body.p_backup.data.taskTagAssignments.length,1205);
+      const restoredGrade=body.p_backup.data.tasks.find(task=>task.id===uuid(100));
+      assert.equal(restoredGrade.priority_grade,1);assert.equal(restoredGrade.priority_selected_grade,4);assert.equal(restoredGrade.priority_escalation_date,'2026-12-12');
       result={personalTaskTags:0,taskTagAssignments:0,taskTagPreferences:0};
     } else {
       const table=url.pathname.split('/').at(-1);
@@ -30,7 +32,8 @@ const backend=http.createServer(async(req,res)=>{
         else if(table==='tasks') {
           const idFilter=url.searchParams.get('id');
           result=idFilter?links().filter(link=>idFilter.includes(link.task_id)).map(link=>({id:link.task_id,deleted_at:null})):
-            links().slice(0,2).map((link,i)=>({id:link.task_id,owner_id:actor,title:`Fixture ${i}`,deleted_at:null,archived_at:null}));
+            links().slice(0,2).map((link,i)=>({id:link.task_id,owner_id:actor,title:`Fixture ${i}`,deleted_at:null,archived_at:null,
+              ...(i===0?{priority_grade:1,priority_selected_grade:4,priority_escalation_date:'2026-12-12'}:{})}));
         } else if(table==='user_profiles'||table==='user_settings'||table==='notification_preferences') result=null;
         const offset=Number(url.searchParams.get('offset')||0),limit=Number(url.searchParams.get('limit')||1000);
         if(Array.isArray(result)) result=result.slice(offset,offset+limit);
@@ -57,6 +60,7 @@ try {
     assert.match(response.headers.get('cache-control'),/private, no-store/);
     assert.match(response.headers.get('content-disposition'),/attachment/);
     const value=await response.json();assert.equal(value.ownerId,actor);
+    assert.equal(value.data.tasks.find(task=>task.id===uuid(100)).priority_grade,1);
     assert.equal(value.data.personalTaskTags.length,3);assert.equal(value.data.taskTagAssignments.length,1205);assert.equal(value.data.taskTagPreferences.length,1);
     assert.ok(value.data.personalTaskTags.every(tag=>tag.user_id===actor));assert.ok(value.data.taskTagAssignments.every(link=>link.user_id===actor));assert.ok(linkPages>=2);
     const csv=await request('/api/backup?format=csv&kind=tasks');assert.equal(csv.status,200);const csvBody=await csv.text();assert.match(csvBody,/Tags/);assert.match(csvBody,/學習/);assert.doesNotMatch(csvBody,/已移除/);

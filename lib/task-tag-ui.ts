@@ -1,13 +1,11 @@
 import type { PersonalTaskTag } from "./types.ts";
+import { taskPriorityGrades, taskPriorityTagGrade } from "./task-priority-grade.ts";
 
 type TagPriority = 1 | 3 | 5;
 
 export function taskTagPriority(tag: Pick<PersonalTaskTag, "name" | "legacy_key">): TagPriority | null {
-  if (tag.legacy_key === "priority_p1") return 1;
-  if (tag.legacy_key === "priority_p2") return 3;
-  if (tag.legacy_key === "priority_p3") return 5;
-  const name = tag.name.trim().toUpperCase();
-  return name === "P1" ? 1 : name === "P2" ? 3 : name === "P3" ? 5 : null;
+  const grade = taskPriorityTagGrade(tag);
+  return grade === 1 ? 1 : grade === 2 ? 3 : grade ? 5 : null;
 }
 
 export function priorityFromTaskTags(ids: readonly string[], catalog: readonly PersonalTaskTag[]): TagPriority | null {
@@ -29,9 +27,11 @@ export function taskTagPriorityChange(before: readonly string[], after: readonly
 }
 
 export function taskMatchesTagText(task: { title: string; personal_tag_ids?: readonly string[] }, needle: string, tagNames: ReadonlyMap<string, string>) {
+  const legacySearch = /^p([1-4])$/i.exec(needle.trim());
+  const gradeLabel = legacySearch ? taskPriorityGrades[Number(legacySearch[1]) - 1].label.toLowerCase() : null;
   return !needle || task.title.toLocaleLowerCase().includes(needle)
     || (task.personal_tag_ids ?? []).some(id => {
       const name = tagNames.get(id)?.toLocaleLowerCase();
-      return name?.includes(needle) || (needle === "恩海居" && name === "sec");
+      return name?.includes(needle) || (gradeLabel !== null && name === gradeLabel) || (needle === "恩海居" && name === "sec");
     });
 }

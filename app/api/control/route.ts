@@ -7,11 +7,12 @@ import { taskTagNameError } from "@/lib/simple-mode";
 import { guideContinue, guideReview } from "@/lib/work-guide";
 import { parseTaskTagIds, readMyTaskTags, validateMyTaskTags } from "@/lib/server/task-tags";
 import { currentTaskStep, taskVisibleNextAction } from "@/lib/task-steps";
-import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
+import { isCalendarDate, validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import { noteMetadata, validateNoteInput } from "@/lib/notes";
 import { validatePinnedPages } from "@/lib/dayline-pinned-pages";
 import { findControlResources } from "@/lib/server/task-search";
 import { appleCalendarMonthWindow } from "@/lib/apple-calendar-month";
+import { parseTaskPriorityGrade, priorityDefaultDeadline, priorityGradeOption } from "@/lib/task-priority-grade";
 import type { BodyDoubleTaskOption, CalendarPanelData, ControlShellData } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -1198,7 +1199,19 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
   const categoryFields = requestedTaskCategory ? taskCategoryFields(requestedTaskCategory) : null;
   const area = categoryFields?.area ?? enumValue(body.area, ["work", "family", "personal"] as const, "personal");
   const sourceType = enumValue(body.sourceType, ["meeting_action", "deadline", "follow_up", "duty_request"] as const, "follow_up");
-  const dueDate = dateValue(body.dueDate);
+  const grade = parseTaskPriorityGrade(body.priorityGrade);
+  const deadlineMode = body.priorityDeadlineMode;
+  if (body.priorityGrade !== undefined && grade === null) return jsonError("請選擇有效嘅任務分級。", 422);
+  if (deadlineMode !== undefined && (grade === null || (deadlineMode !== "auto" && deadlineMode !== "manual"))) {
+    return jsonError("任務期限模式不正確。", 422);
+  }
+  const gradeAnchor = grade === null ? null : priorityDefaultDeadline(hkDateString(), grade);
+  const manualDueDate = dateValue(body.dueDate);
+  if (grade && deadlineMode !== "auto" && body.dueDate != null && body.dueDate !== "" && !isCalendarDate(body.dueDate)) {
+    return jsonError("請輸入有效嘅期限。", 422);
+  }
+  const defaultDue = grade && (deadlineMode === "auto" || (deadlineMode === undefined && !manualDueDate));
+  const dueDate = defaultDue ? gradeAnchor : manualDueDate;
   const workSchedule = validateTaskWorkSchedule({ startDate: body.workStartDate, dueDate, workDates: body.workDates });
   if (workSchedule.error) return jsonError(workSchedule.error, 422);
   if (sourceType === "duty_request" && !dueDate) return jsonError("請輸入 Request Duty 提醒日期。", 422);
@@ -1245,7 +1258,12 @@ async function createTask({ client, user }: RequestContext, body: Record<string,
     energy_level: enumValue(body.energyLevel, ["low", "medium", "high"], null),
     context: nullableText(body.context),
     risk: enumValue(body.risk, ["low", "medium", "high"], "low"),
-    requested_priority: integerValue(body.requestedPriority, 1, 5) ?? 3,
+    requested_priority: grade ? priorityGradeOption(grade).rank : (integerValue(body.requestedPriority, 1, 5) ?? 3),
+    ...(grade ? {
+      priority_grade: grade,
+      priority_selected_grade: grade,
+      priority_escalation_date: dueDate ? gradeAnchor : null
+    } : {}),
     critical_path: Boolean(body.criticalPath),
     safety_impact: Boolean(body.safetyImpact),
     child_impact: Boolean(body.childImpact),
@@ -1357,6 +1375,11 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   }
 
   const changes = objectValue(body.changes);
+  const grade = parseTaskPriorityGrade(body.priorityGrade);
+  if (body.priorityGrade !== undefined) {
+    if (existing.data.owner_id !== user.id) return jsonError("只有任務擁有者可以修改分級。", 403);
+    if (grade === null) return jsonError("請選擇有效嘅任務分級。", 422);
+  }
   const activeHandler = existing.data.owner_id === user.id
     ? false
     : await client.from("assignments")
@@ -1411,8 +1434,17 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
   }
   if ("requested_priority" in payload) {
     const priority = integerValue(payload.requested_priority, 1, 5);
-    if (priority === null) return jsonError("Priority 請揀 P1、P2 或 P3。", 422);
-    payload.requested_priority = priority;
+    if (priority === null) return jsonError("Priority 格式不正確。", 422);
+    if (existing.data.priority_grade) delete payload.requested_priority;
+    else payload.requested_priority = priority;
+  }
+  if (grade) {
+    // Only the independent dropdown can reset a grade. Date-only updates, handoffs
+    // and snoozes must never move the escalation clock or overwrite the saved grade.
+    payload.priority_grade = grade;
+    payload.priority_selected_grade = grade;
+    payload.priority_escalation_date = nextDueDate ? priorityDefaultDeadline(hkDateString(), grade) : null;
+    payload.requested_priority = priorityGradeOption(grade).rank;
   }
   payload.last_progress_at = new Date().toISOString();
   const result = await client.from("tasks").update(payload).eq("id", id).select("*").maybeSingle();
@@ -1426,7 +1458,8 @@ async function updateTask({ client, user }: RequestContext, body: Record<string,
     const tagsSaved = await client.rpc("set_my_task_tags", { p_task_id: id, p_tag_ids: tagIds });
     if (tagsSaved.error) return databaseError(tagsSaved.error);
   }
-  await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update", "更新任務");
+  await recordActivity(client, user.id, "task", id, payload.status === "done" ? "complete" : "update",
+    grade ? `手動設定分級：${priorityGradeOption(grade).label}` : "更新任務");
   return Response.json({ task: { ...result.data, ...(tagIds ? { personal_tag_ids: tagIds } : {}) } }, { headers: privateHeaders() });
 }
 

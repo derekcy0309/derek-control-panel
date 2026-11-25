@@ -61,6 +61,9 @@ export type Task = {
   description?: string | null;
   assignee_id?: string | null;
   requested_priority?: number;
+  priority_grade?: 1 | 2 | 3 | 4 | null;
+  priority_selected_grade?: 1 | 2 | 3 | 4 | null;
+  priority_escalation_date?: string | null;
   planned_date?: string | null;
   estimated_minutes?: number | null;
   actual_minutes?: number | null;

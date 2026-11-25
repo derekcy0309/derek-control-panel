@@ -108,7 +108,12 @@ export async function POST(request: NextRequest) {
   if (body.confirmation !== "RESTORE" || body.acknowledged !== true) {
     return jsonError("請閱讀預覽並確認「只新增、不覆蓋」後才可還原。", 422);
   }
-  const restored = await context.client.rpc("restore_backup_v3", { p_backup: restorePayload(parsed.backup) });
+  const payload = restorePayload(parsed.backup);
+  let restored = await context.client.rpc("restore_backup_v4", { p_backup: payload });
+  if (restored.error?.code === "PGRST202" && restored.error.message.includes("restore_backup_v4")
+    && !payload.data.tasks.some(task => task.priority_grade != null || task.priority_selected_grade != null || task.priority_escalation_date != null)) {
+    restored = await context.client.rpc("restore_backup_v3", { p_backup: payload });
+  }
   if (restored.error) return databaseError(restored.error);
   return Response.json({ restored: restored.data ?? {} }, { headers: privateHeaders() });
 }
@@ -351,7 +356,7 @@ function dateStamp() { return new Date().toISOString().slice(0, 10).replaceAll("
 function privateHeaders() { return { "Cache-Control": "private, no-store, max-age=0", "X-Content-Type-Options": "nosniff" }; }
 function jsonError(message: string, status: number) { return Response.json({ error: message }, { status, headers: privateHeaders() }); }
 function databaseError(error: { code?: string; message?: string }) {
-  if (error.code === "PGRST205" || error.message?.includes("Could not find the table") || error.message?.includes("restore_backup_v3")) return jsonError("資料庫尚未套用最新 Backup／Restore migration。", 503);
+  if (error.code === "PGRST205" || error.message?.includes("Could not find the table") || error.message?.includes("restore_backup_v3") || error.message?.includes("restore_backup_v4")) return jsonError("資料庫尚未套用最新 Backup／Restore migration。", 503);
   if (error.message?.includes("AUTH_REQUIRED")) return jsonError("登入已失效，請重新登入。", 401);
   if (error.message?.includes("BACKUP_TAG_LIMIT")) return jsonError("還原後會超出上限（最多 60 個 Tags、每項任務 20 個）。未有資料被改動；請先整理 Tags 再重試。", 422);
   if (error.message?.includes("BACKUP_TAG_COLLECTION_TOO_LARGE")) return jsonError("Tags 資料超出安全上限，備份未有完成；請先整理資料再重試。", 422);

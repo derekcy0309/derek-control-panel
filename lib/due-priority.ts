@@ -1,4 +1,5 @@
 import type { OperatingItem, Task } from "./types.ts";
+import { effectiveManagedTaskGrade, priorityGradeOption, type GradedTask } from "./task-priority-grade.ts";
 
 export type PriorityBand = "high" | "medium" | "low";
 
@@ -18,7 +19,9 @@ export function priorityValueForDueDate(dueDate: string | null | undefined, toda
   return null;
 }
 
-export function effectiveTaskPriority(task: Pick<Task, "due_date" | "requested_priority">, today: string) {
+export function effectiveTaskPriority(task: Pick<Task, "due_date" | "requested_priority"> & GradedTask, today: string) {
+  const grade = effectiveManagedTaskGrade(task, today);
+  if (grade !== null) return priorityGradeOption(grade).rank;
   return priorityValueForDueDate(task.due_date, today) ?? task.requested_priority ?? 3;
 }
 

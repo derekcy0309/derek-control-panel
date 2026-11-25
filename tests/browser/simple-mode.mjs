@@ -5,6 +5,17 @@ import { mkdir } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
 const base = process.env.VERIFY_URL || 'http://localhost:3142';
+function addDays(value, days) {
+  const date = new Date(value + 'T00:00:00Z');
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function nextMonth(value) {
+  const [year, month, day] = value.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(day, lastDay))).toISOString().slice(0, 10);
+}
 // A button can accept clicks in Playwright even when its white label is invisible.
 // Inspect the actual rendered button in each weekly palette, including dark mode.
 async function assertSaveButtonReadable(button) {
@@ -52,7 +63,7 @@ try {
     const tasks=[makeTask('22222222-2222-4222-8222-222222222221','我排第一件',{requested_priority:5}),makeTask('22222222-2222-4222-8222-222222222222','我排第二件',{requested_priority:1}),makeTask('22222222-2222-4222-8222-222222222223','未安排的高 Priority',{requested_priority:1}),makeTask('22222222-2222-4222-8222-222222222224','等文件回覆',{status:'waiting',waiting_for:'朋友'}),makeTask('22222222-2222-4222-8222-222222222225','依賴未完成',{requested_priority:1})];
     for(const task of tasks)task.personal_tag_ids.push(tags.find(tag=>tag.name===({1:'P1',3:'P2',5:'P3'}[task.requested_priority])).id);
     let planning=tasks.slice(0,2).map((task,i)=>({user_id:userId,resource_type:'task',resource_id:task.id,planned_date:today,plan_role:i?'later':'now',plan_source:'manual',plan_position:i+1}));
-    let preferences=null;let createFailures=0;let creates=[];let navigations=0;let todayReads=0;const guideRecords=new Map();let guideWrites=0;
+    let preferences=null;let createFailures=0;let creates=[];const updates=[];let navigations=0;let todayReads=0;const guideRecords=new Map();let guideWrites=0;
     const snapshot=()=>({currentUser:{id:userId,email:role==='Derek'?'derekcy0309@gmail.com':`${role.toLowerCase()}@example.test`,displayName:role},profile:{user_id:userId,display_name:role,workspace_role:role.toLowerCase(),active:true,is_admin:role==='Derek'},settings:{theme:'light',focus_minutes:25,gentle_mode:role==='Suki'},tasks,taskCatalog:tasks.filter(t=>t.status!=='done'),taskQueueCatalog:tasks,taskTags:tags,taskNoticeRecipients:[],taskFollowers:[],planning,assignments:[],shares:[],participants:[{user_id:userId,display_name:role},{user_id:'44444444-4444-4444-8444-444444444444',display_name:'現有用戶'}],taskDependencies:[{task_id:tasks[4].id,depends_on_task_id:'missing'}],capacity:null,capacityCommitments:[],weeklyAvailableMinutes:null,reminders:[],notificationPreferences:preferences,cashflowHint:null});
     await page.route('**/api/**',async route=>{
       const request=route.request();const url=new URL(request.url());let body={};let status=200;
@@ -71,11 +82,11 @@ try {
           creates.push(input);
           if(createFailures-->0) {status=503;body={error:'驗證用網絡失敗；請重試，草稿仍保留。'};}
           else {
-            const task=makeTask(crypto.randomUUID(),input.title,{due_date:input.dueDate,requested_priority:input.requestedPriority,personal_tag_ids:input.tagIds??[],work_dates:input.workDates,work_start_date:input.workStartDate});tasks.push(task);body={task};
+            const task=makeTask(crypto.randomUUID(),input.title,{due_date:input.dueDate,requested_priority:input.requestedPriority,priority_grade:input.priorityGrade??null,priority_selected_grade:input.priorityGrade??null,personal_tag_ids:input.tagIds??[],work_dates:input.workDates,work_start_date:input.workStartDate});tasks.push(task);body={task};
             if(input.addToToday) planning.push({user_id:userId,resource_type:'task',resource_id:task.id,planned_date:today,plan_role:'later',plan_source:'manual',plan_position:null});
           }
         } else if(input.action==='record_guide_step'){guideWrites++;const checkpoint={current_position:input.next?'開工導航：下次由呢一步接住':'開工導航：呢一步已做完，等你決定是否結案',next_minimum_step:input.next||null,completed_summary:input.completed};guideRecords.set(input.taskId,checkpoint);body={checkpoint};}
-        else if(input.action==='update_task') {const task=tasks.find(t=>t.id===input.id);Object.assign(task,input.changes);if(input.tagIds!==undefined)task.personal_tag_ids=input.tagIds;body={task};}
+        else if(input.action==='update_task') {updates.push(input);const task=tasks.find(t=>t.id===input.id);Object.assign(task,input.changes);if(input.priorityGrade!==undefined){task.priority_grade=input.priorityGrade;task.priority_selected_grade=input.priorityGrade;}if(input.tagIds!==undefined)task.personal_tag_ids=input.tagIds;body={task};}
         else if(input.action==='set_quiet_mode') {preferences={quiet_mode_until:input.until};body={ok:true};}
         else if(input.action==='manage_task_tag') {
           let tag=tags.find(t=>t.id===input.tagId);
@@ -126,8 +137,8 @@ try {
     const dashboardToggle=dashboardTools.getByText('任務工具、提醒同篩選',{exact:true});
     await dashboardToggle.click();
     await dashboardTags.waitFor();
-    assert.deepEqual(await dashboardTags.locator('.simple-tag-filter').allTextContents(),['全部',...names,'未分類']);
-    const p1=dashboardTags.getByRole('button',{name:'P1',exact:true}),p3=dashboardTags.getByRole('button',{name:'P3',exact:true});
+    assert.deepEqual(await dashboardTags.locator('.simple-tag-filter').allTextContents(),['全部','First priority','Urgent','Semi urgent',...names.filter(name=>!/^P[1-3]$/.test(name)),'未分類']);
+    const p1=dashboardTags.getByRole('button',{name:'First priority',exact:true}),p3=dashboardTags.getByRole('button',{name:'Semi urgent',exact:true});
     const dashboardCards=dashboardTools.locator('.simple-focus-card');
     await p1.click();
     assert.deepEqual(await dashboardCards.getByRole('link',{name:/我排第/}).allTextContents(),['我排第二件']);
@@ -167,7 +178,10 @@ try {
     assert.ok(preferences.quiet_mode_until); // Per-account API; no other profile changes.
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     const dialog=page.getByRole('form',{name:'新增 Task',exact:true});
-    assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),1);
+    assert.equal(await dialog.locator('input:visible,select:visible,textarea:visible').count(),2);
+    assert.equal(await dialog.locator('input:visible:required,select:visible:required,textarea:visible:required').count(),1);
+    const gradePicker=dialog.getByLabel('優先級 Priority（選填）',{exact:true});
+    assert.equal(await gradePicker.inputValue(),'');
     const saveButton=dialog.getByRole('button',{name:'儲存任務',exact:true}),newTitle='簡易模式新增驗證';
     await dialog.getByLabel('任務名稱',{exact:true}).fill(newTitle);
     await dialog.locator('button[type="submit"]:enabled').waitFor();
@@ -189,19 +203,33 @@ try {
     if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
     await dialog.getByRole('button',{name:'P3',exact:true}).click();
     await dialog.getByRole('button',{name:'WECARE',exact:true}).click();
+    for(const [grade,label,due] of [
+      ['1','First priority',addDays(today,7)],['2','Urgent',addDays(today,14)],
+      ['3','Semi urgent',nextMonth(today)],['4','Non urgent',addDays(today,42)]
+    ]) {
+      await gradePicker.selectOption(grade);
+      assert.ok((await gradePicker.locator('option:checked').innerText()).startsWith(label+' · '));
+      await dialog.getByText('預設 Deadline：'+due+'。你可以改日期，分級會保留。',{exact:true}).waitFor();
+    }
     await dialog.getByRole('button',{name:/更改設定/}).click();
     await dialog.getByText('日期／邊個跟',{exact:false}).click();
     await dialog.getByRole('button',{name:'今日',exact:true}).click();
+    assert.equal(await gradePicker.inputValue(),'4','manually changing the date does not change grade');
+    await gradePicker.selectOption('1');
+    assert.equal(await dialog.getByLabel('自選到期日',{exact:true}).inputValue(),today,'switching grade keeps manually chosen date');
     assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
     const readsBeforeTyping=todayReads;
     await dialog.getByLabel('任務名稱',{exact:true}).fill('草稿保留測試');
     assert.equal(todayReads,readsBeforeTyping);
     const draftAfterClose=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)||'null'),`dcp:task-form-draft:v1:${userId}:new`);
     assert.equal(draftAfterClose?.title,'草稿保留測試','closing the form must retain the entered draft');
+    assert.equal(draftAfterClose?.priority_deadline_mode,'manual');
+    assert.equal(draftAfterClose?.priority_grade,1);
     await page.getByRole('link',{name:'開始呢件事',exact:true}).click();await guide.getByRole('link',{name:/返今日總覽/}).click();
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
+    assert.equal(await gradePicker.inputValue(),'1');
     if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
     assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
     assert.equal(await dialog.getByRole('button',{name:'WECARE',exact:true}).getAttribute('aria-pressed'),'true');
@@ -215,7 +243,8 @@ try {
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
     await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/更改設定/}).waitFor();assert.equal(creates.length,3);
     assert.equal(creates[1].clientRequestId,creates[2].clientRequestId);
-    assert.equal(creates[2].requestedPriority,5);assert.equal(creates[2].energyLevel,undefined);assert.equal(creates[2].estimatedMinutes,undefined);
+    assert.equal(creates[2].priorityGrade,1);assert.equal(creates[2].priorityDeadlineMode,'manual');assert.equal(creates[2].dueDate,today);
+    assert.equal(creates[2].requestedPriority,1);assert.equal(creates[2].energyLevel,undefined);assert.equal(creates[2].estimatedMinutes,undefined);
     assert.deepEqual(creates[2].workDates,[today]);assert.deepEqual(creates[2].tagIds,[tags.find(t=>t.name==='P3').id,tags.find(t=>t.name==='WECARE').id]);
     if(!(await dialog.getByText('管理我的 Tags',{exact:true}).isVisible())) await tagToggle.click();
     await dialog.getByText('管理我的 Tags',{exact:true}).click();
@@ -234,7 +263,7 @@ try {
     await queue.getByRole('button',{name:/^未完成/}).waitFor();
     assert.equal(await page.locator('.task-queue-row').count(),0,'queue starts collapsed');
     const queueFilters=queue.getByRole('region',{name:'選擇任務 Tags'});
-    const filterP1=queueFilters.getByRole('button',{name:/^P1/}),filterWecare=queueFilters.getByRole('button',{name:/^WECARE/});
+    const filterP1=queueFilters.getByRole('button',{name:/^First priority/}),filterWecare=queueFilters.getByRole('button',{name:/^WECARE/});
     await filterP1.click();
     await filterWecare.click();
     assert.equal(await filterP1.getAttribute('aria-pressed'),'true');
@@ -258,8 +287,34 @@ try {
     await edit.getByRole('button',{name:'儲存修改',exact:true}).press('Enter');
     await edit.waitFor({state:'hidden'});
     assert.deepEqual(tasks[2].personal_tag_ids,[]);assert.equal(tasks[2].requested_priority,3);
+    const graded=tasks.find(task=>task.title==='草稿保留測試');
+    const gradedRow=queue.locator('.task-queue-row').filter({hasText:graded.title});
+    await gradedRow.locator('summary').click();
+    await gradedRow.getByRole('button',{name:'修改任務：'+graded.title,exact:true}).click();
+    const editGrade=edit.getByLabel('優先級 Priority（選填）',{exact:true});
+    assert.equal(await editGrade.inputValue(),'1');
+    await edit.getByText('日期／邊個跟',{exact:false}).click();
+    const changedDate=addDays(today,3);
+    await edit.getByLabel('自選到期日',{exact:true}).fill(changedDate);
+    assert.equal(await editGrade.inputValue(),'1');
+    await edit.getByRole('button',{name:'儲存修改',exact:true}).press('Enter');
+    await edit.waitFor({state:'hidden'});
+    assert.equal(updates.at(-1).priorityGrade,undefined,'editing only the deadline must not send a grade update');
+    assert.equal(updates.at(-1).changes.requested_priority,undefined);
+    assert.equal(graded.due_date,changedDate);
+    assert.equal(graded.priority_grade,1);
+    if(await gradedRow.locator('details').getAttribute('open')===null)await gradedRow.locator('summary').click();
+    await gradedRow.getByRole('button',{name:'修改任務：'+graded.title,exact:true}).click();
+    await editGrade.selectOption('4');
+    await edit.getByText('日期／邊個跟',{exact:false}).click();
+    assert.equal(await edit.getByLabel('自選到期日',{exact:true}).inputValue(),changedDate);
+    await edit.getByRole('button',{name:'儲存修改',exact:true}).press('Enter');
+    await edit.waitFor({state:'hidden'});
+    assert.equal(updates.at(-1).priorityGrade,4,'an explicit user downgrade is saved separately');
+    assert.equal(graded.due_date,changedDate);
+    assert.equal(graded.priority_grade,4);
     assert.equal(navigations,0,'typing, saving and switching tabs never reload the document');assert.deepEqual(errors,[]);
-    console.log(`PASS simple-mode ${role} ${width}px: visible save (8 palettes), click creates once and appears in task list without refresh, manual order, quiet, draft, keyboard retry`);
+    console.log(`PASS simple-mode ${role} ${width}px: simple add, defaults for four grades, separate deadline edits, manual downgrade, draft and retry`);
     await context.close();
   }
 } finally {await browser?.close();server?.kill();}

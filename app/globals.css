@@ -181,8 +181,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .topbar-capture { border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
 .topbar-capture:hover { background: var(--surface-subtle); color: var(--ink); }
 .topbar-task-add:focus-visible, .topbar-capture:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, white); outline-offset: 2px; }
-@media screen { html { scroll-padding-top: calc(3rem + env(safe-area-inset-top)); } }
+@media screen {
+  html { scroll-padding-top: calc(3.25rem + env(safe-area-inset-top)); }
+}
+@media screen and (max-width: 36rem) {
+  html:has(.site-clock-bar[data-holiday]) { scroll-padding-top: calc(4.75rem + env(safe-area-inset-top)); }
+}
 .site-clock-bar {
+  --clock-red-date: #a5122e;
   position: sticky;
   top: 0;
   z-index: 24;
@@ -191,6 +197,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
+:root[data-theme="dark"] .site-clock-bar { --clock-red-date: #ff9bad; }
 .live-clock {
   display: flex;
   flex-wrap: wrap;
@@ -211,7 +218,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   font-weight: 800;
   line-height: 1.15;
 }
-.live-clock-date { min-width: 12ch; color: var(--muted); font-size: .8125rem; font-weight: 650; white-space: nowrap; }
+.live-clock-dates { display: grid; min-width: 12ch; gap: .125rem; line-height: 1.15; }
+.live-clock-date, .live-clock-lunar { color: var(--muted); white-space: nowrap; }
+.live-clock-date { font-size: .8125rem; font-weight: 690; }
+.live-clock-lunar { font-size: .75rem; font-weight: 560; }
+.live-clock-holiday {
+  padding: .2rem .45rem;
+  border-radius: .4rem;
+  background: color-mix(in srgb, var(--clock-red-date) 9%, var(--surface));
+  font-size: .75rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.site-clock-bar[data-red-date] :is(.live-clock-date, .live-clock-lunar, .live-clock-holiday) { color: var(--clock-red-date); }
+@media screen and (max-width: 36rem) {
+  .live-clock-holiday { flex-basis: 100%; text-align: right; }
+}
 .mobile-nav {
   position: fixed; inset: auto 0 0; z-index: 45; display: grid; grid-template-columns: repeat(5, 1fr);
   min-height: calc(64px + env(safe-area-inset-bottom)); padding: .35rem .35rem env(safe-area-inset-bottom);

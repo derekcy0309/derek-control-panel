@@ -5,6 +5,7 @@ import { fetchAppleEvents, type AppleCalendar } from "../integrations/apple-cale
 import { calendarErrorCode } from "../calendar-errors.ts";
 import { makeStopSnapshot } from "../work-stop.ts";
 import { readDashboardGoogleWorkAgenda } from "./google-work-agenda.ts";
+import { effectiveManagedTaskGrade, priorityGradeOption } from "../task-priority-grade.ts";
 
 export function calendarService() {
  const url=process.env.NEXT_PUBLIC_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -66,13 +67,16 @@ export async function readWorkStop(owner:string,client:SupabaseClient,service=ca
 export async function readCalendarBrief(owner:string,client:SupabaseClient,service=calendarService(),now=new Date(),humanDashboard=false,includeGoogleWork=false) {
  const w=briefWindow(now);
  const [tasks,panel,apple,google]=await Promise.all([
-  client.from("tasks").select("id,title,due_date,requested_priority,status").eq("owner_id",owner).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").gte("due_date",w.from).lt("due_date",w.until).order("due_date").order("requested_priority").limit(201),
+  client.from("tasks").select("id,title,due_date,requested_priority,status,priority_grade,priority_escalation_date").eq("owner_id",owner).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").gte("due_date",w.from).lt("due_date",w.until).order("due_date").order("requested_priority").limit(201),
   panelCalendarRows(client,owner,w,false,humanDashboard),
   refreshApple(owner,false,service,now),
   humanDashboard && includeGoogleWork ? readDashboardGoogleWorkAgenda(client,owner,w) : null
  ]);
  if(tasks.error||panel.error)throw new Error("CALENDAR_DATABASE");
- const deadlines:BriefDeadline[]=(tasks.data??[]).slice(0,200).map(t=>({id:t.id,title:t.title,due:t.due_date,priority:t.requested_priority??3,status:t.status}));
+ const deadlines:BriefDeadline[]=(tasks.data??[]).slice(0,200).map(t=>{
+  const grade=effectiveManagedTaskGrade(t,w.from);
+  return {id:t.id,title:t.title,due:t.due_date,priority:grade?priorityGradeOption(grade).rank:t.requested_priority??3,status:t.status,...(grade?{grade}:{})};
+ });
  const events=panelEvents(panel.data??[],humanDashboard);
  return makeCalendarBrief([...events,...apple.events,...(google?.events??[])],deadlines,
   [{label:"Panel",state:"fresh",lastSync:now.toISOString()},apple.source,...(google?.source?[google.source]:[])],

@@ -4,7 +4,7 @@ type TagIdentity = { id: string; legacy_key?: string | null };
 
 const establishedHues = new Map<string, number>([
   ["personal", 173], ["family", 273], ["sec", 34], ["wecare", 220],
-  ["priority_p1", 347], ["priority_p2", 197], ["priority_p3", 119],
+  ["priority_p1", 347], ["priority_p2", 197], ["priority_p3", 119], ["priority_p4", 270],
 ]);
 const paletteCache = new WeakMap<readonly TagIdentity[], ReadonlyMap<string, CSSProperties>>();
 

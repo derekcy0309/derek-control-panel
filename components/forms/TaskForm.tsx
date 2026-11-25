@@ -4,11 +4,13 @@ import { useEffect, useId, useState } from "react";
 import { DueDatePicker } from "@/components/forms/DueDatePicker";
 import { TaskWorkDaysPicker } from "@/components/forms/TaskWorkDaysPicker";
 import { Button } from "@/components/ui/Button";
+import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { controlAction } from "@/lib/control-api";
 import { taskStatusOptions } from "@/lib/labels";
 import { addRoutineInterval, formatRoutineDate, nextRoutineWeeklyDate, routineWeekdays, type RoutineIntervalUnit } from "@/lib/routine-interval";
 import { TaskTagPicker } from "@/components/tasks/TaskTagPicker";
 import { priorityFromTaskTags, taskTagPriorityChange } from "@/lib/task-tag-ui";
+import { parseTaskPriorityGrade, priorityDefaultDeadline, taskPriorityGrade, taskPriorityGrades, type TaskPriorityGrade } from "@/lib/task-priority-grade";
 import { validateTaskWorkSchedule } from "@/lib/task-work-schedule";
 import type { PersonalTaskTag, Task } from "@/lib/types";
 
@@ -24,6 +26,8 @@ type TaskFormState = {
   add_to_today: boolean;
   owner: string;
   due_date: string;
+  priority_grade: TaskPriorityGrade | null;
+  priority_deadline_mode: "auto" | "manual";
   work_start_date: string;
   work_dates: string[];
   follow_up_date: string;
@@ -66,6 +70,8 @@ const defaultState: TaskFormState = {
   add_to_today: false,
   owner: "",
   due_date: "",
+  priority_grade: null,
+  priority_deadline_mode: "auto",
   work_start_date: "",
   work_dates: [],
   follow_up_date: "",
@@ -137,6 +143,9 @@ export function TaskForm({
           add_to_today: false,
           owner: initialTask.owner ?? "",
           due_date: initialTask.due_date ?? "",
+          // null means the user has not explicitly changed the displayed grade.
+          priority_grade: null,
+          priority_deadline_mode: "manual",
           work_start_date: initialTask.work_start_date ?? "",
           work_dates: initialTask.work_dates ?? [],
           follow_up_date: initialTask.follow_up_date ?? "",
@@ -168,7 +177,7 @@ export function TaskForm({
           notice_user_ids: initialNoticeUserIds,
           follower_user_ids: initialFollowerUserIds
         }
-      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, client_request_id: crypto.randomUUID() }
+      : { ...defaultState, ...(preset?.scope === "company" ? { area: "work" } : {}), ...preset, priority_deadline_mode: preset?.priority_deadline_mode ?? (preset?.due_date ? "manual" : "auto"), client_request_id: crypto.randomUUID() }
   );
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -183,11 +192,19 @@ export function TaskForm({
   const [tagsTouched, setTagsTouched] = useState(false);
   const [optionsOpen,setOptionsOpen] = useState(Boolean(initialTask || preset?.status === "waiting"));
   const customStatusListId = useId();
+  const priorityPickerId = useId();
+  const priorityHintId = `${priorityPickerId}-hint`;
+  const today = useDaylineDate();
+  const initialPriority = initialTask ? taskPriorityGrade(initialTask, catalog, today) : null;
+  const gradeChanged = initialTask && form.priority_grade !== null && form.priority_grade !== initialPriority;
+  const selectedPriority = form.priority_grade ?? initialPriority;
+  const autoDeadline = !initialTask && selectedPriority !== null && form.priority_deadline_mode === "auto";
+  const dueDate = autoDeadline ? priorityDefaultDeadline(today, selectedPriority) : form.due_date;
   const otherParticipants = participants.filter((participant) => participant.user_id !== userId);
-  const nextRoutineDueDate = form.due_date
+  const nextRoutineDueDate = dueDate
     ? form.recurrence_mode === "weekly"
-      ? nextRoutineWeeklyDate(form.due_date, form.recurrence_weekdays)
-      : addRoutineInterval(form.due_date, Number(form.recurrence_interval_value), form.recurrence_interval_unit)
+      ? nextRoutineWeeklyDate(dueDate, form.recurrence_weekdays)
+      : addRoutineInterval(dueDate, Number(form.recurrence_interval_value), form.recurrence_interval_unit)
     : null;
   const draftKey = `dcp:task-form-draft:v1:${userId}:${preset?.status ?? "new"}`;
   const draftEligible = !initialTask;
@@ -198,8 +215,10 @@ export function TaskForm({
       const saved = sessionStorage.getItem(draftKey);
       if (saved) {
         const parsed = JSON.parse(saved) as Partial<TaskFormState>;
-        if (parsed.title || parsed.next_action || parsed.notes || parsed.handoff_note) {
-          setForm((current) => ({ ...current, ...parsed }));
+        const grade = parseTaskPriorityGrade(parsed.priority_grade);
+        const manualDeadline = parsed.priority_deadline_mode === "manual" || (!parsed.priority_deadline_mode && Boolean(parsed.due_date));
+        if (parsed.title || parsed.next_action || parsed.notes || parsed.handoff_note || grade || manualDeadline) {
+          setForm((current) => ({ ...current, ...parsed, priority_grade: grade, priority_deadline_mode: manualDeadline ? "manual" : "auto" }));
           setDraftRestored(true);
         }
       }
@@ -213,7 +232,8 @@ export function TaskForm({
 
   useEffect(() => {
     if (!draftEligible || !draftReady) return;
-    const hasContent = Boolean(form.title.trim() || form.next_action.trim() || form.notes.trim() || form.handoff_note.trim());
+    const hasContent = Boolean(form.title.trim() || form.next_action.trim() || form.notes.trim() || form.handoff_note.trim() ||
+      form.priority_grade || form.priority_deadline_mode === "manual");
     try {
       if (hasContent) sessionStorage.setItem(draftKey, JSON.stringify(form));
       else sessionStorage.removeItem(draftKey);
@@ -288,7 +308,7 @@ export function TaskForm({
     if (!form.title.trim()) { setError("寫低個 Task 名就得。"); return; }
     const workSchedule = validateTaskWorkSchedule({
       startDate: form.work_start_date || form.work_dates[0] || null,
-      dueDate: form.due_date || null,
+      dueDate: dueDate || null,
       workDates: form.work_start_date || form.work_dates.length ? form.work_dates : null
     });
     if (workSchedule.error) { setError(workSchedule.error); return; }
@@ -298,7 +318,7 @@ export function TaskForm({
     }
     if (form.recurrence_enabled) {
       const intervalValue = Number(form.recurrence_interval_value);
-      if (!form.due_date) {
+      if (!dueDate) {
         setError("Routine 工作需要先設定首次到期日。");
         return;
       }
@@ -310,7 +330,7 @@ export function TaskForm({
         setError("每星期重複請至少選擇一天。");
         return;
       }
-      if (form.recurrence_end_mode === "date" && (!form.recurrence_ends_on || form.recurrence_ends_on < form.due_date)) {
+      if (form.recurrence_end_mode === "date" && (!form.recurrence_ends_on || form.recurrence_ends_on < dueDate)) {
         setError("Routine 結束日期不可早過首次到期日。");
         return;
       }
@@ -324,7 +344,8 @@ export function TaskForm({
     // A restored draft can refer to a Tag since removed elsewhere. Only trim it
     // after confirming the current catalogue; an unavailable catalogue is not empty.
     const selectedTags = catalogRead ? form.tag_ids.filter(id => catalog.some(tag => tag.id === id)) : form.tag_ids;
-    const changedPriority = initialTask && tagsTouched ? taskTagPriorityChange(baselineTags, selectedTags, catalog) : undefined;
+    const changedLegacyPriority = initialTask && initialTask.priority_grade == null && !gradeChanged && tagsTouched
+      ? taskTagPriorityChange(baselineTags, selectedTags, catalog) : undefined;
     const payload = {
       area: form.area,
       // Unedited tags are not rewritten; [] on edit explicitly removes all tags.
@@ -333,7 +354,7 @@ export function TaskForm({
       sourceType: form.source_type,
       title: form.title.trim(),
       addToToday: form.add_to_today,
-      dueDate: form.due_date || null,
+      dueDate: dueDate || null,
       workStartDate: workSchedule.startDate,
       workDates: workSchedule.workDates,
       followUpDate: form.follow_up_date || null,
@@ -342,7 +363,8 @@ export function TaskForm({
       status: form.status,
       customStatusLabel: form.custom_status_label.trim() || null,
       nextAction: form.next_action.trim() || null,
-      requestedPriority: priorityFromTaskTags(selectedTags, catalog) ?? 3,
+      requestedPriority: taskPriorityGrades.find((grade) => grade.value === selectedPriority)?.rank ?? priorityFromTaskTags(selectedTags, catalog) ?? 3,
+      ...(!initialTask && selectedPriority ? { priorityGrade: selectedPriority, priorityDeadlineMode: form.priority_deadline_mode } : {}),
       notes: form.notes.trim() || null,
       owner: form.owner.trim() || null,
       completedAt,
@@ -354,13 +376,13 @@ export function TaskForm({
     let savedTask: Task | null = null;
     try {
       if (initialTask) {
-        const updated = await controlAction<{ task: Task }>("update_task", { id: initialTask.id, tagIds: payload.tagIds, noticeUserIds: payload.noticeUserIds, followerUserIds: payload.followerUserIds, changes: {
+        const updated = await controlAction<{ task: Task }>("update_task", { id: initialTask.id, tagIds: payload.tagIds, noticeUserIds: payload.noticeUserIds, followerUserIds: payload.followerUserIds, ...(gradeChanged ? { priorityGrade: form.priority_grade } : {}), changes: {
           title: payload.title, due_date: payload.dueDate, work_start_date: payload.workStartDate, work_dates: payload.workDates, follow_up_date: payload.followUpDate,
           waiting_for: payload.waitingFor, waiting_on: payload.waitingOn,
           status: payload.status, custom_status_label: payload.customStatusLabel,
           next_action: payload.nextAction,
           notes: payload.notes, completed_at: payload.completedAt,
-          ...(changedPriority === undefined ? {} : { requested_priority: changedPriority })
+          ...(changedLegacyPriority === undefined ? {} : { requested_priority: changedLegacyPriority })
         } });
         savedTask = { ...updated.task, personal_tag_ids: updated.task.personal_tag_ids ?? selectedTags };
         if (form.recurrence_enabled && !initialTask.recurrence_rule_id) {
@@ -396,7 +418,7 @@ export function TaskForm({
     setSaving(false);
     if (!initialTask) {
       try { sessionStorage.removeItem(draftKey); } catch { /* Saving succeeded outside browser storage. */ }
-      setForm({ ...defaultState, ...preset, client_request_id: crypto.randomUUID() });
+      setForm({ ...defaultState, ...preset, priority_deadline_mode: preset?.priority_deadline_mode ?? (preset?.due_date ? "manual" : "auto"), client_request_id: crypto.randomUUID() });
       setOptionsOpen(false); setDraftRestored(false); setTagsTouched(false);
     }
     if (savedTask) {
@@ -430,23 +452,40 @@ export function TaskForm({
         <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="寫低要做嘅事，或者用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
       </label>
       {inline ? <Button type="submit" className="simple-add-task shrink-0 whitespace-nowrap" disabled={saving || Boolean(createdTaskId)}>{saving ? "儲存中…" : "儲存任務"}</Button> : null}</div>
+      <div>
+        <label htmlFor={priorityPickerId} className="label block">優先級 Priority（選填）</label>
+        <select id={priorityPickerId} className="field mt-1" value={selectedPriority ?? ""} aria-describedby={priorityHintId} disabled={saving || Boolean(initialTask && (initialTask.owner_id ?? initialTask.user_id) !== userId)}
+          onChange={(event) => setForm((current) => ({ ...current, priority_grade: parseTaskPriorityGrade(event.target.value) }))}>
+          <option value="" disabled={Boolean(initialPriority)}>未設定優先級</option>
+          {taskPriorityGrades.map((grade) => <option key={grade.value} value={grade.value}>{grade.label} · {grade.duration}</option>)}
+        </select>
+        <p id={priorityHintId} className="muted mt-1 text-xs leading-5">
+          {initialTask
+            ? "改分級唔會改 Deadline；改日期亦唔會改分級。"
+            : autoDeadline
+              ? `預設 Deadline：${dueDate}。你可以改日期，分級會保留。`
+              : selectedPriority
+                ? dueDate ? `自訂 Deadline：${dueDate}。改日期唔會改分級。` : "你已揀無 Deadline；分級會保留。"
+                : "揀咗分級會有預設 Deadline；你自己揀嘅日期會保留。"}
+        </p>
+      </div>
       <TaskTagPicker key={initialTask?.id ?? form.client_request_id} value={form.tag_ids} taskId={initialTask?.id} initialCatalog={knownTags} disabled={saving}
         onCatalog={(tags) => { setCatalog(tags); setCatalogRead(true); }}
         onLoadedValue={(tag_ids) => { setBaselineTags(tag_ids); setForm(current => ({ ...current, tag_ids })); }}
         onChange={(tag_ids) => { setTagsTouched(true); setForm(current => ({ ...current, tag_ids })); }} />
-      {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {form.due_date || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
+      {!initialTask ? <button type="button" aria-expanded={optionsOpen} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm text-slate-700"><span>{form.handoff_to_user_id ? participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name || "已揀跟進者" : "我自己"} · {dueDate || "無 Deadline"}</span>　<span className="font-bold text-indigo-700 underline">{optionsOpen?"收起設定":"更改設定"}</span></button> : null}
       <div hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
       {!initialTask ? <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 font-bold text-indigo-950">
         <input className="h-5 w-5 accent-indigo-600" type="checkbox" checked={form.add_to_today} disabled={!["not_started", "in_progress"].includes(form.status)} onChange={(event) => update("add_to_today", event.target.checked)} />
         加入今日 Today
       </label> : null}
       <details className="rounded-2xl border border-slate-200 p-3">
-        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期／邊個跟 <span className="text-xs font-normal text-slate-500">{form.due_date || "無 Deadline"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
+        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期／邊個跟 <span className="text-xs font-normal text-slate-500">{dueDate || "無 Deadline"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <DueDatePicker
-          value={form.due_date}
+          value={dueDate}
           label="Deadline（可留空）"
-          onChange={(value) => update("due_date", value)}
+          onChange={(value) => setForm((current) => ({ ...current, due_date: value, priority_deadline_mode: "manual" }))}
         />
       {!initialTask ? <label>
         <span className="label">邊個跟？</span>
@@ -492,7 +531,7 @@ export function TaskForm({
           <summary className="min-h-11 cursor-pointer py-2 font-extrabold text-slate-900">自訂哪幾日做／提醒{form.work_dates.length ? `（已揀 ${form.work_dates.length} 日）` : "（選填）"}</summary>
           <TaskWorkDaysPicker
             startDate={form.work_start_date}
-            dueDate={form.due_date}
+            dueDate={dueDate}
             workDates={form.work_dates}
             disabled={saving}
             onChange={(startDate, workDates) => setForm((current) => ({ ...current, work_start_date: startDate, work_dates: workDates }))}
@@ -604,11 +643,11 @@ export function TaskForm({
                   </div>
                 </fieldset>
               )}
-              {form.due_date && nextRoutineDueDate ? (
+              {dueDate && nextRoutineDueDate ? (
                 <p className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-indigo-800" aria-live="polite">
-                  首次到期：{formatRoutineDate(form.due_date)} · 如完成，下一次：{formatRoutineDate(nextRoutineDueDate)}
+                  首次到期：{formatRoutineDate(dueDate)} · 如完成，下一次：{formatRoutineDate(nextRoutineDueDate)}
                 </p>
-              ) : <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">{form.due_date && form.recurrence_mode === "weekly" ? "請至少選擇一個星期日子。" : "請先在上方設定首次到期日。"}</p>}
+              ) : <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900">{dueDate && form.recurrence_mode === "weekly" ? "請至少選擇一個星期日子。" : "請先在上方設定首次到期日。"}</p>}
               <fieldset>
                 <legend className="label">幾時完結</legend>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -623,7 +662,7 @@ export function TaskForm({
                 </div>
               </fieldset>
               {form.recurrence_end_mode === "date" ? (
-                <label><span className="label">結束日期</span><input className="field mt-2 bg-white" type="date" min={form.due_date || undefined} value={form.recurrence_ends_on} onChange={(event) => update("recurrence_ends_on", event.target.value)} required /></label>
+                <label><span className="label">結束日期</span><input className="field mt-2 bg-white" type="date" min={dueDate || undefined} value={form.recurrence_ends_on} onChange={(event) => update("recurrence_ends_on", event.target.value)} required /></label>
               ) : null}
               <p className="text-xs font-semibold leading-5 text-slate-600">不設「重複次數」。到指定結束日期後，系統會自動停止建立下一次。</p>
             </div>

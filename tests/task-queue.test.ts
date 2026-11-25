@@ -109,7 +109,9 @@ test("task UI filters by tags, previews five active items and keeps the calendar
   assert.match(calendar, /另有 \+\{dayTasks\.length - 3\} 項/);
   assert.match(form, /<DueDatePicker/);
   assert.match(duePicker, /到期日（可留空）/);
-  assert.match(form, /requestedPriority: priorityFromTaskTags\(selectedTags, catalog\)/);
+  assert.match(form, /priorityFromTaskTags\(selectedTags, catalog\)/);
+  assert.match(form, /priorityDefaultDeadline/);
+  assert.match(form, /priorityDeadlineMode/);
   assert.match(form, /taskTagPriorityChange/);
   assert.doesNotMatch(form, /Priority 優先次序/);
   assert.match(styles, /@page \{ size: A4 portrait/);

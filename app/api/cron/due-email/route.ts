@@ -24,12 +24,20 @@ export async function GET(request: Request) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const secret = process.env.CRON_SECRET;
-  if (!url || !key || !secret || !process.env.RESEND_API_KEY) {
-    return Response.json({ error: "Email digest server credentials are not configured." }, { status: 503 });
+  if (!url || !key || !secret) {
+    return Response.json({ error: "Cron server credentials are not configured." }, { status: 503 });
   }
   const client = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
+  // The existing 08:30 HKT job persists increases. Readers project the same
+  // HK date boundary before the job runs. Email failure must not suppress this.
+  const promotion = await client.rpc("promote_dayline_task_priorities");
+  if (promotion.error && promotion.error.code !== "PGRST202") console.error("[cron/due-email] priority promotion failed");
+  const prioritiesPromoted = promotion.error ? null : promotion.data;
+  if (!process.env.RESEND_API_KEY) {
+    return Response.json({ error: "Email digest server credentials are not configured.", prioritiesPromoted }, { status: 503 });
+  }
   const digestDate = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Hong_Kong",
     year: "numeric",
@@ -88,7 +96,7 @@ export async function GET(request: Request) {
     }
   }
   return Response.json(
-    { date: digestDate, claimed: claimed.data?.length ?? 0, results },
+    { date: digestDate, claimed: claimed.data?.length ?? 0, results, prioritiesPromoted },
     { headers: { "Cache-Control": "no-store" } }
   );
 }
