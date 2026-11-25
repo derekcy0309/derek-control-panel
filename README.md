@@ -40,7 +40,7 @@
 - Backup／Restore：本人帳戶 JSON 與常用 CSV 匯出；還原先預覽、需明確確認，只新增缺少資料、從不覆蓋或重設 production data
 - 細步驟備份：JSON 包含本人任務內的細步驟；還原沿用原本「只新增、不覆蓋」流程，舊版 JSON 沒有細步驟亦可正常還原。
 - Tags 延續：重複工作下一期沿用剛完成一期的本人 Tags；JSON 備份及安全還原包括私人 Tags／連結／初始化設定，任務 CSV 亦列出 Tags。舊格式相容、不覆蓋既有資料或分享設定；見 [`docs/tag-continuity.md`](docs/tag-continuity.md)。
-- 原有 Grok Agent 登入：管理員可用到期／可撤銷 Access Code 開放本人指定 Task／Notes 的讀取及新增；舊 Code 不開放修改、刪除、財務、藥物或其他用戶。見 [原有 Grok Agent 連接](docs/grok-agent-access.md)。
+- AI Agent 登入：管理員可用到期／可撤銷 Access Code 開放本人 Task／筆記讀取、新增及修改；封存須本人確認。新 Code 預設本人範圍，舊 Code 不會自動擴權，Agent 均不可存取用戶設定。見 [AI Agent 連接](docs/grok-agent-access.md)。
 - 獨立 Grok 本人資料連接：預設關閉；Derek 可用專用 Code 讀取本人指定模組，包括個人財務和按月查 iCloud。受支援的刪除只可準備封存草稿，需本人登入逐筆核對確認。見 [Grok 本人資料連接](docs/grok-personal-access.md)。
 - Capacity Overload Warning：以能量、可用時間、WIP、deadline、night-shift 及未來家庭／健康承諾作溫和容量提示；只建議可延期／交接項目，所有改動仍要本人確認
 - Life OS 權限分層：個人及工作預設私人；只有已接受家庭連結的 `family + household` 項目會共同可見，未整理 Inbox 永遠先保持私人

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { agentUuidPattern, validateAgentCreate } from "@/lib/agent-access";
+import { agentUuidPattern, validateAgentArchiveRequest, validateAgentCreate, validateAgentUpdate } from "@/lib/agent-access";
 import { agentJson, readAgentBody, runAgentOperation } from "@/lib/server/agent-request";
 export const dynamic = "force-dynamic";
 
@@ -16,11 +16,20 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   const body = await readAgentBody(request); if (body instanceof Response) return body;
-  const valid = validateAgentCreate(body); if ("error" in valid) return agentJson({ error: valid.error }, 422);
+  const archiveRequested = body.action === "request_archive";
+  // The SQL grant rechecks tag requirements: older, selected grants still
+  // require at least one of the owner's explicitly permitted Tags.
+  const valid = archiveRequested ? validateAgentArchiveRequest(body) : validateAgentCreate(body, true);
+  if ("error" in valid) return agentJson({ error: valid.error }, 422);
   const result = await runAgentOperation(request, valid.action, valid.payload);
-  return result instanceof Response ? result : agentJson(result, 201);
+  return result instanceof Response ? result : agentJson(result, archiveRequested ? 202 : 201);
 }
-function forbidden() { return agentJson({ error: "Agent 不可修改、完成、轉交、封存或刪除現有資料。" }, 403); }
+export async function PATCH(request: NextRequest) {
+  const body = await readAgentBody(request); if (body instanceof Response) return body;
+  const valid = validateAgentUpdate(body); if ("error" in valid) return agentJson({ error: valid.error }, 422);
+  const result = await runAgentOperation(request, valid.action, valid.payload);
+  return result instanceof Response ? result : agentJson(result);
+}
+function forbidden() { return agentJson({ error: "Agent 不可直接刪除或取代資料。封存只可提交請求，由資料擁有人喺日序確認。" }, 403); }
 export const DELETE = forbidden;
 export const PUT = forbidden;
-export const PATCH = forbidden;

@@ -15,7 +15,7 @@ async function admin(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const context = await admin(request); if (context instanceof Response) return context;
   const [grants, events, tasks, notes, tags] = await Promise.all([
-    context.client.from("agent_access_grants").select("id,label,key_fingerprint,created_at,expires_at,revoked_at,last_used_at").eq("owner_id", context.user.id).order("created_at", { ascending: false }).limit(30),
+    context.client.from("agent_access_grants").select("id,label,key_fingerprint,created_at,expires_at,revoked_at,last_used_at,owner_workspace").eq("owner_id", context.user.id).order("created_at", { ascending: false }).limit(30),
     context.client.from("agent_access_events").select("id,grant_id,action,resource_type,resource_id,created_at").eq("owner_id", context.user.id).order("created_at", { ascending: false }).limit(20),
     context.client.from("tasks").select("id,title").eq("owner_id", context.user.id).is("deleted_at", null).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
     context.client.from("operating_items").select("id,title").eq("owner_id", context.user.id).eq("item_type", "note").is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
@@ -36,11 +36,16 @@ export async function POST(request: NextRequest) {
   }
   if (body.action !== "create") return agentJson({ error: "不支援此管理操作。" }, 400);
   const valid = validateAgentGrant(body); if ("error" in valid) return agentJson({ error: valid.error }, 422);
+  if (valid.data.scope === "owner_workspace" && (!request.cookies.get("dcp_access")?.value || context.user.is_anonymous)) {
+    return agentJson({ error: "請先用本人帳戶登入日序，先可以新增個人工作 Agent。" }, 403);
+  }
   const credential = newAgentKey();
-  const result = await context.client.rpc("create_my_agent_access", {
-    p_token_hash: credential.hash, p_label: valid.data.label, p_days: valid.data.days,
-    p_task_ids: valid.data.taskIds, p_note_ids: valid.data.noteIds, p_tag_ids: valid.data.tagIds
-  });
+  const grantInput = { p_token_hash: credential.hash, p_label: valid.data.label, p_days: valid.data.days };
+  const result = valid.data.scope === "owner_workspace"
+    ? await context.client.rpc("create_my_owner_workspace_agent", grantInput)
+    : await context.client.rpc("create_my_agent_access", {
+      ...grantInput, p_task_ids: valid.data.taskIds, p_note_ids: valid.data.noteIds, p_tag_ids: valid.data.tagIds
+    });
   if (result.error) return agentDatabaseError(result.error);
   // Returned once, only to the authenticated admin. Never logged/persisted raw.
   return agentJson({ grant: result.data, accessCode: credential.key, loginPath: "/agent" }, 201);

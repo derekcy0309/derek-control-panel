@@ -1,9 +1,9 @@
 // Shared validation only. No credentials, service clients or Node-only imports.
 export type AgentKind = "task" | "note";
 export type AgentTag = { id: string; name: string };
-export type AgentGrant = { id: string; label: string; key_fingerprint: string; created_at: string; expires_at: string; revoked_at: string | null; last_used_at: string | null };
+export type AgentGrant = { id: string; label: string; key_fingerprint: string; created_at: string; expires_at: string; revoked_at: string | null; last_used_at: string | null; owner_workspace?: boolean };
 export type AgentEvent = { id: string; grant_id: string; action: string; resource_type: AgentKind | null; resource_id: string | null; created_at: string };
-export type AgentStatus = { id: string; label: string; expiresAt: string; tags: AgentTag[]; scope?: "school_only"; permissions: { read: boolean; create: boolean; update: false; delete: false } };
+export type AgentStatus = { id: string; label: string; expiresAt: string; tags: AgentTag[]; scope?: "school_only" | "owner_workspace"; permissions: { read: boolean; create: boolean; update: boolean; delete: false; requestArchive?: boolean } };
 export type AgentItem = { id: string; kind: AgentKind; title: string; description?: string | null; notes?: string | null; due_date?: string | null; status?: string; requested_priority?: number; category?: string | null; tags?: AgentTag[]; created_at?: string };
 
 export const agentKeyPattern = /^dcp_grok_[A-Za-z0-9_-]{43}$/;
@@ -18,16 +18,31 @@ function ids(value: unknown, maximum: number): string[] | null {
 }
 export function validateAgentGrant(value: unknown) {
   const input = agentObject(value);
-  if (!input || !hasOnlyAgentFields(input, ["action", "label", "days", "taskIds", "noteIds", "tagIds", "acknowledged"])) return { error: "Agent 授權資料不正確。" } as const;
+  if (!input || !hasOnlyAgentFields(input, ["action", "scope", "label", "days", "taskIds", "noteIds", "tagIds", "acknowledged"])) return { error: "Agent 授權資料不正確。" } as const;
   const label = typeof input.label === "string" ? input.label.trim() : "Grok Bot";
-  const taskIds = ids(input.taskIds, 100), noteIds = ids(input.noteIds, 100), tagIds = ids(input.tagIds, 20);
   if (!label || Array.from(label).length > 50 || ![1, 7, 30, 90].includes(Number(input.days)) || typeof input.days !== "number") return { error: "請填寫連接名稱及有效期。" } as const;
+  // Preserve old clients' deliberately selected grants. A new form with no
+  // selection fields gets the owner workspace only after explicit consent.
+  const hasSelections = ["taskIds", "noteIds", "tagIds"].some(field => Object.hasOwn(input, field));
+  const scope = Object.hasOwn(input, "scope") ? input.scope : hasSelections ? "selected" : "owner_workspace";
+  if (scope !== "owner_workspace" && scope !== "selected") return { error: "Agent 授權範圍不正確。" } as const;
+  if (input.acknowledged !== true) return { error: "請先確認同意所選的 Agent 存取範圍。" } as const;
+  if (scope === "owner_workspace") {
+    if (hasSelections) return { error: "本人工作範圍不接受逐項授權清單。" } as const;
+    return { data: { scope, label, days: input.days } } as const;
+  }
+  const taskIds = ids(input.taskIds, 100), noteIds = ids(input.noteIds, 100), tagIds = ids(input.tagIds, 20);
   if (!taskIds || !noteIds || !tagIds?.length) return { error: "請選最少一個可用於新增 Task 的 Tag；每類最多開放 100 項資料。" } as const;
-  if (input.acknowledged !== true) return { error: "請先確認你同意 Grok 讀取選定內容及新增 Task／Notes。" } as const;
-  return { data: { label, days: input.days as number, taskIds, noteIds, tagIds } } as const;
+  return { data: { scope, label, days: input.days, taskIds, noteIds, tagIds } } as const;
 }
 
-export function validateAgentCreate(value: unknown) {
+function validDay(value: unknown) {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(`${value}T00:00:00Z`))
+    && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value && !value.startsWith("0000-");
+}
+
+export function validateAgentCreate(value: unknown, allowUnlabelled = false) {
   const input = agentObject(value);
   if (!input || (input.kind !== "task" && input.kind !== "note")) return { error: "Agent 只可新增 Task 或 Notes。" } as const;
   const allowed = input.kind === "task" ? ["kind", "requestId", "title", "description", "dueDate", "priority", "tagIds"] : ["kind", "requestId", "title", "description", "category"];
@@ -42,8 +57,66 @@ export function validateAgentCreate(value: unknown) {
     return { action: "create_note", payload: { request_id: input.requestId, title, description, category } } as const;
   }
   const dueDate = input.dueDate == null || input.dueDate === "" ? null : input.dueDate;
-  if (dueDate !== null && (typeof dueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !Number.isFinite(Date.parse(`${dueDate}T00:00:00Z`)) || new Date(`${dueDate}T00:00:00Z`).toISOString().slice(0, 10) !== dueDate)) return { error: "完成日期不正確；沒有期限可留空。" } as const;
-  const priority = input.priority ?? 3, tagIds = ids(input.tagIds, 20);
-  if (![1, 3, 5].includes(priority as number) || typeof priority !== "number" || !tagIds?.length) return { error: "請選 Priority 及最少一個已授權 Tag。" } as const;
+  if (dueDate !== null && !validDay(dueDate)) return { error: "完成日期不正確；沒有期限可留空。" } as const;
+  const priority = input.priority ?? 3;
+  const tagIds = allowUnlabelled && !Object.hasOwn(input, "tagIds") ? [] : ids(input.tagIds, 20);
+  if (typeof priority !== "number" || ![1, 3, 5].includes(priority) || !tagIds || (!allowUnlabelled && !tagIds.length)) return { error: "請核對 Priority 同可用嘅 Tags。" } as const;
   return { action: "create_task", payload: { request_id: input.requestId, title, description, due_date: dueDate, priority, tag_ids: tagIds } } as const;
+}
+
+export function validateAgentUpdate(value: unknown) {
+  const input = agentObject(value);
+  if (!input || !hasOnlyAgentFields(input, ["kind", "id", "requestId", "changes"])
+      || (input.kind !== "task" && input.kind !== "note")
+      || typeof input.id !== "string" || !agentUuidPattern.test(input.id)
+      || typeof input.requestId !== "string" || !agentUuidPattern.test(input.requestId)) {
+    return { error: "修改識別碼或項目類型不正確。" } as const;
+  }
+  const changes = agentObject(input.changes);
+  const task = input.kind === "task";
+  if (!changes || !Object.keys(changes).length || !hasOnlyAgentFields(changes,
+    task ? ["title", "description", "dueDate", "priority", "status", "tagIds"] : ["title", "description", "category"])) {
+    return { error: "只可修改 Task 或記事嘅內容；不可更改設定、擁有權、負責人或分享。" } as const;
+  }
+  const patch: Record<string, string | number | string[] | null> = {};
+  for (const field of ["title", "description", "category"] as const) {
+    if (!Object.hasOwn(changes, field)) continue;
+    const raw = changes[field];
+    const trimmed = typeof raw === "string" ? raw.trim() : null;
+    const max = field === "title" ? 500 : field === "description" ? 10_000 : 40;
+    if (trimmed === null || (field === "title" && !trimmed) || Array.from(trimmed).length > max) {
+      return { error: "請核對名稱及內容長度。" } as const;
+    }
+    patch[field] = trimmed;
+  }
+  if (Object.hasOwn(changes, "dueDate")) {
+    if (changes.dueDate === null || changes.dueDate === "") patch.due_date = null;
+    else if (typeof changes.dueDate === "string" && validDay(changes.dueDate)) patch.due_date = changes.dueDate;
+    else return { error: "完成日期不正確；如無期限請留空。" } as const;
+  }
+  if (Object.hasOwn(changes, "priority")) {
+    if (typeof changes.priority !== "number" || ![1, 3, 5].includes(changes.priority)) return { error: "Priority 不正確。" } as const;
+    patch.priority = changes.priority;
+  }
+  if (Object.hasOwn(changes, "status")) {
+    if (typeof changes.status !== "string" || !["not_started", "in_progress", "waiting", "blocked", "done", "cancelled"].includes(changes.status)) {
+      return { error: "Task 狀態不正確。" } as const;
+    }
+    patch.status = changes.status;
+  }
+  if (Object.hasOwn(changes, "tagIds")) {
+    const parsed = ids(changes.tagIds, 20);
+    if (!parsed) return { error: "Tags 不正確；每項最多 20 個。" } as const;
+    patch.tag_ids = parsed;
+  }
+  return { action: "update", payload: { kind: input.kind, id: input.id, request_id: input.requestId, changes: patch } } as const;
+}
+
+export function validateAgentArchiveRequest(value: unknown) {
+  const input = agentObject(value);
+  if (!input || !hasOnlyAgentFields(input, ["action", "kind", "id"]) || input.action !== "request_archive"
+      || (input.kind !== "task" && input.kind !== "note") || typeof input.id !== "string" || !agentUuidPattern.test(input.id)) {
+    return { error: "請只指定一項 Task 或記事；封存要由本人喺日序確認。" } as const;
+  }
+  return { action: "request_archive", payload: { kind: input.kind, id: input.id } } as const;
 }

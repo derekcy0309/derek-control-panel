@@ -4,13 +4,15 @@
 
 `/agent` 是現有 Panel 的受限工作區，不是另一套 Task system。Grok Bot 可使用瀏覽器打開它，再由使用者在 Grok Vault／Secure Form 填入 Access Code。毋須建立假 Email 或分享 Derek 的 Google／管理員密碼，亦不呼叫收費模型 API。
 
-- 只可讀取授權者本人擁有、逐項開放的 active Task／Notes，以及此連接自己新增的項目。
-- 可新增私人 Task／Notes，帶本人指定的 Tags；新項目仍進入原本 `tasks`／`operating_items`。
-- 不可 update、完成、轉交、封存、delete、改 Tags 定義、分享或帳戶權限。
+- **新 Code 預設「管理本人 Task／記事」**：只讀取授權人名下現有及日後的未封存 Task／Notes，新增私人項目，並修改指定欄位，例如標題、內容、期限、優先度、已存在的 Task Tags、筆記分類。私人非恆常任務也可按既有工作規則改狀態；共用、恆常、相連的流程不會由 Agent 自行更動。
+- 新 Code 可以提出單筆封存，但不能直接封存或永久刪除。授權人須近期重新登入，核對本人指示，再到設定的「封存建議 · 由我確認」逐筆確認。已共用／相連、資料有變、授權失效或逾時的請求不執行。
+- **舊 Code 保留舊權限**；建立時亦可揀「只開放指定項目」，沿用逐項讀取加新增。所有 Code 都不可操作用戶設定、其他用戶資料、指派、分享、權限或 Tags 定義。子女及學校、Calendar 及 Grok 本人資料仍各自授權，不由新預設開放。
 - 即使另一人的工作已分享給授權者，也不能經此入口讀取。財務、藥物、附件、resource pack、handover notes 等不在 Agent API 範圍。
 - 開放的 Task／Notes 文字本身可能包含私人內容，使用者應先檢查。沒有按名稱自動判斷健康狀況或刪改內容。
 
-管理員在 Settings →「Grok 專用登入」可選 Tags、開放項目及 1／7／30／90 日有效期，閱讀同意文字後建立。Access Code 只回傳一次，可隨時停用。最多 5 個有效連接；重設採停用舊 Code、建立新 Code，不會復活舊權限。
+管理員在 Settings →「AI Bot 登入」揀 1／7／30／90 日有效期，閱讀同意文字後建立。Access Code 只回傳一次，可隨時停用。最多 5 個有效連接；重設採停用舊 Code、建立新 Code，不會復活舊權限。
+
+自訂 Agent 可沿用 `GET /api/agent?view=list&kind=task` ／ `view=detail&kind=note&id=…`，以及 `POST /api/agent` 新增。新 Code 容許省略 Task Tags。更新用 `PATCH /api/agent`，JSON 為 `{kind,id,requestId,changes}`，只提供想改的欄位（Task：`title`、`description`、`dueDate`、`priority`、`tagIds`、`status`；Notes：`title`、`description`、`category`）。寫入失敗重試用同一 request ID。提出封存用 `POST /api/agent` JSON `{action:"request_archive",kind,id}`；HTTP 202 只表示待本人確認，並非已封存。
 
 Agent 登入會移除**該瀏覽器**原有的人用 session cookies，防止 Grok 共用電腦保留管理員登入；不撤銷其他裝置登入。原有三人的 Google Auth、帳戶及權限不改。
 
@@ -21,7 +23,7 @@ Grok 官方說明：同一 Grok 帳戶下的 Bots 共用 cookies／登入，並�
 - 隨機 256-bit Code，`dcp_grok_` 前綴；DB 只存 SHA-256 雜湊，authenticated 使用者連雜湊欄位亦不能 SELECT。
 - 登入只收 JSON POST；Code 不可放網址。Cookie 為 HttpOnly／Secure（production）／SameSite Strict，Path `/api/agent`，到期不超過 grant。
 - 原本人用 API 不接受 Code；Agent API 不採用人用 cookie／JWT，也沒有任意 SQL／REST proxy。
-- 伺服器保留原本 server-only `SUPABASE_SERVICE_ROLE_KEY`，只用它呼叫 allowlisted `agent_access_operation`。RPC 本身為 SECURITY INVOKER，只有 `service_role` 可 EXECUTE，重新驗證 hash、active admin owner、到期、撤銷、資料擁有者及逐項 scope。
+- 伺服器保留原本 server-only `SUPABASE_SERVICE_ROLE_KEY`，只用它呼叫 allowlisted `agent_access_operation`。RPC 本身為 SECURITY INVOKER，只有 `service_role` 可 EXECUTE，重新驗證 hash、active admin owner、到期、撤銷、資料擁有者及 scope。封存確認只接受經驗證的本人 session，不接受 Agent Code 或 service JWT。
 - 新增與 audit／Tags／idempotency ledger 在同一 DB transaction。以 grant + request UUID 防重複；同 UUID 不同內容回 409。
 - 每連接每分鐘最多 60 次成功操作、每香港日最多新增 50 項，counter 與鎖在 DB，不用不可靠的 function process memory。
 - log 只記錄固定錯誤碼；audit 只記 action、時間、grant／resource ID，不含 Code、文字、健康或財務內容。
@@ -32,6 +34,8 @@ Grok 官方說明：同一 Grok 帳戶下的 Bots 共用 cookies／登入，並�
 `20261114071824_grok_agent_access.sql` 新增四表：`agent_access_grants`、`agent_access_resources`、`agent_access_events`、`agent_write_requests`，全部開 RLS。本人 admin 只能建立／查看自己的授權及不可逆停用，不能讀 hash 或操作其他人的授權。
 
 `tasks`／`operating_items` 只新增可空的 `created_by_agent_id` 及 index；不可由一般使用者冒認或修改 attribution。既有 rows、RLS、欄位、財務、recurrence、分享不重寫。備份不包含 Access Code／grant，不會從舊 JSON 重新授權 AI。
+
+兩個 `*_owner_workspace_agent*.sql` migration 新增範圍標記（舊 Code 默認 false）、只限 server 的操作及私人封存覆核。回復順序：先回退 app，再執行 `supabase/rollback-owner-workspace-agent-archive.sql` 及 `supabase/rollback-owner-workspace-agent.sql`。會停用新 Code／待覆核請求，保留 Task、Notes 及 audit，舊 Agent、學校及 Grok 授權不受影響。
 
 回復：先將 app 回到部署前 commit `5b58437e66e9fcd4b7a7b35a82de7cb563b012a3`，再用 `supabase/rollback-20261114071824-grok-agent-access.sql` 停用 RPC。保留表、audit、已新增 Task／Notes，不 DROP 或清資料。
 
@@ -45,7 +49,8 @@ Security advisor 的 `agent_write_requests`「RLS enabled, no policy」是刻意
 
 - `tests/agent-access.test.ts`：key、輸入驗證、固定能力、API 隔離合約。
 - `tests/sql/grok-agent-access.mjs`：隔離 Postgres，真實 migration、本人 scope、新增、重試、撤銷及舊財務不變。
-- `tests/api/grok-agent.mjs`：真正 Next.js handlers／本機 HTTP fixture；login cookie、hash-only RPC、Origin、禁止寫入舊資料、拒絕人用 API。
+- `tests/api/grok-agent.mjs`：真正 Next.js handlers／本機 HTTP fixture；login cookie、hash-only RPC、Origin、舊 Code 不能修改、新 Code 安全更新及拒絕人用 API。
+- `tests/sql/owner-workspace-agent-archive.mjs` 及 `tests/api/owner-workspace-agent-archive.mjs`：已驗證本人確認、隔離、重試、一致性、撤銷及回復。
 - `tests/browser/grok-agent.mjs`：360／1280 px 的登入、閱讀、新增、Notes 無多餘日期、草稿／重試，以及管理員 Code 建立／停用。
 
 沒有真人 Grok Bot E2E（需使用者自己的 Grok Vault／Secure Form）；不能把 Panel smoke check 說成已完成第三方連接。
