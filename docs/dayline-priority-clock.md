@@ -9,6 +9,6 @@
 
 ## 部署及回復
 
-先在隔離環境執行並驗證 `20261125090825_dayline_task_priority_grade.sql`，再部署 app。沒有新增環境變數或雲端排程；沿用原本香港時間 08:30 受驗證的 Cron 保存升級。在 Cron 前，介面亦以香港日期計出同樣的結果。資料庫只會改分級欄位及相容的排序數字，不改 Deadline 或 Tag links。Backup JSON 包含新欄位；restore v4 只還原今次新建立的本人任務，不更新衝突記錄。
+先在隔離環境執行並驗證 `20261125092501_dayline_task_priority_grade.sql`，再部署 app。沒有新增環境變數或雲端排程；沿用原本香港時間 08:30 受驗證的 Cron 保存升級。在 Cron 前，介面亦以香港日期計出同樣的結果。資料庫只會改分級欄位及相容的排序數字，不改 Deadline 或 Tag links。Backup JSON 包含新欄位；restore v4 只還原今次新建立的本人任務，不更新衝突記錄。
 
-若要回復，先回退 app，再依 `supabase/rollback-20261125090825-dayline-task-priority-grade.sql` 停用升級、還原新增的 trigger / RPC，保留已存分級、備份格式、Tags 及其他資料。香港時鐘的公開資料不需要登入或接觸帳戶資料。
+若要回復，先回退 app，再依 `supabase/rollback-20261125092501-dayline-task-priority-grade.sql` 停用升級、還原新增的 trigger / RPC，保留已存分級、備份格式、Tags 及其他資料。香港時鐘的公開資料不需要登入或接觸帳戶資料。
