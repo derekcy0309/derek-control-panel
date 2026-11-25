@@ -305,7 +305,7 @@ export function TaskForm({
     event.preventDefault();
     if (saving || createdTaskId) return;
     setError("");
-    if (!form.title.trim()) { setError("寫低個 Task 名就得。"); return; }
+    if (!form.title.trim()) { setError("請輸入任務名稱。"); return; }
     const workSchedule = validateTaskWorkSchedule({
       startDate: form.work_start_date || form.work_dates[0] || null,
       dueDate: dueDate || null,
@@ -449,11 +449,11 @@ export function TaskForm({
       ) : null}
       <div className={inline ? "flex flex-wrap items-end gap-2" : ""}><label className="block min-w-0 flex-1">
         <span className="label">任務名稱</span>
-        <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="寫低要做嘅事，或者用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
+        <input id={inline ? "dashboard-task-name" : undefined} className="field mt-1" placeholder="輸入任務名稱，亦可使用鍵盤聽寫" value={form.title} onChange={(event) => update("title", event.target.value)} autoFocus={!inline} required maxLength={250}/>
       </label>
       {inline ? <Button type="submit" className="simple-add-task shrink-0 whitespace-nowrap" disabled={saving || Boolean(createdTaskId)}>{saving ? "儲存中…" : "儲存任務"}</Button> : null}</div>
       {!initialTask ? <button type="button" aria-expanded={optionsOpen} aria-controls={priorityPickerId+"-details"} onClick={()=>setOptionsOpen(!optionsOpen)} className="min-h-11 justify-self-start text-left text-sm font-semibold underline">
-        {optionsOpen?"收起詳情":"加詳情"}{!optionsOpen && (dueDate || form.handoff_to_user_id) ? " · "+[dueDate,participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name].filter(Boolean).join(" · ") : ""}
+        {optionsOpen?"收起詳情":"新增詳情"}{!optionsOpen && (dueDate || form.handoff_to_user_id) ? " · "+[dueDate,participants.find(p=>p.user_id===form.handoff_to_user_id)?.display_name].filter(Boolean).join(" · ") : ""}
       </button> : null}
       <div id={priorityPickerId+"-details"} hidden={!optionsOpen && !initialTask}><div className="grid gap-4">
       <div>
@@ -465,12 +465,12 @@ export function TaskForm({
         </select>
         <p id={priorityHintId} className="muted mt-1 text-xs leading-5">
           {initialTask
-            ? "改分級唔會改 Deadline；改日期亦唔會改分級。"
+            ? "更改分級不會影響限期；更改日期亦會保留原有分級。"
             : autoDeadline
               ? `預設 Deadline：${dueDate}。你可以改日期，分級會保留。`
               : selectedPriority
-                ? dueDate ? `自訂 Deadline：${dueDate}。改日期唔會改分級。` : "你已揀無 Deadline；分級會保留。"
-                : "揀咗分級會有預設 Deadline；你自己揀嘅日期會保留。"}
+                ? dueDate ? `自訂 Deadline：${dueDate}。更改日期不會影響分級。` : "已選擇不設限期；分級維持不變。"
+                : "選擇分級後，系統會建議限期；自行設定的日期會保留。"}
         </p>
       </div>
       <TaskTagPicker key={initialTask?.id ?? form.client_request_id} value={form.tag_ids} taskId={initialTask?.id} initialCatalog={knownTags} disabled={saving}
@@ -482,7 +482,7 @@ export function TaskForm({
         加入今日 Today
       </label> : null}
       <details className="rounded-2xl border border-slate-200 p-3">
-        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期／邊個跟 <span className="text-xs font-normal text-slate-500">{dueDate || "無 Deadline"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
+        <summary className="min-h-11 cursor-pointer py-2 font-bold text-slate-700">日期及負責人 <span className="text-xs font-normal text-slate-500">{dueDate || "無 Deadline"} · {form.handoff_to_user_id ? participants.find((person) => person.user_id === form.handoff_to_user_id)?.display_name : "我自己"}</span></summary>
       <div className="mt-3 grid gap-4 sm:grid-cols-2">
         <DueDatePicker
           value={dueDate}

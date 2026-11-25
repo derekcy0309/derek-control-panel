@@ -12,7 +12,7 @@ try {
  for(const width of [390,1280]){
   const context=await browser.newContext({serviceWorkers:"block",viewport:{width,height:840},timezoneId:"Asia/Hong_Kong"});
   const page=await context.newPage(),writes=[],external=[],errors=[];
-  let launch=null,unavailable=false;
+  let launch=null,unavailable=false,denyFile=true;
   const remote="https://resource.example.test/first-draft";
   page.on("pageerror",err=>errors.push(err.message));
   await page.clock.setFixedTime(new Date(date+"T02:00:00Z"));
@@ -23,7 +23,7 @@ try {
    let data={},status=200;
    if(r.method()!=="GET"){
     const input=r.postDataJSON();writes.push(input.action);
-    if(input.action==="open_task_storage_resource"){assert.equal(input.id,id);status=403;data={error:"測試權限"};}
+    if(input.action==="open_task_storage_resource"){assert.equal(input.id,id);status=denyFile?403:200;data=denyFile?{error:"測試權限"}:{url:remote+"?signed=fixture"};}
     else status=422;
    }else if(u.pathname==="/api/auth") data={user:{id:user}};
    else if(u.pathname==="/api/control"){
@@ -40,21 +40,24 @@ try {
   async function visit(){const url=origin+"/#dayline-start";if(page.url()===url)await page.reload();else await page.goto(url);await card.getByRole("heading",{name:task.title}).waitFor();}
   launch={kind:"web",label:"測試草稿",href:remote};
   await visit();
-  const link=card.getByRole("link",{name:"打開測試草稿"});
+  const link=card.getByRole("link",{name:"開啟測試草稿"});
   await link.waitFor();assert.equal(await link.getAttribute("href"),remote);
   assert.deepEqual(external.filter(url=>url===remote),[],"daily link does not launch an external resource");
   const popup=page.waitForEvent("popup");await link.click();await (await popup).close();
   launch=null;unavailable=true;await visit();
   await card.getByText("部分資源暫時未能讀取。",{exact:false}).waitFor();
-  await card.getByRole("button",{name:"再細一步"}).click();
-  await card.getByText("先搵到份文件，打開就得。",{exact:true}).waitFor();
+  await card.getByRole("button",{name:"再拆細一步"}).click();
+  await card.getByText("先找到並開啟文件。",{exact:true}).waitFor();
   assert.equal(page.url(),origin+"/#dayline-start");assert.deepEqual(writes,[]);
   launch={kind:"file",label:"私人檔案",resourceId:id};unavailable=false;await visit();
-  const file=card.getByRole("button",{name:"打開私人檔案"});await file.waitFor();
+  const file=card.getByRole("button",{name:"開啟私人檔案"});await file.waitFor();
   assert.deepEqual(writes,[]);await file.click();await card.getByRole("alert").waitFor();
   assert.deepEqual(writes,["open_task_storage_resource"]);assert.deepEqual(errors,[]);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
-  console.log("PASS "+width+"px: protected deep-link, click-only resource, inline fallback, storage denial, no task writes.");
+  denyFile=false;
+  await file.click();await page.waitForURL(remote+"?signed=fixture");
+  assert.deepEqual(writes,["open_task_storage_resource","open_task_storage_resource"]);
+  console.log("PASS "+width+"px: protected deep-link, click-only resource, inline fallback, storage denial/retry, no task writes.");
   await context.close();
  }
 }finally{await browser.close();}

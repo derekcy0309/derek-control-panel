@@ -156,17 +156,17 @@ try {
     assert.equal(await dashboardCards.count(),2);
     await dashboardToggle.click();
     if(process.env.SCREENSHOT_DIR){await mkdir(process.env.SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:`${process.env.SCREENSHOT_DIR}/${role}-${width}.png`,fullPage:true});}
-    await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
+    await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
     const guide=page.locator('.work-guide');await guide.getByRole('heading',{name:'我排第一件',exact:true}).waitFor();
     await stopHint.getByText('15:00 收手 · 仲有 8 分鐘',{exact:true}).waitFor();
     await guide.getByRole('button',{name:'再細一步'}).click();await guide.getByRole('button',{name:'起咗步，接住做'}).click();assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'記低下次點接'}).click();await guide.getByLabel('下次返嚟做乜？').fill('只係本分頁嘅草稿');
-    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
+    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
     assert.equal(await guide.getByLabel('下次返嚟做乜？').inputValue(),'只係本分頁嘅草稿');await guide.getByRole('button',{name:'取消',exact:true}).click();
     assert.equal(guideWrites,0);
     await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('status').filter({hasText:'成件 Task 未結案'}).waitFor();
     assert.equal(tasks[0].status,'not_started');assert.equal(guideWrites,1);
-    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.getByRole('link',{name:'開始呢件事',exact:true}).click();
+    await guide.getByRole('link',{name:/返今日總覽/}).click();await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();
     await guide.getByText(guideRecords.get(tasks[0].id).next_minimum_step,{exact:true}).waitFor();
     await guide.getByRole('button',{name:'呢步搞掂'}).click();await guide.getByRole('button',{name:'確認整件完成'}).waitFor();assert.equal(tasks[0].status,'not_started');
     await guide.getByRole('button',{name:'確認整件完成'}).click();await guide.getByRole('heading',{name:'我排第二件',exact:true}).waitFor();
@@ -200,7 +200,7 @@ try {
     assert.equal(await newTask.count(),1);assert.equal(navigations,0);
     await page.getByRole('tab',{name:/今日重點/}).click();
     const tagToggle=dialog.getByText('＋Tag（可選）',{exact:true});
-    await dialog.getByRole('button',{name:/加詳情/}).click();
+    await dialog.getByRole('button',{name:/新增詳情/}).click();
     if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
     await dialog.getByRole('button',{name:'P3',exact:true}).click();
     await dialog.getByRole('button',{name:'WECARE',exact:true}).click();
@@ -212,7 +212,7 @@ try {
       assert.ok((await gradePicker.locator('option:checked').innerText()).startsWith(label+' · '));
       await dialog.getByText('預設 Deadline：'+due+'。你可以改日期，分級會保留。',{exact:true}).waitFor();
     }
-    await dialog.getByText('日期／邊個跟',{exact:false}).click();
+    await dialog.getByText('日期及負責人',{exact:false}).click();
     await dialog.getByRole('button',{name:'今日',exact:true}).click();
     assert.equal(await gradePicker.inputValue(),'4','manually changing the date does not change grade');
     await gradePicker.selectOption('1');
@@ -225,11 +225,11 @@ try {
     assert.equal(draftAfterClose?.title,'草稿保留測試','closing the form must retain the entered draft');
     assert.equal(draftAfterClose?.priority_deadline_mode,'manual');
     assert.equal(draftAfterClose?.priority_grade,1);
-    await page.getByRole('link',{name:'開始呢件事',exact:true}).click();await guide.getByRole('link',{name:/返今日總覽/}).click();
+    await page.locator('#dayline-start').getByRole('link',{name:'開工導航',exact:true}).click();await guide.getByRole('link',{name:/返今日總覽/}).click();
     await page.getByRole('button',{name:'加 Task',exact:true}).click();
     await dialog.getByRole('status').filter({hasText:'已恢復上次未送出的任務草稿'}).waitFor({state:'visible'});
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
-    await dialog.getByRole('button',{name:/加詳情/}).click();
+    await dialog.getByRole('button',{name:/新增詳情/}).click();
     assert.equal(await gradePicker.inputValue(),'1');
     if(!(await dialog.getByRole('button',{name:'P3',exact:true}).isVisible())) await tagToggle.click();
     assert.equal(await dialog.getByRole('button',{name:'P3',exact:true}).getAttribute('aria-pressed'),'true');
@@ -241,12 +241,12 @@ try {
     createFailures=1;await saveButton.click();
     await dialog.getByRole('alert').filter({hasText:'驗證用網絡失敗'}).waitFor();
     assert.equal(await dialog.getByLabel('任務名稱',{exact:true}).inputValue(),'草稿保留測試');
-    await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/加詳情/}).waitFor();assert.equal(creates.length,3);
+    await dialog.getByLabel('任務名稱',{exact:true}).press('Enter');await dialog.getByRole('button',{name:/新增詳情/}).waitFor();assert.equal(creates.length,3);
     assert.equal(creates[1].clientRequestId,creates[2].clientRequestId);
     assert.equal(creates[2].priorityGrade,1);assert.equal(creates[2].priorityDeadlineMode,'manual');assert.equal(creates[2].dueDate,today);
     assert.equal(creates[2].requestedPriority,1);assert.equal(creates[2].energyLevel,undefined);assert.equal(creates[2].estimatedMinutes,undefined);
     assert.deepEqual(creates[2].workDates,[today]);assert.deepEqual(creates[2].tagIds,[tags.find(t=>t.name==='P3').id,tags.find(t=>t.name==='WECARE').id]);
-    await dialog.getByRole('button',{name:/加詳情/}).click();
+    await dialog.getByRole('button',{name:/新增詳情/}).click();
     if(!(await dialog.getByText('管理我的 Tags',{exact:true}).isVisible())) await tagToggle.click();
     await dialog.getByText('管理我的 Tags',{exact:true}).click();
     const manager=dialog.locator('fieldset').filter({has:page.getByText('管理我的 Tags',{exact:true})}).locator('details');
@@ -294,7 +294,7 @@ try {
     await gradedRow.getByRole('button',{name:'修改任務：'+graded.title,exact:true}).click();
     const editGrade=edit.getByLabel('優先級 Priority（選填）',{exact:true});
     assert.equal(await editGrade.inputValue(),'1');
-    await edit.getByText('日期／邊個跟',{exact:false}).click();
+    await edit.getByText('日期及負責人',{exact:false}).click();
     const changedDate=addDays(today,3);
     await edit.getByLabel('自選到期日',{exact:true}).fill(changedDate);
     assert.equal(await editGrade.inputValue(),'1');
@@ -307,7 +307,7 @@ try {
     if(await gradedRow.locator('details').getAttribute('open')===null)await gradedRow.locator('summary').click();
     await gradedRow.getByRole('button',{name:'修改任務：'+graded.title,exact:true}).click();
     await editGrade.selectOption('4');
-    await edit.getByText('日期／邊個跟',{exact:false}).click();
+    await edit.getByText('日期及負責人',{exact:false}).click();
     assert.equal(await edit.getByLabel('自選到期日',{exact:true}).inputValue(),changedDate);
     await edit.getByRole('button',{name:'儲存修改',exact:true}).press('Enter');
     await edit.waitFor({state:'hidden'});

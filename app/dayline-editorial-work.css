@@ -148,3 +148,9 @@
   .dl-calendar-mobile { display: block; padding: 0 .55rem .65rem; }
   .dl-calendar-tools { padding-inline: .45rem; }
 }
+/* Keep the first upcoming appointment in view beside the added draft control. */
+@media (max-width: 599px) {
+  #dayline-start .dl-first { margin-top: 8px; }
+  #dayline-start .dl-focus-actions { margin-top: 7px; }
+  #dayline-start > section[aria-label="工作草稿"] { margin-top: 2px; }
+}

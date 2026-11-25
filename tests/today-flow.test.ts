@@ -38,10 +38,10 @@ test("Today keeps the main action before secondary tools and exposes the followi
   const cards = await readFile(new URL("../components/dayline/TodayCards.tsx", import.meta.url), "utf8");
   assert.match(page, /simpleToday/);
   assert.match(page, /下一件：/);
-  assert.match(cards, /而家做/);
+  assert.match(cards, /現在處理/);
   assert.ok(page.indexOf("<DaylineNow") < page.indexOf("<DaylineNext") && page.indexOf("<DaylineNext") < page.lastIndexOf("<TodayAllTasks"));
   assert.match(page,/tasks=\{plan.top.slice\(1\)\}/);
   assert.match(tabs, /今日全部/);
   assert.match(tabs, /任務總表/);
-  assert.match(cards, /自己排今日/);
+  assert.match(cards, /編排今日任務/);
 });

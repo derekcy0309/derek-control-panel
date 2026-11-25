@@ -40,9 +40,9 @@ function fixture(overrides:{plan?:Row[];tasks?:Row[];steps?:Row[];edges?:Row[];a
 test("Grok's start footer contains one stable human-login link and no credentials/task IDs",()=>{
  assert.equal(briefStartUrl,"https://derek-control-panel.vercel.app/#dayline-start");
  for(const title of [null,"https://private.example/doc","other@example.hk","[open](x)","first\nsecond","x".repeat(161),"\u202eabc"]) {
-   assert.equal(briefStartFooter(title),"登入日序開工："+briefStartUrl);
+   assert.equal(briefStartFooter(title),"登入日序開始工作："+briefStartUrl);
  }
- assert.equal(briefStartFooter(" 改標題 "),"今日手排第一件可做：改標題｜登入日序開工："+briefStartUrl);
+ assert.equal(briefStartFooter(" 改標題 "),"今日首項工作：改標題｜登入日序開始工作："+briefStartUrl);
 });
 test("same owner's actual manual order wins over DB return order; read only winner title",async()=>{
  const f=fixture();assert.equal(await readBriefStartTitle(f.client,owner,day),"主動安排嘅第一件");assert.deepEqual(f.titles,[ids[0]]);

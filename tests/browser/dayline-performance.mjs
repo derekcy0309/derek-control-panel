@@ -51,7 +51,7 @@ async function run(path, holds, verify, failFocus = false) {
 
 try {
   await run("/",["/api/control?view=today"],async (page,calls,open)=>{
-    await page.getByRole("link",{name:"開始呢件事",exact:true}).waitFor();
+    await page.locator("#dayline-start").getByRole("link",{name:"開工導航",exact:true}).waitFor();
     await page.getByRole("tab",{name:"任務總表"}).click();
     await page.getByText("讀取完整任務資料中…",{exact:true}).waitFor();
     assert.ok(calls.indexOf("/api/control?view=today_focus") < calls.indexOf("/api/control?view=today"));
@@ -59,7 +59,7 @@ try {
     await page.locator("#task-action-list").waitFor();
   });
   await run("/",[],async (page,calls)=>{
-    await page.getByRole("link",{name:"開始呢件事",exact:true}).waitFor();
+    await page.locator("#dayline-start").getByRole("link",{name:"開工導航",exact:true}).waitFor();
     assert.equal(calls.filter(call=>call==="/api/control?view=today").length,1,"Narrow failure falls back to the existing full view once");
   },true);
   await run(`/calendar?date=${day}`,["/api/apple-calendar-month"],async (page,calls,open)=>{

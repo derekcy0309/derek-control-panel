@@ -7,5 +7,5 @@ export function briefStartFooter(title?: string | null) {
   // turn that into another link/instruction in a compact plain-text report.
   const safe = label && label.length <= 160 && !/[\p{C}\p{Zl}\p{Zp}<>\[\]`]/u.test(label)
     && !/(?:[a-z][\w+.-]*:\/\/|www\.|@|\b(?:mailto|tel|data|javascript):|[\w-]+\.[a-z]{2,}(?:\/|\b))/i.test(label);
-  return (safe ? `今日手排第一件可做：${label}｜` : "") + "登入日序開工：" + briefStartUrl;
+  return (safe ? `今日首項工作：${label}｜` : "") + "登入日序開始工作：" + briefStartUrl;
 }

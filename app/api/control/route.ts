@@ -2799,7 +2799,7 @@ async function workGuide({client,user}:RequestContext, requested:string, withLau
   if(!id)return jsonError("任務識別碼不正確。",400);
   const task=await client.from("tasks").select("id").eq("id",id).is("deleted_at",null).is("archived_at",null).not("status","in","(done,cancelled)").maybeSingle();
   if(task.error)return databaseError(task.error);
-  if(!task.data)return jsonError("任務已結束或你冇權限查看，請重新載入今日安排。",404);
+  if(!task.data)return jsonError("任務已結束或你沒有查看權限。請重新載入今日安排。",404);
   const [steps,latest,children,resources]=await Promise.all([
     client.from("task_steps").select("id,title,status,sort_order,updated_at").eq("task_id",id).order("sort_order").limit(50),
     client.from("task_checkpoints").select("id,author_id,current_position,completed_summary,next_minimum_step").eq("task_id",id).eq("state","saved").order("last_worked_at",{ascending:false}).order("created_at",{ascending:false}).limit(1).maybeSingle(),

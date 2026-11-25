@@ -19,17 +19,17 @@ function noteId(account: string, task: string) {
   return [h.slice(0, 8), h.slice(8, 12), "8" + h.slice(13, 16), "a" + h.slice(17, 20), h.slice(20, 32)].join("-");
 }
 const unavailable = () => privateJson({ error: "未能讀取私人草稿。請稍後重試。" }, 503);
-const conflict = () => privateJson({ error: "另一個畫面已更新草稿。你輸入嘅文字仍喺度；請先複製，再重讀。" }, 409);
+const conflict = () => privateJson({ error: "這份草稿已在其他視窗或裝置更新。請先複製此處未儲存的文字，再重新開啟草稿。" }, 409);
 async function scope(req: NextRequest) {
   const ctx = await activeStartReader(req);
   if (ctx instanceof Response) return ctx;
   if (req.headers.get("x-dayline-account") !== ctx.user.id) return privateJson({ error: "登入帳戶已變更，請重新整理。" }, 409);
   const tid = z.uuid().safeParse(req.nextUrl.searchParams.get("task"));
-  if (!tid.success) return privateJson({ error: "請重新打開呢件任務。" }, 422);
+  if (!tid.success) return privateJson({ error: "請重新開啟這項任務。" }, 422);
   // Same authenticated client and RLS as the task itself. Titles never come from the requester.
   const task = await ctx.client.from("tasks").select("id,title").eq("id", tid.data).is("deleted_at", null).is("archived_at", null).maybeSingle();
   if (task.error) return unavailable();
-  if (!task.data) return privateJson({ error: "未能開啟呢件任務。" }, 404);
+  if (!task.data) return privateJson({ error: "未能開啟這項任務。" }, 404);
   return { ctx, task: task.data, id: noteId(ctx.user.id, tid.data) };
 }
 async function readNote({ client, user }: Context, id: string, taskId: string) {
@@ -37,7 +37,7 @@ async function readNote({ client, user }: Context, id: string, taskId: string) {
   if (result.error) return unavailable();
   const note = result.data;
   if (!note) return null;
-  const sharedError = () => privateJson({ error: "呢份筆記已分享、封存或更改咗設定。請到「筆記」管理；呢度唔會繼續寫入。" }, 409);
+  const sharedError = () => privateJson({ error: "這份筆記已分享、封存或更改了設定。為保障私隱，請前往「筆記」管理。" }, 409);
   if (note.archived_at || !note.sensitive || note.area !== "personal" || note.visibility !== "private" || note.assignee_id
     || note.metadata?.source !== source || note.metadata?.taskId !== taskId) return sharedError();
   // Sharing a task does not share this unrelated Note. If the owner separately
@@ -58,10 +58,10 @@ export async function GET(req: NextRequest) {
   return privateJson({ text: note?.description ?? "", revision: note?.updated_at ?? null });
 }
 export async function POST(req: NextRequest) {
-  if (req.headers.get("origin") !== req.nextUrl.origin) return privateJson({ error: "請喺日序儲存草稿。" }, 403);
-  if (req.headers.get("content-type")?.split(";")[0].trim() !== "application/json") return privateJson({ error: "格式不正確。" }, 415);
+  if (req.headers.get("origin") !== req.nextUrl.origin) return privateJson({ error: "請返回日序儲存草稿。" }, 403);
+  if (req.headers.get("content-type")?.split(";")[0].trim() !== "application/json") return privateJson({ error: "草稿格式不正確。請返回日序再試。" }, 415);
   const body = saveInput.safeParse(await req.json().catch(() => null));
-  if (!body.success) return privateJson({ error: "請輸入 1 至 10,000 字嘅草稿。" }, 422);
+  if (!body.success) return privateJson({ error: "請輸入 1 至 10,000 字的草稿。" }, 422);
   const access = await scope(req);
   if (access instanceof Response) return access;
   const { ctx, task, id } = access;

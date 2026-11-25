@@ -132,7 +132,7 @@ try{
   assert.equal((await request('/api/agent/session',{method:'POST',headers:{Origin:'https://untrusted.example','Content-Type':'application/json'},body:JSON.stringify({key})})).status,403);
   assert.equal((await request('/api/control?view=bootstrap')).status,401);assert.equal((await request('/api/backup')).status,401);
   const brief=await request('/api/agent/brief');assert.equal(brief.status,200);const report=await brief.json();assert.match(report.text,/Own deadline/);assert.match(report.text,/Apple Calendar未連接/);assert.equal(report.days.length,3);assert.equal((await request('/api/agent/brief?owner_id=forged')).status,400);
-  assert.ok(report.text.endsWith("登入日序開工：https://derek-control-panel.vercel.app/#dayline-start"));
+  assert.ok(report.text.endsWith("登入日序開始工作：https://derek-control-panel.vercel.app/#dayline-start"));
   assert.equal(report.familyDates,undefined);assert.equal(report.familyWarning,undefined);
   assert.doesNotMatch(report.text,/學校 Deadline/);assert.equal((await request('/api/agent/school')).status,403);
   schoolOpen=true;assert.match((await(await request('/api/agent/brief')).json()).text,/學校 Deadline/);

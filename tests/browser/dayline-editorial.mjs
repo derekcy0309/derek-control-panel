@@ -110,7 +110,7 @@ try {
    });
    async function fit(label){assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,label+" "+width);}
    const photo=(label)=>photoDir?p.screenshot({path:fileURLToPath(new URL(`./${label}-${width}.png`,pathToFileURL(photoDir+"/"))),fullPage:true,animations:"disabled",style:"nextjs-portal{display:none!important}"}):null;
-   await p.goto(origin+"/");const start=p.getByRole("link",{name:"開始呢件事",exact:true});await start.waitFor();
+   await p.goto(origin+"/");const start=p.locator("#dayline-start").getByRole("link",{name:"開工導航",exact:true});await start.waitFor();
    await p.getByText(tasks[0].next_action,{exact:true}).first().waitFor();
    const nowCard=p.locator(".dl-editorial-board .dl-focus");
    for (const theme of ["light","dark"]) {

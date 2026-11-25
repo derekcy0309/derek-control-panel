@@ -48,7 +48,7 @@ try{
  assert.match(response.headers.get("cache-control"),/private, no-store/);
  const report=await response.json();if(fixtureError)throw fixtureError;
  assert.equal(report.days.length,3);assert.match(report.text,/學校 Deadline/);
- assert.ok(report.text.endsWith("今日手排第一件可做：已安排跟進｜登入日序開工："+start));
+ assert.ok(report.text.endsWith("今日首項工作：已安排跟進｜登入日序開始工作："+start));
  assert.ok(!report.text.includes(owner)&&!report.text.includes(id));
  console.log("PASS real /api/agent/brief: verified consent first, fixed owner and generic human-login CTA, school and three-day report preserved.");
 } finally {await new Promise(done=>db.close(done));}
