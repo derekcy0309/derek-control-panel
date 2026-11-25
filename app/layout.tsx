@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
 import "./dayline.css";
+import "./dayline-dark-contrast.css";
 
 export const metadata: Metadata = {
   title: { default: "日序 Dayline", template: "%s · 日序 Dayline" },

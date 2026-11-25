@@ -41,6 +41,19 @@ function contrastRatio(foreground, background) {
  return (Math.max(a,b) + .05) / (Math.min(a,b) + .05);
 }
 
+async function expectContrast(locator, description) {
+ const target=locator.first();
+ await target.waitFor({state:"visible"});
+ const {foreground,background}=await target.evaluate(el=>{
+  let surface=el;
+  while (getComputedStyle(surface).backgroundColor==="rgba(0, 0, 0, 0)" && surface.parentElement) surface=surface.parentElement;
+  return {foreground:getComputedStyle(el).color,background:getComputedStyle(surface).backgroundColor};
+ });
+ const ratio=contrastRatio(foreground,background);
+ assert.ok(ratio>=4.5,`${description}: ${ratio.toFixed(2)}:1 (${foreground} on ${background})`);
+ return ratio;
+}
+
 try {
  for (const width of [360,1280]) {
   const ctx = await browser.newContext({ viewport:{width,height:900}, serviceWorkers:"block", locale:"zh-HK", timezoneId:"Asia/Hong_Kong", reducedMotion:"reduce" });
@@ -119,6 +132,43 @@ try {
    }
    await p.evaluate(()=>{document.documentElement.dataset.theme="light";});
    if (process.env.DAYLINE_NOW_CONTRAST_ONLY === "1") { assert.deepEqual(errors,[]); continue; }
+   if (process.env.DAYLINE_PAGE_CONTRAST_ONLY === "1") {
+    const customTheme=theme=>p.evaluate(theme=>{document.documentElement.dataset.theme=theme;},theme);
+    const reports=[];
+    const sample=async (selector,description)=>reports.push([description,await expectContrast(p.locator(selector),description)]);
+    for (const theme of ["light","dark"]) {
+     await p.goto(origin+"/");
+     await p.locator(".dl-weather .dl-temp").first().waitFor();
+     await customTheme(theme);
+     for (const [selector,name] of [[".dl-harbour-figure figcaption","weather caption"],[".dl-weather .dl-temp","temperature"],[".dl-weather .dl-current small","weather details"],[".dl-weather .dl-forecast-toggle","forecast button"]]) {
+      await sample(selector,`${theme} ${name}`);
+     }
+     await p.goto(origin+"/calendar?date="+date);
+     const dateSelector=width<700?".dl-calendar-week button[aria-pressed='true']":".dl-calendar-grid [aria-current='date'] .dl-calendar-number";
+     await p.locator(dateSelector).waitFor();
+     await customTheme(theme);
+     await sample(dateSelector,`${theme} calendar date`);
+     if(width>=700)await sample(".dl-calendar-grid button[data-other='true']",`${theme} next month date`);
+     optedIn=true;
+     await p.goto(origin+"/briefing");
+     await p.getByRole("link",{name:"睇期刊",exact:true}).waitFor();
+     await customTheme(theme);
+     reports.push([`${theme} Reading Room link`,await expectContrast(p.getByRole("link",{name:"睇期刊",exact:true}),`${theme} Reading Room link`)]);
+     await p.goto(origin+"/traffic");
+     await p.getByText("HK$ 45",{exact:true}).first().waitFor();
+     await customTheme(theme);
+     for(const [selector,name] of [["#dl-traffic-title","traffic heading"],[".dl-road-heading p","traffic intro"],[".dl-road-atlas figcaption","map caption"],[".dl-road-choice[aria-pressed='true'] .dl-road-name small","selected route label"],[".dl-road-choice[aria-pressed='true'] .dl-road-value","selected route data"],[".dl-toll-section select","vehicle selector"],[".dl-home-fares strong","toll price"],[".dl-toll-section > small","toll source"]]){
+      await sample(selector,`${theme} ${name}`);
+     }
+     await p.getByRole("button",{name:"揀路段",exact:true}).click();
+     await sample(".dl-road-desk .dl-linkform select",`${theme} route picker`);
+     await sample(".dl-road-desk .dl-linkform button[type='submit']",`${theme} save route`);
+     await fit(`Traffic ${theme}`);
+    }
+    assert.deepEqual(errors,[]);
+    console.log(`PASS ${width}px Dayline colour pairs: ${reports.length} light/dark samples, minimum ${Math.min(...reports.map(([,ratio])=>ratio)).toFixed(2)}:1`);
+    continue;
+   }
    await p.getByText(appleEvent.title,{exact:true}).first().waitFor({state:"attached"});
    assert.equal(await p.getByRole("link",{name:/期未讀/}).count(),0);
    assert.equal(await p.locator(".dl-traffic-mini,.dl-home-fares").count(),0);
