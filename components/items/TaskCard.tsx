@@ -15,6 +15,8 @@ import { sourceTypeLabels } from "@/lib/labels";
 import { controlAction } from "@/lib/control-api";
 import { hkDateIso } from "@/lib/planning";
 import { taskTagColors } from "@/lib/task-tag-colors";
+import { createTaskPriorityProjection } from "@/lib/upcoming-task-priority";
+import { useDaylineDate } from "@/hooks/useDaylineDate";
 import type { Assignment, HandoffNote, OperatingItem, PersonalTaskTag, Task, TaskDependency, TaskFollower, TaskRecurrenceRule, TaskStep } from "@/lib/types";
 
 const emptyTags: PersonalTaskTag[] = [];
@@ -58,7 +60,10 @@ export function TaskCard({
   const [expanded, setExpanded] = useState(prominent);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState("");
-  const tagColors = useMemo(() => taskTagColors(taskTags), [taskTags]);
+  const today = useDaylineDate();
+  const priority = useMemo(() => createTaskPriorityProjection(taskTags, [task], today), [taskTags, task, today]);
+  const tagColors = useMemo(() => taskTagColors(priority.catalog), [priority]);
+  const promoted = priority.promotedTag(task);
   const activeHandoff = assignments.some((item) =>
     item.resource_type === "task"
     && item.resource_id === task.id
@@ -121,7 +126,7 @@ export function TaskCard({
       >
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap gap-2">
-            {taskTags.filter((tag) => task.personal_tag_ids?.includes(tag.id)).map((tag) => <span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-2.5 py-1 text-xs font-bold" style={tagColors.get(tag.id)}>{tag.name}</span>)}
+            {priority.labels(task).map((tag) => <span key={tag.id} data-tag-id={tag.id} className="task-tag-color max-w-full break-words rounded-full px-2.5 py-1 text-xs font-bold" style={tagColors.get(tag.id)}>{tag.id === promoted?.id ? "自動升級 · " : ""}{tag.name}</span>)}
             <StatusBadge status={task.status} />
             {task.custom_status_label ? <span className="rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-bold text-fuchsia-800">{task.custom_status_label}</span> : null}
             {isOngoingRecurrence ? <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">恆常工作</span> : null}

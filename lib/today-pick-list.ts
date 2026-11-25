@@ -1,7 +1,7 @@
 import type { Task } from "./types.ts";
 import { sortByPriority } from "./simple-mode.ts";
 
-export function todayPickMatches(tasks: Task[], includedIds: Set<string>, query: string, limit = 8) {
+export function todayPickMatches(tasks: Task[], includedIds: Set<string>, query: string, limit = 8, rank?: (task: Task) => number) {
   const needle = query.trim().toLocaleLowerCase();
   return sortByPriority(tasks.filter((task) =>
     !includedIds.has(task.id)
@@ -10,5 +10,5 @@ export function todayPickMatches(tasks: Task[], includedIds: Set<string>, query:
     && task.current_step_status !== "waiting"
     && !task.blocked_reason?.trim()
     && (!needle || task.title.toLocaleLowerCase().includes(needle))
-  )).slice(0, limit);
+  ), rank).slice(0, limit);
 }

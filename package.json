@@ -10,6 +10,7 @@
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
     "typecheck": "tsc --noEmit --incremental false",
     "test:dayline": "node --experimental-strip-types --test --test-isolation=none tests/dayline.test.ts",
+    "test:upcoming": "node --experimental-strip-types --test --test-isolation=none tests/upcoming-task-priority.test.ts tests/overdue-tasks.test.ts",
     "test:work-google": "node --experimental-strip-types --test --test-isolation=none tests/google-work-agenda.test.ts tests/google-work-agenda-server.test.ts tests/calendar-brief.test.ts tests/apple-calendar-month.test.ts",
     "test:schedule": "node --experimental-strip-types --test --test-isolation=none tests/task-work-schedule.test.ts",
     "test:today": "node --experimental-strip-types --test --test-isolation=none tests/today-pick-list.test.ts tests/task-work-schedule.test.ts",

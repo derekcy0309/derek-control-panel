@@ -28,7 +28,7 @@ export function taskTagPriorityChange(before: readonly string[], after: readonly
   return beforePriority === afterPriority ? undefined : (afterPriority ?? 3);
 }
 
-export function taskMatchesTagText(task: { title: string; personal_tag_ids?: string[] }, needle: string, tagNames: ReadonlyMap<string, string>) {
+export function taskMatchesTagText(task: { title: string; personal_tag_ids?: readonly string[] }, needle: string, tagNames: ReadonlyMap<string, string>) {
   return !needle || task.title.toLocaleLowerCase().includes(needle)
     || (task.personal_tag_ids ?? []).some(id => {
       const name = tagNames.get(id)?.toLocaleLowerCase();

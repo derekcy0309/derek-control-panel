@@ -12,9 +12,10 @@ export function simplePriority(value?: number) {
   return (value ?? 3) <= 2 ? 1 : (value ?? 3) <= 4 ? 3 : 5;
 }
 
-export function sortByPriority<T extends Pick<Task, "requested_priority">>(tasks: T[]): T[] {
-  // Stable ties keep the source/manual order. No energy, date, risk or duration scoring.
-  return [...tasks].sort((a, b) => simplePriority(a.requested_priority) - simplePriority(b.requested_priority));
+export function sortByPriority<T extends Pick<Task, "requested_priority">>(tasks: T[], rank: (task: T) => number = task => simplePriority(task.requested_priority)): T[] {
+  // Stable ties keep the source order. A caller may supply the displayed rank;
+  // manual Today order is handled separately and never re-sorted by priority.
+  return [...tasks].sort((a, b) => rank(a) - rank(b));
 }
 
 export function isMyTask(task: Task, userId: string, assignments: Assignment[]) {
@@ -41,9 +42,10 @@ function snoozedPastToday(value:string|null|undefined,today:string) {
 
 export function simpleToday(input: {
   tasks: Task[]; planning: PlanningMetadata[]; dependencies: TaskDependency[];
-  assignments: Assignment[]; userId: string; today: string;
+  assignments: Assignment[]; userId: string; today: string; priorityRank?: (task: Task) => number;
 }) {
   const { tasks, planning, dependencies, assignments, userId, today } = input;
+  const rank = input.priorityRank ?? ((task: Task) => simplePriority(task.requested_priority));
   const own = tasks.filter((t) => isMyTask(t, userId, assignments));
   const myPlanning = planning.filter((p) => p.user_id === userId && p.resource_type === "task");
   const plans = orderTodayPlan(myPlanning.filter((p) => p.planned_date === today && p.plan_role
@@ -55,7 +57,7 @@ export function simpleToday(input: {
   const ready = (task: Task) => actionableTask(task, dependencies, tasks) && !snoozedPastToday(task.snoozed_until,today);
   const suggestions = own.filter((t) => ready(t) && taskScheduledForDate(t, today)
     && !myPlanning.some((p) => p.resource_id === t.id && (p.hidden_from_today || snoozedPastToday(p.snoozed_until,today)))
-    && !planned.some((p) => p.id === t.id)).sort((a,b) => simplePriority(a.requested_priority)-simplePriority(b.requested_priority)
+    && !planned.some((p) => p.id === t.id)).sort((a,b) => rank(a)-rank(b)
       || (a.due_date || "9999").localeCompare(b.due_date || "9999"));
   // A manual plan always wins. Completing one reveals the next in that same order.
   const active = planned.filter(ready);

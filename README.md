@@ -14,6 +14,7 @@
 
 - 簡易首頁及[開工導航](docs/work-guide.md)：Dashboard 打個任務名、按 Enter 就可以加 Task。可在名稱下面直接選填多個 Tags；本人及無 Deadline 有預設。「帶我開工」一次只顯示一件事、一個起步動作；已手排嘅次序優先，完成一步唔等於結案。
 - 私人 Tags：全部可以新增、改名、移除。Derek 的四個主要分類是「個人、家庭、SEC（恩海居）、WECARE」，亦可選填 P1／P2／P3。既有的分類、優先次序及任務內容保留；移除 Tag 唔會刪 Task 或改分享權限。全域搜尋可用標題或本人 Tags。
+- 即將到期：按香港日期，限期前 14 日 P3 顯示為 P2，限期前 7 日 P2／P3 顯示為 P1。適用於首頁、任務總表、任務詳情及未手排嘅建議；不改原 Tag、分享權限或手排序。過咗限期仍未完成就列入首頁「已過期」，等回覆／受阻會另標狀態。
 - 「幾點要收手」：Dashboard 同開工導航用本人下一個固定行程扣返準備時間（預設 20 分鐘，可以改）。只提示，唔會改 Task 次序、推播或者寫入 iPhone；日曆未齊唔會估。
 
 - 交辦確認：已修正「確認收到」被舊資料庫 guard 誤擋；收件人可先確認再接受，派出者可收到去重回覆。真實 RLS／trigger 測試、migration 及回復見 [`docs/assignment-acknowledgement-fix.md`](docs/assignment-acknowledgement-fix.md)。

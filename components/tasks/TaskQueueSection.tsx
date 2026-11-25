@@ -13,6 +13,7 @@ export function TaskQueueSection({
   tasks,
   tagNames,
   tagColors,
+  taskTagIds,
   tone = "neutral",
   defaultOpen = false,
   previewLimit,
@@ -31,6 +32,7 @@ export function TaskQueueSection({
   tasks: Task[];
   tagNames: ReadonlyMap<string, string>;
   tagColors: ReadonlyMap<string, CSSProperties>;
+  taskTagIds?: (task: Task) => readonly string[];
   tone?: Tone;
   defaultOpen?: boolean;
   previewLimit?: number;
@@ -78,6 +80,7 @@ export function TaskQueueSection({
                   task={task}
                   tagNames={tagNames}
                   tagColors={tagColors}
+                  displayTagIds={taskTagIds?.(task)}
                   tone={tone}
                   completed={completed}
                   inToday={todayTaskIds?.has(task.id)}

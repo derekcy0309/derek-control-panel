@@ -18,6 +18,7 @@ const roleLabel = { now: "現在做", later: "稍後做", quick_win: "Quick Win"
 export function TodayAllTasks({
   tasks,
   availableTasks,
+  priorityRank,
   planning,
   today,
   onChanged,
@@ -27,6 +28,7 @@ export function TodayAllTasks({
 }: {
   tasks: Task[];
   availableTasks: Task[];
+  priorityRank?: (task: Task) => number;
   planning: PlanningMetadata[];
   today: string;
   onChanged: () => Promise<unknown>;
@@ -43,7 +45,7 @@ export function TodayAllTasks({
   const includedIds = useMemo(() => new Set(planning
     .filter((item) => item.resource_type === "task" && item.planned_date === today)
     .map((item) => item.resource_id)), [planning, today]);
-  const matches = useMemo(() => todayPickMatches(availableTasks, includedIds, query), [availableTasks, includedIds, query]);
+  const matches = useMemo(() => todayPickMatches(availableTasks, includedIds, query, 8, priorityRank), [availableTasks, includedIds, query, priorityRank]);
   const entries = useMemo(() => {
     const byId = new Map(tasks.map((task) => [task.id, task]));
     return orderTodayPlan(planning

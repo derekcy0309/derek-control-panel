@@ -9,8 +9,9 @@ import { GuideWorkStop } from "@/components/WorkStopHint";
 import { Button } from "@/components/ui/Button";
 import { useTodayData } from "@/hooks/useTodayData";
 import { controlAction, loadWorkGuide } from "@/lib/control-api";
-import { hkDateIso } from "@/lib/planning";
+import { useDaylineDate } from "@/hooks/useDaylineDate";
 import { simpleToday } from "@/lib/simple-mode";
+import { createTaskPriorityProjection } from "@/lib/upcoming-task-priority";
 import type { Task } from "@/lib/types";
 import { guideInstruction, type GuideCheckpoint, type GuideDetail } from "@/lib/work-guide";
 
@@ -19,7 +20,9 @@ export default function Page(){return <AuthGate><WorkGuide/></AuthGate>;}
 function WorkGuide(){
   const {data,error,reload,saveTaskLocally}=useTodayData();
   const [notice,setNotice]=useState("");
-  const plan=data?simpleToday({tasks:data.tasks,planning:data.planning,dependencies:data.taskDependencies,assignments:data.assignments,userId:data.currentUser.id,today:hkDateIso()}):null;
+  const today=useDaylineDate();
+  const priority=data?createTaskPriorityProjection(data.taskTags??[],data.tasks,today):null;
+  const plan=data?simpleToday({tasks:data.tasks,planning:data.planning,dependencies:data.taskDependencies,assignments:data.assignments,userId:data.currentUser.id,today,priorityRank:priority?.rank}):null;
   const task=plan?.ordered[0];
   return <div className="work-guide mx-auto max-w-3xl space-y-4">
     <header className="flex flex-wrap items-center justify-between gap-2"><h1 className="page-title flex items-center gap-2"><Compass aria-hidden="true"/>開工導航</h1><Link className="inline-flex min-h-11 items-center font-bold text-indigo-700" href="/">← 返今日總覽</Link></header>

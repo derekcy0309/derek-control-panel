@@ -35,6 +35,6 @@ test("one task creation form can add the new task to Today in the same save", ()
   assert.match(form, /refreshRelated: form\.add_to_today/);
   assert.match(control, /body\.addToToday === true/);
   assert.match(control, /upsertTodayPlanning\(client, user\.id, result\.data\.id, true\)/);
-  assert.match(home, /availableTasks=\{sortByPriority\(current.taskQueueCatalog\)\}/);
+  assert.match(home, /availableTasks=\{current.taskQueueCatalog\}\s+priorityRank=\{priority\.rank\}/);
   assert.doesNotMatch(home, /compact\s*\n\s*onSaved/);
 });

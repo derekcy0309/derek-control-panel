@@ -14,6 +14,7 @@ export function TaskQueueRow({
   task,
   tagNames,
   tagColors,
+  displayTagIds = task.personal_tag_ids ?? [],
   tone = "neutral",
   completed = false,
   inToday = false,
@@ -28,6 +29,7 @@ export function TaskQueueRow({
   task: Task;
   tagNames: ReadonlyMap<string, string>;
   tagColors: ReadonlyMap<string, CSSProperties>;
+  displayTagIds?: readonly string[];
   tone?: Tone;
   completed?: boolean;
   inToday?: boolean;
@@ -76,12 +78,14 @@ export function TaskQueueRow({
           <span className="min-w-0"><strong>{task.title}</strong>
             <span className="dl-queue-meta">
               {task.due_date ? <span className="inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />{formatDate(task.due_date)}</span> : null}
-              {(task.personal_tag_ids ?? []).map(id => {
+              {displayTagIds.map(id => {
                 const label = tagNames.get(id);
                 return label ? <span className="task-tag-color min-w-0 max-w-full break-words rounded-full px-2 py-0.5 font-semibold" data-tag-id={id} key={id} style={tagColors.get(id)}>{label}</span> : null;
               })}
               {task.custom_status_label ? <span>{task.custom_status_label}</span> : null}
               {task.status === "in_progress" && !task.custom_status_label ? <span>進行中</span> : null}
+              {!completed && !task.custom_status_label && (task.status === "waiting" || task.current_step_status === "waiting") ? <span>等回覆</span> : null}
+              {!completed && !task.custom_status_label && task.status === "blocked" && task.current_step_status !== "waiting" ? <span>等解除阻塞</span> : null}
               {task.parent_task_id ? <span>子任務</span> : null}
               {completed ? <span>{task.status === "cancelled" ? "已取消" : "已完成"}</span> : null}
               {!completed && inToday ? <span>已在今日</span> : null}

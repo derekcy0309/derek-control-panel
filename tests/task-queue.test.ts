@@ -103,7 +103,8 @@ test("task UI filters by tags, previews five active items and keeps the calendar
   assert.doesNotMatch(page, /P1 高 High|P2 一般 Normal|P3 低 Low/);
   assert.ok(page.indexOf("simpleGroups.map") < page.indexOf("<TaskDueCalendar"));
   assert.ok(page.indexOf("已做完／已取消") < page.indexOf("<TaskDueCalendar"));
-  assert.doesNotMatch(page, / defaultOpen/);
+  assert.match(page, /defaultOpen=\{showOverdue\}/);
+  assert.match(section, /defaultOpen = false/);
   assert.match(section, /顯示全部（共 \$\{tasks\.length\} 項）/);
   assert.match(calendar, /另有 \+\{dayTasks\.length - 3\} 項/);
   assert.match(form, /<DueDatePicker/);
@@ -160,6 +161,8 @@ test("Today and the task action list share one page while the legacy route redir
   assert.match(taskList, /id="task-action-list"/);
   assert.match(taskList, /多選加入今日/);
   assert.match(taskList, /set_today_task/);
+  assert.match(taskList, /id=\{showOverdue \? "task-overdue"/);
+  assert.match(taskList, /isMyTask\(task, data.currentUser.id, data.assignments\)/);
   assert.match(legacyRoute, /redirect\("\/#task-action-list"\)/);
   assert.match(api, /taskQueueCatalog:/);
   assert.doesNotMatch(api, /taskProjects:/);
