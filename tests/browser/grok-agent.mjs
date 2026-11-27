@@ -27,6 +27,8 @@ try{
         else body={enabled:true,items:[{id,title:'學校事項',date:'2026-11-19',version:'2026-11-19T00:00:00Z'}],more:false};
       }else if(url.pathname==='/api/agent/brief'){
         body={days:[],sources:[],text:'今日 2026-11-14\n09:00–10:00 Apple 私人行程\nDeadline 本人工作'};
+      }else if(url.pathname==='/api/hk-calendar-day'){
+        body={date:url.searchParams.get('date'),lunarDate:null,holidayName:null};
       }else if(url.pathname==='/api/agent'){
         if(!logged){status=401;body={error:'請登入'};}
         else if(request.method()==='GET'){
@@ -100,6 +102,10 @@ try{
     Object.defineProperty(navigator,'clipboard',{value:{writeText:async value=>{window.fixtureClipboard.push(value);}}});
   });
   let grant=null,created=0,revoked=0,apple=null,appleSelected=[],reauth=true,decisions=[];
+  let rotateAttempts=0,rotated=0;
+  const replacement='dcp_grok_'+'q'.repeat(43);
+  const briefGrant={id:'55555555-5555-4555-8555-555555555555',label:'Grok Bot（本人工作）',key_fingerprint:'brief-fixture',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+30*86400000).toISOString(),last_used_at:null,revoked_at:null,owner_workspace:false,brief_rotation_eligible:true};
+  const otherGrant={...briefGrant,id:'66666666-6666-4666-8666-666666666666',label:'另一個連接',key_fingerprint:'other-fixture',brief_rotation_eligible:false};
   const reviewId='44444444-4444-4444-8444-444444444444';
   let reviews=[{id:reviewId,kind:'task',label:'我指示封存嘅工作',createdAt:'2026-11-25T00:00:00Z',grantLabel:'Grok Bot'}];
   const school=schoolReviewFixture();
@@ -122,12 +128,24 @@ try{
           else{assert.equal(value.days,30);assert.equal(value.scope,'selected');assert.deepEqual(value.tagIds,[tag]);}
           grant={id,label:'Grok Bot',key_fingerprint:'fixture',created_at:new Date().toISOString(),expires_at:new Date(Date.now()+value.days*86400000).toISOString(),last_used_at:null,revoked_at:null,owner_workspace:created===1};body={grant,accessCode:key,loginPath:'/agent'};
         }
-        else{revoked++;grant.revoked_at=new Date().toISOString();body={ok:true};}
-      }else body={grants:grant?[grant]:[],events:[],tasks:[{id:'33333333-3333-4333-8333-333333333333',title:'本人工作（fixture）'}],notes:[],tags:[{id:tag,name:'個人'}]};
+        else if(value.action==='rotate_brief_workspace'){
+          rotateAttempts++;
+          assert.deepEqual(value,{action:'rotate_brief_workspace',id:briefGrant.id,expectedExpiresAt:briefGrant.expires_at,acknowledged:true});
+          if(rotateAttempts===1){status=409;body={error:'fixture conflict'};briefGrant.expires_at=new Date(Date.now()+31*86400000).toISOString();}
+          else if(rotateAttempts===2){status=401;body={error:'fixture reauth',reauth:true};}
+          else{
+            rotated++;briefGrant.owner_workspace=true;briefGrant.expires_at=new Date(Date.now()+365*86400000).toISOString();
+            body={grant:{id:briefGrant.id,label:briefGrant.label,expires_at:briefGrant.expires_at,owner_workspace:true},accessCode:replacement,loginPath:'/agent/brief'};
+          }
+        }
+        else if(value.action==='revoke'){assert.equal(value.id,grant?.id);revoked++;grant.revoked_at=new Date().toISOString();body={ok:true};}
+        else throw new Error('Unexpected Agent settings action');
+      }else body={grants:[...(grant?[grant]:[]),briefGrant,otherGrant],events:[],tasks:[{id:'33333333-3333-4333-8333-333333333333',title:'本人工作（fixture）'}],notes:[],tags:[{id:tag,name:'個人'}]};
     }else if(url.pathname==='/api/integrations/apple-calendar'){
       if(request.method()==='POST'){const value=request.postDataJSON();if(value.action==='connect'){assert.equal(value.acknowledged,true);apple={id,account_email:'fixture@example.test',status:'select_calendars',calendars:[{id:'private',name:'私人行程'},{id:'not-selected',name:'不要讀取此 Calendar'}],selected_ids:[]};}else if(value.action==='select'){assert.deepEqual(value.calendarIds,['private']);appleSelected=value.calendarIds;apple.selected_ids=value.calendarIds;apple.status='connected';}body={apple,sync:{state:'fresh'}};}
       else body={apple,grants:[],permissions:[]};
-    }else if(url.pathname==='/api/auth')body={user:{id}};
+    }else if(url.pathname==='/api/hk-calendar-day')body={date:url.searchParams.get('date'),lunarDate:null,holidayName:null};
+    else if(url.pathname==='/api/auth')body={user:{id}};
     else if(url.pathname==='/api/integrations/google-calendar')body={connections:[]};
     else if(url.searchParams.get('view')==='assignment_alerts')body={assignments:[],currentUserId:id,quietModeUntil:null};
     else body={currentUser:{id,displayName:'Derek',email:'derekcy0309@gmail.com'},profile:{user_id:id,display_name:'Derek',active:true,is_admin:true,timezone:'Asia/Hong_Kong'},settings:{theme:'sunrise'},tasks:[],transactions:[],meetings:[],balances:[],operatingItems:[],assignments:[],shares:[],handoffNotes:[],planning:[],participants:[],taskDependencies:[],projectMilestones:[],taskRecurrenceRules:[],capacity:null,notificationPreferences:null,notificationDeliveries:[],activePushSubscriptionCount:0,household:null,calendarConnections:[],taskNoticeRecipients:[],taskFollowers:[],showEncouragement:false};
@@ -139,6 +157,46 @@ try{
   await manage.click();
   const create=manager.getByRole('region',{name:'1. 喺日序建立 Bot Code',exact:true});
   const connect=manager.getByRole('region',{name:'2. 喺 Grok Bot 安全登入',exact:true});
+  const brief=manager.getByRole('region',{name:'更換三日摘要存取碼',exact:true});
+  const inspectBrief=brief.getByRole('button',{name:'核對更換範圍',exact:true});
+  const confirmBrief=brief.getByRole('button',{name:'確認更換 · 365 日',exact:true});
+  const consentBrief=brief.getByRole('checkbox',{name:/我確認只更換呢一個連接/});
+  const replacementField=brief.getByLabel('三日摘要新 Code',{exact:true});
+  await brief.getByText('Grok Bot（本人工作）',{exact:true}).waitFor();
+  assert.equal(await brief.getByText('另一個連接',{exact:true}).count(),0);
+  await inspectBrief.click();
+  assert.equal(rotateAttempts,0);assert.equal(await confirmBrief.isDisabled(),true);
+  await consentBrief.check();await brief.getByRole('button',{name:'取消更換',exact:true}).click();
+  assert.equal(rotateAttempts,0);
+  await inspectBrief.click();assert.equal(await consentBrief.isChecked(),false);
+  await consentBrief.check();await confirmBrief.click();
+  await brief.getByRole('alert').filter({hasText:'核對呢個連接嘅最新到期時間'}).waitFor();
+  assert.equal(rotateAttempts,1);assert.equal(rotated,0);
+  assert.equal(await inspectBrief.count(),0);assert.equal(await replacementField.count(),0);
+  await brief.getByRole('button',{name:'重新載入並核對連接',exact:true}).click();
+  await inspectBrief.click();assert.equal(await brief.locator('time').getAttribute('datetime'),briefGrant.expires_at);
+  assert.equal(await consentBrief.isChecked(),false);
+  await consentBrief.check();await confirmBrief.click();
+  await brief.getByRole('alert').filter({hasText:'重新登入日序'}).waitFor();
+  assert.equal(rotateAttempts,2);assert.equal(rotated,0);assert.equal(await replacementField.count(),0);
+  await page.reload({waitUntil:'domcontentloaded'});await manage.click();
+  await inspectBrief.click();assert.equal(await consentBrief.isChecked(),false);
+  await consentBrief.check();await confirmBrief.click();
+  await replacementField.waitFor();
+  assert.equal(rotated,1);assert.equal(await replacementField.getAttribute('type'),'password');
+  assert.equal(await brief.locator('time').getAttribute('datetime'),briefGrant.expires_at);
+  await brief.getByRole('button',{name:'複製三日摘要網址',exact:true}).click();
+  await brief.getByRole('status').filter({hasText:'已複製三日摘要登入網址'}).waitFor();
+  await brief.getByRole('button',{name:'複製新 Code',exact:true}).click();
+  await brief.getByRole('status').filter({hasText:'已複製新 Code'}).waitFor();
+  const rotatedClipboard=await page.evaluate(()=>window.fixtureClipboard.splice(0));
+  assert.ok(rotatedClipboard.length===2&&rotatedClipboard[0]===new URL('/agent/brief',base).href&&rotatedClipboard[1]===replacement,'brief URL and new Code must be copied separately');
+  assert.equal(await page.evaluate(secret=>JSON.stringify({...localStorage,...sessionStorage}).includes(secret),replacement),false);
+  assert.equal(new URL(page.url()).pathname,'/settings');
+  await manage.click();await brief.waitFor({state:'hidden'});await manage.click();await inspectBrief.waitFor();
+  assert.equal(await replacementField.count(),0,'reopening the settings cannot reveal the replacement Code');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  console.log('PASS brief replacement UI: exact single grant, explicit 365-day consent, conflict/reauth recovery, masked one-time Code, separate copy, no persistence or auto-login');
   const expiry=create.getByLabel('有效期',{exact:true});
   const issue=create.getByRole('button',{name:'建立 Bot Code',exact:true});
   const consent=create.getByRole('checkbox',{name:/我同意呢個 Agent 讀取/});
@@ -162,7 +220,8 @@ try{
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await page.setViewportSize({width:1280,height:920});
   await manager.getByText('管理已建立嘅 Bot Code',{exact:true}).click();
-  await manager.getByRole('button',{name:'停用 Code',exact:true}).click();await manager.getByRole('button',{name:'確認停用呢個 Code',exact:true}).click();
+  const issuedGrant=manager.getByText('識別：fixture',{exact:true}).locator('..');
+  await issuedGrant.getByRole('button',{name:'停用 Code',exact:true}).click();await issuedGrant.getByRole('button',{name:'確認停用呢個 Code',exact:true}).click();
   await manager.getByRole('status').filter({hasText:'已停用；'}).waitFor();assert.equal(revoked,1);assert.equal(await codeField.count(),0);
   await expiry.selectOption('30');
   await create.getByText('進階：只開放指定項目',{exact:true}).click();

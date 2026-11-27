@@ -148,6 +148,8 @@ try {
   await db.exec('reset role');
   const {testStandardAgentCodeLifetime}=await import('./standard-agent-code-lifetime-fixture.mjs');
   await testStandardAgentCodeLifetime({db,asRole,owner,other,task,hidden,foreign,tag,directory});
+  const {testOwnerWorkspaceBriefRotation}=await import('./owner-workspace-brief-code-rotation-fixture.mjs');
+  await testOwnerWorkspaceBriefRotation({db,asRole,owner,other,task,hidden,foreign,tag,directory});
   await db.exec(await readFile(new URL('../../supabase/rollback-owner-workspace-agent.sql',import.meta.url),'utf8'));
   await asRole('service_role');
   await assert.rejects(operation('status'),/AGENT_UNAUTHORIZED/);

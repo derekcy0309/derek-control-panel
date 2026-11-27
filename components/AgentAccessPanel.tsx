@@ -5,12 +5,15 @@ import Link from "next/link";
 import { Bot, Copy, KeyRound, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { AgentArchiveReview } from "@/components/AgentArchiveReview";
-import { agentGrantDays, agentMaxGrantDays, type AgentEvent, type AgentGrant, type AgentTag } from "@/lib/agent-access";
+import { agentGrantDays, agentKeyPattern, agentMaxGrantDays, type AgentEvent, type AgentGrant, type AgentTag } from "@/lib/agent-access";
 
 type Option = { id: string; title: string };
-type Data = { grants: AgentGrant[]; events: AgentEvent[]; tasks: Option[]; notes: Option[]; tags: AgentTag[] };
+type ManagedGrant = AgentGrant & { brief_rotation_eligible?: boolean };
+type Data = { grants: ManagedGrant[]; events: AgentEvent[]; tasks: Option[]; notes: Option[]; tags: AgentTag[] };
 type IssuedCode = { value: string; expiresAt: string | null };
-const actions: Record<string, string> = { grant_created: "建立存取", grant_revoked: "停用存取", status: "登入／核對存取", list: "讀取清單", detail: "讀取內容", create_task: "新增 Task", create_note: "新增 Notes", update_task: "修改 Task", update_note: "修改筆記", request_archive: "要求封存", archive_requested: "要求封存", archive_confirmed: "本人確認封存", archive_dismissed: "本人拒絕封存" };
+type BriefTarget = Pick<ManagedGrant, "id" | "label" | "expires_at">;
+type BriefRecovery = "reload" | "signin";
+const actions: Record<string, string> = { grant_created: "建立存取", grant_revoked: "停用存取", code_rotated: "更換三日摘要存取碼", status: "登入／核對存取", list: "讀取清單", detail: "讀取內容", create_task: "新增 Task", create_note: "新增 Notes", update_task: "修改 Task", update_note: "修改筆記", request_archive: "要求封存", archive_requested: "要求封存", archive_confirmed: "本人確認封存", archive_dismissed: "本人拒絕封存" };
 function time(value: string | null) { return value ? new Date(value).toLocaleString("zh-HK", { timeZone: "Asia/Hong_Kong" }) : "未使用"; }
 
 export function AgentAccessPanel() {
@@ -22,19 +25,92 @@ export function AgentAccessPanel() {
   const [acknowledged, setAcknowledged] = useState(false), [code, setCode] = useState<IssuedCode | null>(null), [showCode, setShowCode] = useState(false);
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [briefTarget, setBriefTarget] = useState<BriefTarget | null>(null), [briefConsent, setBriefConsent] = useState(false);
+  const [briefCode, setBriefCode] = useState<(IssuedCode & { grantId: string }) | null>(null), [showBriefCode, setShowBriefCode] = useState(false);
+  const [briefError, setBriefError] = useState(""), [briefMessage, setBriefMessage] = useState("");
+  const [briefRecovery, setBriefRecovery] = useState<BriefRecovery | null>(null), [briefRotating, setBriefRotating] = useState(false);
   const drawer = useRef<HTMLDetailsElement>(null);
   const loginStep = useRef<HTMLHeadingElement>(null);
   const submission = useRef(false);
   const isOwnerScope = scope === "owner_workspace";
+  const briefCandidates = data?.grants.filter(grant => grant.brief_rotation_eligible === true && !grant.revoked_at && Date.parse(grant.expires_at) > Date.now());
+  const briefGrant = briefCandidates?.length === 1 ? briefCandidates[0] : null;
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
       const response = await fetch("/api/agent-access", { cache: "no-store", credentials: "same-origin" });
       const value = await response.json(); if (!response.ok) throw new Error(value.error || "未能讀取 Agent 設定。");
       setData(value as Data);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "連線未完成，請重試。"); }
+      return true;
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "連線未完成，請重試。");
+      return false;
+    }
     finally { setLoading(false); }
   }, []);
+  const focusBriefResult = useCallback((element: HTMLHeadingElement | null) => { element?.focus(); }, []);
+  function resetBriefConfirm() {
+    setBriefTarget(null); setBriefConsent(false);
+  }
+  async function refreshBrief() {
+    resetBriefConfirm();
+    if (await load()) { setBriefError(""); setBriefRecovery(null); }
+  }
+  async function rotateBrief() {
+    if (submission.current || loading || briefRecovery || !briefConsent || !briefTarget
+      || briefTarget.id !== briefGrant?.id || briefTarget.expires_at !== briefGrant.expires_at) return;
+    submission.current = true; setBusy(true); setBriefRotating(true);
+    setBriefError(""); setBriefMessage("");
+    try {
+      const response = await fetch("/api/agent-access", {
+        method: "POST", cache: "no-store", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "rotate_brief_workspace", id: briefTarget.id, expectedExpiresAt: briefTarget.expires_at, acknowledged: true })
+      });
+      if (response.status === 401) {
+        setBriefRecovery("signin");
+        setBriefError("未能更換。請先用本人 Google 帳戶重新登入日序，再返設定核對及確認；唔會自動更換。");
+        return;
+      }
+      if (response.status === 403) {
+        setBriefRecovery("reload");
+        setBriefError("未獲准更換呢個 Code。請用本人 Google 帳戶重新登入日序，並核對連接是否仍然有效。");
+        return;
+      }
+      if (response.status === 404 || response.status === 409 || response.status === 422) {
+        setBriefRecovery("reload");
+        setBriefError("未能更換。請重新載入，核對呢個連接嘅最新到期時間，再決定要唔要更換。");
+        return;
+      }
+      if (!response.ok) throw new Error();
+      const result = await response.json();
+      if (result.grant?.id !== briefTarget.id || result.grant.owner_workspace !== true
+        || typeof result.grant.expires_at !== "string" || !Number.isFinite(Date.parse(result.grant.expires_at))
+        || typeof result.accessCode !== "string" || !agentKeyPattern.test(result.accessCode)) throw new Error();
+      setCode(null); setShowCode(false); setMessage("");
+      if (drawer.current?.open) {
+        setBriefCode({ grantId: briefTarget.id, value: result.accessCode, expiresAt: result.grant.expires_at });
+        setShowBriefCode(false);
+      }
+      await load();
+    } catch {
+      setBriefRecovery("reload");
+      setBriefError("未能確認換碼結果。先重新載入核對到期時間；如果已更換但未收到新 Code，可核對後再更換同一個連接。");
+    } finally {
+      resetBriefConfirm();
+      submission.current = false; setBusy(false); setBriefRotating(false);
+    }
+  }
+  async function copyBrief(what: "url" | "code") {
+    const value = what === "url" ? `${window.location.origin}/agent/brief` : briefCode?.value;
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setBriefError("");
+      setBriefMessage(what === "url" ? "已複製三日摘要登入網址。" : "已複製新 Code，只貼入 Grok 安全表格。");
+    } catch {
+      setBriefError(what === "url" ? "未能複製網址；可以用日序網址加 /agent/brief。" : "未能複製 Code；可以按「顯示新 Code」自行複製。");
+    }
+  }
   async function create() {
     if (submission.current || !acknowledged || !label.trim() || (!isOwnerScope && !tagIds.length)) return;
     submission.current = true; setBusy(true); setError(""); setMessage(""); setCode(null);
@@ -60,6 +136,7 @@ export function AgentAccessPanel() {
     try {
       const response = await fetch("/api/agent-access", { method: "POST", cache: "no-store", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "revoke", id }) });
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "未能停用。");
+      if (briefCode?.grantId === id) { setBriefCode(null); setShowBriefCode(false); setBriefMessage(""); }
       setRevokeId(null); setCode(null); setMessage("已停用；呢個 Code 同用佢登入嘅 Bot 都即時失效。"); await load();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "未能停用，請重試。"); }
     finally { submission.current = false; setBusy(false); }
@@ -82,11 +159,49 @@ export function AgentAccessPanel() {
       const open = event.currentTarget.open;
       setDrawerOpen(open);
       if (open && !data && !loading) void load();
-      if (!open) { setCode(null); setShowCode(false); setAcknowledged(false); setRevokeId(null); }
+      if (!open) {
+        setCode(null); setShowCode(false); setAcknowledged(false); setRevokeId(null);
+        resetBriefConfirm(); setBriefCode(null); setShowBriefCode(false); setBriefMessage("");
+      }
     }}>
-      <summary className="min-h-11 cursor-pointer py-2 font-bold text-indigo-700">開始連接／管理 Bot Code</summary>
+      <summary className="min-h-11 cursor-pointer py-2 font-bold text-indigo-700" onClick={event => { if (briefRotating) event.preventDefault(); }}>開始連接／管理 Bot Code</summary>
       {loading && !data ? <p role="status" className="mt-4 text-sm">讀取設定中…</p> : null}
       {data ? <div className="mt-4 grid gap-5">
+        {briefGrant || briefCode || briefRecovery ? <section aria-labelledby="agent-brief-rotation" className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:p-4">
+          <h3 id="agent-brief-rotation" className="font-bold">更換三日摘要存取碼</h3>
+          {briefCode ? <>
+            <h4 ref={focusBriefResult} tabIndex={-1} className="font-bold">已更換 · 新 Code 只顯示一次</h4>
+            {briefCode.expiresAt ? <p className="muted text-sm">新 Code 到期（香港）：<time dateTime={briefCode.expiresAt}>{time(briefCode.expiresAt)}</time></p> : null}
+            <p className="text-sm leading-6">舊 Code 已失效。叫 Grok 打開三日摘要網址，用安全表格（Secure Form）輸入新 Code，再試讀摘要。唔好將 Code 貼入普通對話、網址或排程指令。</p>
+            <label><span className="label">三日摘要新 Code</span><input className="field mt-2 font-mono" type={showBriefCode ? "text" : "password"} value={briefCode.value} readOnly autoComplete="off" spellCheck={false} /></label>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => void copyBrief("url")}><Copy className="h-4 w-4" aria-hidden="true" />複製三日摘要網址</Button>
+              <Button type="button" onClick={() => void copyBrief("code")}><Copy className="h-4 w-4" aria-hidden="true" />複製新 Code</Button>
+              <Button type="button" variant="secondary" onClick={() => setShowBriefCode(!showBriefCode)}>{showBriefCode ? "隱藏新 Code" : "顯示新 Code"}</Button>
+            </div>
+            <p className="muted text-xs leading-5">冇安全表格？用 Grok 嘅「接管」功能喺佢嘅登入頁輸入，唔好用你平時登入日序嘅瀏覽器。收起設定或重新載入後，呢個新 Code 唔會再顯示。</p>
+          </> : briefGrant ? <>
+            <p className="text-sm"><span className="font-semibold">{briefGrant.label}</span> · 目前到期（香港）：<time dateTime={briefGrant.expires_at}>{time(briefGrant.expires_at)}</time></p>
+            {briefTarget ? <>
+              <p className="text-sm leading-6">新 Code 有效期為 {agentMaxGrantDays} 日。確認後，只有呢個連接嘅舊 Code 會即時失效；原有三日摘要授權同 08:30 排程唔會改。Grok 需要用新 Code 登入。</p>
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm leading-6">
+                <input type="checkbox" className="mt-1 h-5 w-5 shrink-0" checked={briefConsent} disabled={busy} onChange={event => setBriefConsent(event.target.checked)} />
+                <span>我確認只更換呢一個連接。同意 Grok 讀取三日摘要，並讀取、新增及修改我本人嘅 Task／筆記。封存要我確認；其他帳戶、財務同用戶設定唔開放。</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" disabled={busy || loading || !briefConsent || briefTarget.id !== briefGrant.id || briefTarget.expires_at !== briefGrant.expires_at} onClick={() => void rotateBrief()}>{briefRotating ? "更換中…" : `確認更換 · ${agentMaxGrantDays} 日`}</Button>
+                <Button type="button" variant="secondary" disabled={busy} onClick={resetBriefConfirm}>取消更換</Button>
+              </div>
+            </> : briefRecovery ? null : <div>
+              <Button type="button" variant="secondary" disabled={busy || loading} onClick={() => {
+                setBriefConsent(false); setBriefError(""); setBriefTarget(briefGrant);
+              }}>核對更換範圍</Button>
+            </div>}
+          </> : null}
+          {briefError ? <p role="alert" className="text-sm font-semibold text-amber-900">{briefError}</p> : null}
+          {briefMessage ? <p role="status" className="text-sm">{briefMessage}</p> : null}
+          {briefRecovery === "reload" ? <div><Button type="button" variant="secondary" disabled={busy || loading} onClick={() => void refreshBrief()}>重新載入並核對連接</Button></div> : null}
+        </section> : null}
         <section aria-labelledby="agent-create-step" className="grid gap-3">
           <h3 id="agent-create-step" className="font-bold">1. 喺日序建立 Bot Code</h3>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -143,7 +258,7 @@ export function AgentAccessPanel() {
       </div> : null}
       {error ? <p className="mt-3 text-sm font-semibold text-amber-900" role="alert">{error}</p> : null}
       {message ? <p className="mt-3 text-sm font-semibold text-slate-700" role="status">{message}</p> : null}
-      <button type="button" disabled={loading} className="mt-3 flex min-h-11 items-center gap-2 text-sm font-semibold text-indigo-700" onClick={() => void load()}><RefreshCw className="h-4 w-4" />重新載入 Agent 設定</button>
+      <button type="button" disabled={loading || busy} className="mt-3 flex min-h-11 items-center gap-2 text-sm font-semibold text-indigo-700" onClick={() => void (briefRecovery === "reload" ? refreshBrief() : load())}><RefreshCw className="h-4 w-4" />重新載入 Agent 設定</button>
     </details>
   </section>;
 }

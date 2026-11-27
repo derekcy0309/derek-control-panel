@@ -5,15 +5,24 @@ import { hasOnlyAgentFields, agentUuidPattern } from "@/lib/agent-access";
 import { appleMetadata, calendarService, refreshApple } from "@/lib/server/calendar-brief";
 import { discoverAppleCalendars } from "@/lib/integrations/apple-calendar";
 import { encryptCalendarToken } from "@/lib/integrations/google-calendar";
+import { briefWorkspaceLabel } from "@/lib/server/brief-workspace-rotation";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export const maxDuration=60;
 export async function GET(request:NextRequest) {
  const ctx=await authenticateRequest(request);if(ctx instanceof Response)return ctx;
  try {
-  const [apple,grants,permissions]=await Promise.all([appleMetadata(ctx.user.id),ctx.client.from("agent_access_grants").select("id,label,expires_at,revoked_at").eq("owner_id",ctx.user.id).is("revoked_at",null).gt("expires_at",new Date().toISOString()).neq("create_tag_ids","{}").order("created_at",{ascending:false}).limit(5),ctx.client.from("agent_brief_permissions").select("grant_id,revoked_at").eq("owner_id",ctx.user.id)]);
+  const [apple,grants,permissions]=await Promise.all([appleMetadata(ctx.user.id),ctx.client.from("agent_access_grants").select("id,label,expires_at,revoked_at,owner_workspace,create_tag_ids").eq("owner_id",ctx.user.id).is("revoked_at",null).gt("expires_at",new Date().toISOString()).order("created_at",{ascending:false}).limit(5),ctx.client.from("agent_brief_permissions").select("grant_id,revoked_at").eq("owner_id",ctx.user.id)]);
   if(grants.error||permissions.error)throw new Error("DB");
-  return privateJson({apple,grants:grants.data??[],permissions:permissions.data??[]});
+  const livePermissions=permissions.data??[];
+  const visibleGrants=(grants.data??[]).flatMap(({id,label,expires_at,revoked_at,owner_workspace,create_tag_ids})=>{
+    // A rotated grant retains its explicit existing permission, not a new eligibility rule for other workspace grants.
+    const retainedBrief=owner_workspace===true && label===briefWorkspaceLabel &&
+      livePermissions.some(p=>p.grant_id===id&&!p.revoked_at);
+    if (!retainedBrief && !(Array.isArray(create_tag_ids) && create_tag_ids.length>0)) return [];
+    return [{id,label,expires_at,revoked_at,brief_already_authorized:retainedBrief}];
+  });
+  return privateJson({apple,grants:visibleGrants,permissions:livePermissions});
  }catch{return privateJson({error:"未能讀取私人 Calendar 設定，請重試。"},503);}
 }
 export async function POST(request:NextRequest) {
